@@ -1,0 +1,606 @@
+import SwiftUI
+import AppKit
+
+extension Color {
+    init?(hexString: String) {
+        var hex = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if hex.hasPrefix("#") { hex.removeFirst() }
+        guard hex.count == 6, let value = Int(hex, radix: 16) else { return nil }
+        let r = Double((value >> 16) & 0xFF) / 255.0
+        let g = Double((value >> 8) & 0xFF) / 255.0
+        let b = Double(value & 0xFF) / 255.0
+        self = Color(red: r, green: g, blue: b)
+    }
+}
+
+struct PickerView: View {
+    @ObservedObject var model: PickerViewModel
+    @State private var appeared: Bool = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            Divider().opacity(0.15)
+            optionList
+            Divider().opacity(0.15)
+            footer
+        }
+        .background(
+            VisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
+                .overlay(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.04), Color.black.opacity(0.06)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.18), Color.white.opacity(0.04)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 1
+                )
+        )
+        .frame(width: 740, height: 380)
+        .background(KeyEventCatcher(model: model))
+        .scaleEffect(appeared ? 1.0 : 0.96)
+        .opacity(appeared ? 1.0 : 0.0)
+        .onAppear {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                appeared = true
+            }
+        }
+    }
+
+    private func previewIsMeaningful(_ preview: LinkPreview) -> Bool {
+        let hasTitle = (preview.title?.isEmpty == false)
+        let hasSite = (preview.siteName?.isEmpty == false)
+        return hasTitle || hasSite
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                if let source = model.sourceApp {
+                    sourceBadge(source)
+                }
+                if let focus = model.focusName {
+                    focusBadge(focus)
+                }
+                if !model.riskFlags.isEmpty {
+                    riskChip(model.riskFlags)
+                }
+                Spacer(minLength: 4)
+                Button {
+                    model.copyCleanedURL()
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .frame(width: 22, height: 22)
+                        .background(Circle().fill(Color.white.opacity(0.08)))
+                }
+                .buttonStyle(.plain)
+                .help("Copy cleaned URL (⌘C)")
+
+                Button(action: { model.cancel() }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.secondary)
+                        .frame(width: 22, height: 22)
+                        .background(Circle().fill(Color.white.opacity(0.08)))
+                }
+                .buttonStyle(.plain)
+                .help("Cancel (Esc)")
+            }
+
+            linkRow
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 12)
+    }
+
+    private var linkRow: some View {
+        HStack(spacing: 10) {
+            linkIcon
+                .frame(width: 28, height: 28)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+
+            VStack(alignment: .leading, spacing: 2) {
+                if let preview = model.preview,
+                   let title = preview.title, !title.isEmpty {
+                    Text(title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                HStack(spacing: 6) {
+                    if model.didClean {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(.accentColor)
+                            .help("Cleaned URL — was \(model.url.absoluteString)")
+                    }
+                    Text(displayURL)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                }
+            }
+
+            Spacer(minLength: 6)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
+        )
+    }
+
+    private var displayURL: String {
+        model.didClean ? model.cleanedURL.absoluteString : model.url.absoluteString
+    }
+
+    @ViewBuilder
+    private var linkIcon: some View {
+        if let data = model.preview?.faviconData, let image = NSImage(data: data) {
+            Image(nsImage: image)
+                .resizable()
+                .interpolation(.high)
+        } else {
+            ZStack {
+                Color.secondary.opacity(0.15)
+                Image(systemName: "globe")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
+    private func sourceBadge(_ source: URLSource) -> some View {
+        HStack(spacing: 5) {
+            if let icon = source.icon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 12, height: 12)
+            }
+            Text("from ")
+                .foregroundColor(.secondary)
+            + Text(source.name)
+                .foregroundColor(.primary)
+                .fontWeight(.medium)
+        }
+        .font(.system(size: 10))
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(
+            Capsule().fill(Color.white.opacity(0.08))
+        )
+    }
+
+    private func focusBadge(_ name: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "moon.fill")
+                .font(.system(size: 9))
+            Text(name)
+                .font(.system(size: 10, weight: .medium))
+        }
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .foregroundColor(.purple)
+        .background(Capsule().fill(Color.purple.opacity(0.18)))
+    }
+
+    private func riskChip(_ flags: [RiskFlag]) -> some View {
+        let highest = flags.max(by: { $0.level.rawValue < $1.level.rawValue }) ?? flags[0]
+        let tint = riskTint(highest.level)
+        return HStack(spacing: 4) {
+            Image(systemName: riskIcon(highest.level))
+                .font(.system(size: 9, weight: .semibold))
+            Text(flags.count == 1 ? highest.title : "\(flags.count) risk flags")
+                .font(.system(size: 10, weight: .medium))
+        }
+        .foregroundColor(tint)
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(Capsule().fill(tint.opacity(0.18)))
+        .help(flags.map { "\($0.title): \($0.detail)" }.joined(separator: "\n"))
+    }
+
+    private func riskTint(_ level: RiskLevel) -> Color {
+        switch level {
+        case .info: return .blue
+        case .low: return .yellow
+        case .medium: return .orange
+        case .high: return .red
+        }
+    }
+
+    private func riskIcon(_ level: RiskLevel) -> String {
+        switch level {
+        case .info: return "info.circle.fill"
+        case .low: return "exclamationmark.circle.fill"
+        case .medium: return "exclamationmark.triangle.fill"
+        case .high: return "shield.lefthalf.filled"
+        }
+    }
+
+    private var optionList: some View {
+        GeometryReader { geo in
+            let list = model.filteredOptions
+            let count = list.count
+            let tileWidth: CGFloat = 112
+            let spacing: CGFloat = 10
+            let horizontalPadding: CGFloat = 18
+            let needed = CGFloat(count) * tileWidth
+                + CGFloat(max(count - 1, 0)) * spacing
+                + horizontalPadding * 2
+            let fits = count > 0 && needed <= geo.size.width
+
+            Group {
+                if list.isEmpty {
+                    Text("No browsers enabled — open Preferences to show some.")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if fits {
+                    HStack(spacing: 0) {
+                        ForEach(Array(list.enumerated()), id: \.element.id) { idx, option in
+                            tile(idx: idx, option: option)
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .padding(.horizontal, horizontalPadding)
+                    .padding(.vertical, 16)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollViewReader { proxy in
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(alignment: .top, spacing: spacing) {
+                                ForEach(Array(list.enumerated()), id: \.element.id) { idx, option in
+                                    tile(idx: idx, option: option)
+                                        .id(idx)
+                                }
+                            }
+                            .padding(.horizontal, horizontalPadding)
+                            .padding(.vertical, 16)
+                        }
+                        .onChange(of: model.selectedIndex) { newValue in
+                            withAnimation(.easeOut(duration: 0.15)) {
+                                proxy.scrollTo(newValue, anchor: .center)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func tile(idx: Int, option: LaunchOption) -> some View {
+        PickerTile(
+            option: option,
+            number: idx + 1,
+            selected: idx == model.selectedIndex,
+            multiSelected: model.multiSelection.contains(option.id),
+            appearDelay: Double(idx) * 0.018
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if NSEvent.modifierFlags.contains(.shift) {
+                model.toggleMulti(option)
+            } else {
+                model.pick(option)
+            }
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 14) {
+            Toggle(isOn: $model.rememberChoice) {
+                HStack(spacing: 3) {
+                    Text("Remember")
+                        .foregroundColor(.secondary)
+                    Text(model.host)
+                        .foregroundColor(.primary)
+                        .fontWeight(.medium)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+            .toggleStyle(.checkbox)
+            .font(.system(size: 11))
+            .fixedSize()
+
+            Spacer(minLength: 8)
+
+            if !model.multiSelection.isEmpty {
+                Text("\(model.multiSelection.count) selected")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.accentColor)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Capsule().fill(Color.accentColor.opacity(0.15)))
+            }
+
+            Button {
+                model.saveForLater()
+            } label: {
+                Image(systemName: "tray.and.arrow.down")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(Color.white.opacity(0.06)))
+            }
+            .buttonStyle(.plain)
+            .help("Save for later")
+
+            hintSegments
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    private var hintSegments: some View {
+        HStack(spacing: 8) {
+            hintKey("↵", "Open")
+            hintKey("⌘↵", "Keep")
+            hintKey("⎋", "Close")
+        }
+        .help("← → or 1-9 navigate • ⇧Click multi-open • ⌘C copy cleaned URL")
+    }
+
+    private func hintKey(_ key: String, _ label: String) -> some View {
+        HStack(spacing: 3) {
+            Text(key)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundColor(.primary.opacity(0.85))
+                .padding(.horizontal, 4).padding(.vertical, 1)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.white.opacity(0.1))
+                )
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+        }
+    }
+}
+
+private extension RiskLevel {
+    var rank: Int { rawValue }
+}
+
+private struct PickerTile: View {
+    let option: LaunchOption
+    let number: Int
+    let selected: Bool
+    let multiSelected: Bool
+    let appearDelay: Double
+    @State private var hovered: Bool = false
+    @State private var appeared: Bool = false
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ZStack(alignment: .topTrailing) {
+                Image(nsImage: option.icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 48, height: 48)
+                    .scaleEffect(hovered && !selected ? 1.06 : (selected ? 1.03 : 1.0))
+
+                if number <= 9 {
+                    Text("\(number)")
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundColor(.primary.opacity(0.85))
+                        .frame(width: 16, height: 16)
+                        .background(
+                            Circle()
+                                .fill(Color.black.opacity(0.4))
+                                .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 0.5))
+                        )
+                        .offset(x: 6, y: -4)
+                }
+
+                if multiSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.accentColor)
+                        .font(.system(size: 14))
+                        .background(Circle().fill(Color.black.opacity(0.5)))
+                        .offset(x: 6, y: 38)
+                }
+            }
+            .frame(height: 54)
+
+            VStack(spacing: 2) {
+                Text(option.browser.name)
+                    .font(.system(size: 12, weight: selected ? .semibold : .medium))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                if let profile = option.profile {
+                    HStack(spacing: 4) {
+                        if let hex = option.colorHex, let color = Color(hexString: hex) {
+                            Capsule()
+                                .fill(color)
+                                .frame(width: 10, height: 3)
+                        }
+                        Text(profile.displayName)
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 4)
+        }
+        .padding(.vertical, 14)
+        .padding(.horizontal, 8)
+        .frame(width: 112, height: 124)
+        .background(
+            tileFill
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(tileStroke, lineWidth: selected || multiSelected ? 2 : 1)
+        )
+        .shadow(
+            color: selected ? Color.accentColor.opacity(0.35) : Color.black.opacity(hovered ? 0.22 : 0.0),
+            radius: selected ? 14 : 8,
+            x: 0,
+            y: selected ? 6 : 3
+        )
+        .contentShape(Rectangle())
+        .scaleEffect(appeared ? 1.0 : 0.9)
+        .opacity(appeared ? 1.0 : 0.0)
+        .onAppear {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8).delay(appearDelay)) {
+                appeared = true
+            }
+        }
+        .onHover { isHovered in
+            hovered = isHovered
+            if isHovered {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: hovered)
+        .animation(.easeOut(duration: 0.15), value: selected)
+        .animation(.easeOut(duration: 0.15), value: multiSelected)
+    }
+
+    @ViewBuilder
+    private var tileFill: some View {
+        if multiSelected {
+            LinearGradient(
+                colors: [Color.accentColor.opacity(0.30), Color.accentColor.opacity(0.16)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        } else if selected {
+            LinearGradient(
+                colors: [Color.accentColor.opacity(0.34), Color.accentColor.opacity(0.14)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        } else if hovered {
+            LinearGradient(
+                colors: [Color.white.opacity(0.12), Color.white.opacity(0.05)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        } else {
+            LinearGradient(
+                colors: [Color.white.opacity(0.06), Color.white.opacity(0.02)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+    }
+
+    private var tileStroke: Color {
+        if multiSelected { return Color.accentColor.opacity(0.75) }
+        if selected { return Color.accentColor.opacity(0.85) }
+        if hovered { return Color.white.opacity(0.18) }
+        return Color.white.opacity(0.06)
+    }
+}
+
+struct VisualEffectView: NSViewRepresentable {
+    let material: NSVisualEffectView.Material
+    let blendingMode: NSVisualEffectView.BlendingMode
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = blendingMode
+        view.state = .active
+        view.isEmphasized = true
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = material
+        nsView.blendingMode = blendingMode
+    }
+}
+
+private struct KeyEventCatcher: NSViewRepresentable {
+    let model: PickerViewModel
+
+    func makeNSView(context: Context) -> NSView {
+        let view = KeyCatcherView()
+        view.model = model
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+private final class KeyCatcherView: NSView {
+    weak var model: PickerViewModel?
+    private var monitor: Any?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+            return
+        }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, let model = self.model, event.window === self.window else { return event }
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            switch event.keyCode {
+            case 124, 125:
+                model.moveSelection(1); return nil
+            case 123, 126:
+                model.moveSelection(-1); return nil
+            case 53:
+                model.cancel(); return nil
+            case 49:
+                model.toggleMultiAtSelection(); return nil
+            case 36, 76:
+                let withRemember = modifiers.contains(.command)
+                model.confirmSelection(remember: withRemember ? true : nil)
+                return nil
+            default: break
+            }
+            if modifiers == .command,
+               event.charactersIgnoringModifiers?.lowercased() == "c" {
+                model.copyCleanedURL()
+                return nil
+            }
+            if (modifiers.isEmpty || modifiers == .shift || modifiers == .command),
+               let chars = event.charactersIgnoringModifiers,
+               chars.count == 1,
+               let digit = Int(chars),
+               digit >= 1, digit <= 9 {
+                let withRemember = modifiers.contains(.command)
+                model.pickByNumber(digit, remember: withRemember ? true : nil)
+                return nil
+            }
+            return event
+        }
+    }
+
+    deinit {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+    }
+}

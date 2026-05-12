@@ -1,0 +1,8 @@
+.DS_Store
+.build/
+build/
+build-artifacts/
+*.o
+*.d
+*.dia
+*.swiftdeps
