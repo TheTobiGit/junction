@@ -17,19 +17,13 @@ final class PickerPanelController {
         let openOnce: (LaunchOption) -> Void = { option in
             let cleaned = SettingsStore.shared.settings.cleanURLsBeforeOpening
             let urlToOpen = cleaned ? URLTransformers.default.run(url) : url
-            URLOpener.open(urlToOpen, with: option) { _ in
-                LinkLog.shared.record(LinkLogEntry(
-                    url: urlToOpen,
-                    target: option,
-                    source: context.source,
-                    cleaned: cleaned
-                ))
-            }
+            URLOpener.open(urlToOpen, with: option)
         }
 
+        let options = LaunchOptionDiscovery.visibleOptions()
         let model = PickerViewModel(
             url: url,
-            options: LaunchOptionDiscovery.visibleOptions(),
+            options: options,
             context: context,
             onPick: { [weak self] option, remember in
                 if remember, let host = RulesStore.normalizedHost(for: url) {
@@ -42,19 +36,16 @@ final class PickerPanelController {
                 for option in options { openOnce(option) }
                 self?.dismiss()
             },
-            onSaveLater: { [weak self] in
-                LinkInbox.shared.add(url: url, source: context.source)
-                self?.dismiss()
-            },
             onCancel: { [weak self] in self?.dismiss() }
         )
 
-        let view = PickerView(model: model)
+        let width = PickerView.desiredWidth(forOptionCount: options.count)
+        let view = PickerView(model: model, width: width)
         let host = NSHostingView(rootView: view)
         host.translatesAutoresizingMaskIntoConstraints = false
 
         let panel = KeyablePanel(
-            contentRect: NSRect(x: 0, y: 0, width: 720, height: 400),
+            contentRect: NSRect(x: 0, y: 0, width: width, height: 300),
             styleMask: [.borderless, .fullSizeContentView],
             backing: .buffered,
             defer: false

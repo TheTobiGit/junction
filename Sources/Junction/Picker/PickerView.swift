@@ -15,7 +15,26 @@ extension Color {
 
 struct PickerView: View {
     @ObservedObject var model: PickerViewModel
+    let width: CGFloat
     @State private var appeared: Bool = false
+
+    static let tileWidth: CGFloat = 112
+    static let tileSpacing: CGFloat = 10
+    static let listHorizontalPadding: CGFloat = 18
+    static let minWidth: CGFloat = 480
+
+    static func desiredWidth(forOptionCount count: Int) -> CGFloat {
+        let content = CGFloat(count) * tileWidth
+            + CGFloat(max(count - 1, 0)) * tileSpacing
+            + listHorizontalPadding * 2
+        let screenMax: CGFloat = {
+            if let screen = NSScreen.main {
+                return max(minWidth, screen.visibleFrame.width - 80)
+            }
+            return 1200
+        }()
+        return max(minWidth, min(content, screenMax))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -47,7 +66,7 @@ struct PickerView: View {
                     lineWidth: 1
                 )
         )
-        .frame(width: 740, height: 380)
+        .frame(width: width, height: 300)
         .background(KeyEventCatcher(model: model))
         .scaleEffect(appeared ? 1.0 : 0.96)
         .opacity(appeared ? 1.0 : 0.0)
@@ -238,52 +257,22 @@ struct PickerView: View {
     }
 
     private var optionList: some View {
-        GeometryReader { geo in
-            let list = model.filteredOptions
-            let count = list.count
-            let tileWidth: CGFloat = 112
-            let spacing: CGFloat = 10
-            let horizontalPadding: CGFloat = 18
-            let needed = CGFloat(count) * tileWidth
-                + CGFloat(max(count - 1, 0)) * spacing
-                + horizontalPadding * 2
-            let fits = count > 0 && needed <= geo.size.width
-
-            Group {
-                if list.isEmpty {
-                    Text("No browsers enabled — open Preferences to show some.")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if fits {
-                    HStack(spacing: 0) {
-                        ForEach(Array(list.enumerated()), id: \.element.id) { idx, option in
-                            tile(idx: idx, option: option)
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                    .padding(.horizontal, horizontalPadding)
-                    .padding(.vertical, 16)
+        let list = model.filteredOptions
+        return Group {
+            if list.isEmpty {
+                Text("No browsers enabled — open Preferences to show some.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    ScrollViewReader { proxy in
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(alignment: .top, spacing: spacing) {
-                                ForEach(Array(list.enumerated()), id: \.element.id) { idx, option in
-                                    tile(idx: idx, option: option)
-                                        .id(idx)
-                                }
-                            }
-                            .padding(.horizontal, horizontalPadding)
-                            .padding(.vertical, 16)
-                        }
-                        .onChange(of: model.selectedIndex) { newValue in
-                            withAnimation(.easeOut(duration: 0.15)) {
-                                proxy.scrollTo(newValue, anchor: .center)
-                            }
-                        }
+            } else {
+                HStack(spacing: Self.tileSpacing) {
+                    ForEach(Array(list.enumerated()), id: \.element.id) { idx, option in
+                        tile(idx: idx, option: option)
                     }
                 }
+                .padding(.horizontal, Self.listHorizontalPadding)
+                .padding(.vertical, 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             }
         }
     }
@@ -332,18 +321,6 @@ struct PickerView: View {
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Capsule().fill(Color.accentColor.opacity(0.15)))
             }
-
-            Button {
-                model.saveForLater()
-            } label: {
-                Image(systemName: "tray.and.arrow.down")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .frame(width: 22, height: 22)
-                    .background(Circle().fill(Color.white.opacity(0.06)))
-            }
-            .buttonStyle(.plain)
-            .help("Save for later")
 
             hintSegments
         }

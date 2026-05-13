@@ -14,7 +14,6 @@ final class PickerViewModel: ObservableObject {
 
     private let pickHandler: (LaunchOption, Bool) -> Void
     private let pickMultiHandler: ([LaunchOption]) -> Void
-    private let saveLaterHandler: () -> Void
     private let cancelHandler: () -> Void
 
     init(
@@ -23,7 +22,6 @@ final class PickerViewModel: ObservableObject {
         context: RouteContext,
         onPick: @escaping (LaunchOption, Bool) -> Void,
         onPickMulti: @escaping ([LaunchOption]) -> Void,
-        onSaveLater: @escaping () -> Void,
         onCancel: @escaping () -> Void
     ) {
         self.url = url
@@ -33,7 +31,6 @@ final class PickerViewModel: ObservableObject {
         self.riskFlags = URLRiskAssessor.assess(url)
         self.pickHandler = onPick
         self.pickMultiHandler = onPickMulti
-        self.saveLaterHandler = onSaveLater
         self.cancelHandler = onCancel
         loadPreview()
     }
@@ -114,10 +111,6 @@ final class PickerViewModel: ObservableObject {
 
     func cancel() {
         cancelHandler()
-    }
-
-    func saveForLater() {
-        saveLaterHandler()
     }
 
     func copyCleanedURL() {

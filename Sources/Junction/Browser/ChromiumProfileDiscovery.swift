@@ -48,6 +48,27 @@ enum ChromiumProfileDiscovery {
         return []
     }
 
+    static func menuIndex(for bundleID: String, profileDirectory: String) -> Int? {
+        guard let vendor = vendors.first(where: { $0.bundleID == bundleID }) else { return nil }
+
+        let fm = FileManager.default
+        guard let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+
+        for relative in vendor.localStatePaths {
+            let path = appSupport.appendingPathComponent(relative)
+            guard let data = try? Data(contentsOf: path),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let profile = obj["profile"] as? [String: Any],
+                  let order = profile["profiles_order"] as? [String],
+                  let index = order.firstIndex(of: profileDirectory)
+            else { continue }
+            return index + 1
+        }
+        return nil
+    }
+
     private static func parseLocalState(at url: URL) -> [ChromiumProfile]? {
         guard let data = try? Data(contentsOf: url),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

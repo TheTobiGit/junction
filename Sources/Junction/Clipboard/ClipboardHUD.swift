@@ -115,15 +115,6 @@ struct ClipboardHUDView: View {
             .help("Copy cleaned")
 
             Button {
-                LinkInbox.shared.add(url: cleaned, source: nil)
-                onDismiss()
-            } label: {
-                Image(systemName: "tray.and.arrow.down")
-            }
-            .buttonStyle(.borderless)
-            .help("Save for later")
-
-            Button {
                 NSWorkspace.shared.open(cleaned)
                 onDismiss()
             } label: {

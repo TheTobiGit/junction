@@ -72,30 +72,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                let option = LaunchOptionDiscovery.options().first(where: { $0.target.storageKey == key }) {
                 let shouldClean = clean ?? SettingsStore.shared.settings.cleanURLsBeforeOpening
                 let finalURL = shouldClean ? URLTransformers.default.run(target) : target
-                URLOpener.open(finalURL, with: option) { _ in
-                    LinkLog.shared.record(LinkLogEntry(
-                        url: finalURL, target: option,
-                        source: FrontmostTracker.shared.lastNonJunction,
-                        cleaned: shouldClean
-                    ))
-                }
+                URLOpener.open(finalURL, with: option)
                 return
             }
 
             route(target)
 
-        case "savelater":
-            guard let rawURL = items["url"], let target = URL(string: rawURL) else { return }
-            LinkInbox.shared.add(url: target, source: FrontmostTracker.shared.lastNonJunction)
-
         case "preferences":
             showPreferences()
-
-        case "history":
-            menuBar?.showHistoryWindow()
-
-        case "batch":
-            menuBar?.showBatchWindow()
 
         default:
             break
@@ -221,12 +205,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let urlToOpen = cleaned ? URLTransformers.default.run(resolved) : resolved
             URLOpener.open(urlToOpen, with: option) { success in
                 if success {
-                    LinkLog.shared.record(LinkLogEntry(
-                        url: urlToOpen,
-                        target: option,
-                        source: context.source,
-                        cleaned: cleaned
-                    ))
                     UndoNotifier.shared.announce(
                         url: urlToOpen,
                         option: option,

@@ -3,8 +3,6 @@ import AppKit
 final class MenuBarController {
     private let statusItem: NSStatusItem
     private let openPreferences: () -> Void
-    private let batchController = BatchWindowController()
-    private let historyController = HistoryWindowController()
 
     init(openPreferences: @escaping () -> Void) {
         self.openPreferences = openPreferences
@@ -63,26 +61,6 @@ final class MenuBarController {
 
         menu.addItem(.separator())
 
-        let batch = NSMenuItem(
-            title: "Batch Open…",
-            action: #selector(openBatch),
-            keyEquivalent: "b"
-        )
-        batch.keyEquivalentModifierMask = [.command, .shift]
-        batch.target = self
-        menu.addItem(batch)
-
-        let history = NSMenuItem(
-            title: "History & Inbox…",
-            action: #selector(openHistory),
-            keyEquivalent: "h"
-        )
-        history.keyEquivalentModifierMask = [.command, .shift]
-        history.target = self
-        menu.addItem(history)
-
-        menu.addItem(.separator())
-
         let quit = NSMenuItem(
             title: "Quit Junction",
             action: #selector(NSApplication.terminate(_:)),
@@ -104,17 +82,6 @@ final class MenuBarController {
         let url = RulesStore.shared.fileURL
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
-
-    @objc private func openBatch() {
-        batchController.show()
-    }
-
-    @objc private func openHistory() {
-        historyController.show()
-    }
-
-    func showBatchWindow() { batchController.show() }
-    func showHistoryWindow() { historyController.show() }
 
     @objc private func setAsDefault() {
         let bid = Bundle.main.bundleIdentifier ?? "dev.gideonsarfo.Junction"

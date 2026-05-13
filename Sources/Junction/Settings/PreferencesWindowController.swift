@@ -16,7 +16,11 @@ final class PreferencesWindowController {
         let window = NSWindow(contentViewController: host)
         window.title = "Junction Preferences"
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
-        window.setContentSize(NSSize(width: 680, height: 540))
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.isMovableByWindowBackground = true
+        window.setContentSize(NSSize(width: 780, height: 560))
+        window.minSize = NSSize(width: 720, height: 500)
         window.center()
         window.isReleasedWhenClosed = false
         self.window = window
@@ -25,191 +29,462 @@ final class PreferencesWindowController {
     }
 }
 
+private enum PrefsSection: String, CaseIterable, Identifiable {
+    case general, rewrites, targets, rules
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .general:  return "General"
+        case .rewrites: return "Rewrites"
+        case .targets:  return "Targets"
+        case .rules:    return "Rules"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .general:  return "Link handling"
+        case .rewrites: return "Host rewrites"
+        case .targets:  return "Browsers and profiles"
+        case .rules:    return "Routing rules"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .general:  return "gearshape.fill"
+        case .rewrites: return "arrow.triangle.2.circlepath"
+        case .targets:  return "globe"
+        case .rules:    return "list.bullet.rectangle.fill"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .general:  return .accentColor
+        case .rewrites: return .orange
+        case .targets:  return .teal
+        case .rules:    return .purple
+        }
+    }
+}
+
 struct PreferencesView: View {
     @State private var options: [LaunchOption] = []
     @State private var rulesFile: RulesFile = RulesStore.shared.rules
+    @State private var selection: PrefsSection = .general
     @ObservedObject private var settings = SettingsStore.shared
 
     var body: some View {
-        TabView {
-            generalTab
-                .tabItem { Label("General", systemImage: "gearshape") }
-            rewritesTab
-                .tabItem { Label("Rewrites", systemImage: "arrow.triangle.2.circlepath") }
-            targetsTab
-                .tabItem { Label("Targets", systemImage: "globe") }
-            rulesTab
-                .tabItem { Label("Rules", systemImage: "list.bullet.rectangle") }
+        HStack(spacing: 0) {
+            sidebar
+                .frame(width: 196)
+
+            Divider().opacity(0.18)
+
+            detail
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(16)
-        .frame(minWidth: 640, minHeight: 480)
+        .background(
+            VisualEffectView(material: .underWindowBackground, blendingMode: .behindWindow)
+        )
+        .frame(minWidth: 720, minHeight: 500)
         .onAppear(perform: reload)
         .onReceive(NotificationCenter.default.publisher(for: .junctionRulesChanged)) { _ in
             reload()
         }
     }
 
-    private var generalTab: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Link handling").font(.headline)
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.accentColor.opacity(0.9), Color.accentColor.opacity(0.55)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 26, height: 26)
+                    .overlay(
+                        Image(systemName: "arrow.triangle.branch")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.white)
+                    )
+                    .shadow(color: Color.accentColor.opacity(0.35), radius: 5, x: 0, y: 2)
+                Text("Junction")
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 30)
+            .padding(.bottom, 22)
 
-            Toggle(isOn: $settings.settings.cleanURLsBeforeOpening) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Clean URLs before opening")
-                        .font(.system(size: 13, weight: .medium))
-                    Text("Removes tracking parameters (utm_*, fbclid, gclid, and similar) from links before they are handed to the browser.")
-                        .font(.callout)
-                        .foregroundColor(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(PrefsSection.allCases) { section in
+                    sidebarRow(section)
                 }
             }
-            .toggleStyle(.switch)
-
-            Toggle(isOn: $settings.settings.expandShortenedURLs) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Expand shortened URLs")
-                        .font(.system(size: 13, weight: .medium))
-                    Text("Resolves t.co, bit.ly, lnkd.in, and similar shorteners before routing (HEAD request with 2s timeout).")
-                        .font(.callout)
-                        .foregroundColor(.secondary)
-                }
-            }
-            .toggleStyle(.switch)
-
-            Toggle(isOn: $settings.settings.clipboardWatcherEnabled) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Watch the clipboard for links")
-                        .font(.system(size: 13, weight: .medium))
-                    Text("When you copy a URL, show a small HUD in the corner to clean, save, or route it without clicking the original link.")
-                        .font(.callout)
-                        .foregroundColor(.secondary)
-                }
-            }
-            .toggleStyle(.switch)
+            .padding(.horizontal, 8)
 
             Spacer()
+
+            HStack(spacing: 4) {
+                Text("v")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.secondary.opacity(0.6))
+                Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.7))
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 14)
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxHeight: .infinity)
+        .background(
+            VisualEffectView(material: .sidebar, blendingMode: .behindWindow)
+        )
     }
 
-    private var rewritesTab: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Domain rewrites").font(.headline)
-                Spacer()
-                Button {
-                    settings.settings.redirects.append(
-                        DomainRedirect(fromHost: "example.com", toHost: "example.net", enabled: true, label: nil)
-                    )
-                } label: {
-                    Label("Add", systemImage: "plus")
+    private func sidebarRow(_ section: PrefsSection) -> some View {
+        let isSelected = selection == section
+        return Button(action: { selection = section }) {
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(
+                            isSelected
+                            ? LinearGradient(
+                                colors: [section.tint.opacity(0.95), section.tint.opacity(0.65)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                            : LinearGradient(
+                                colors: [Color.secondary.opacity(0.16), Color.secondary.opacity(0.08)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: 20, height: 20)
+                    Image(systemName: section.symbol)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(isSelected ? .white : .secondary)
                 }
+
+                Text(section.title)
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+                    .foregroundColor(isSelected ? .primary : .secondary)
+
+                Spacer()
             }
-            Text("Rewrites replace a URL's host before routing. Disabled rules are ignored.")
-                .foregroundColor(.secondary)
-                .font(.callout)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(isSelected ? Color.primary.opacity(0.08) : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var detail: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            detailHeader
+
+            Divider().opacity(0.12)
 
             ScrollView {
-                LazyVStack(spacing: 6) {
-                    ForEach($settings.settings.redirects) { $redirect in
-                        redirectRow(redirect: $redirect)
+                VStack(alignment: .leading, spacing: 18) {
+                    switch selection {
+                    case .general:  generalTab
+                    case .rewrites: rewritesTab
+                    case .targets:  targetsTab
+                    case .rules:    rulesTab
                     }
                 }
-                .padding(.vertical, 2)
+                .padding(.horizontal, 28)
+                .padding(.top, 20)
+                .padding(.bottom, 28)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .frame(minHeight: 260)
+        }
+    }
+
+    private var detailHeader: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(selection.title)
+                .font(.system(size: 20, weight: .semibold))
+            Text(selection.subtitle)
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 28)
+        .padding(.top, 26)
+        .padding(.bottom, 18)
+    }
+
+    // MARK: - General
+
+    private var generalTab: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 0) {
+                toggleRow(
+                    title: "Clean URLs",
+                    subtitle: "Strip utm_*, fbclid, gclid, and similar trackers before opening.",
+                    symbol: "sparkles",
+                    tint: .accentColor,
+                    isOn: $settings.settings.cleanURLsBeforeOpening
+                )
+                cardDivider
+                toggleRow(
+                    title: "Expand shortened links",
+                    subtitle: "Resolve t.co, bit.ly, lnkd.in and other shorteners first.",
+                    symbol: "arrow.up.right.square",
+                    tint: .blue,
+                    isOn: $settings.settings.expandShortenedURLs
+                )
+                cardDivider
+                toggleRow(
+                    title: "Watch clipboard",
+                    subtitle: "Show a HUD when you copy a link so you can clean or route it.",
+                    symbol: "doc.on.clipboard",
+                    tint: .pink,
+                    isOn: $settings.settings.clipboardWatcherEnabled
+                )
+            }
+        }
+    }
+
+    private func toggleRow(
+        title: String,
+        subtitle: String,
+        symbol: String,
+        tint: Color,
+        isOn: Binding<Bool>
+    ) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [tint.opacity(0.22), tint.opacity(0.10)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(width: 30, height: 30)
+                .overlay(
+                    Image(systemName: symbol)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(tint)
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(subtitle)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 16)
+
+            Toggle("", isOn: isOn)
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+    }
+
+    private var cardDivider: some View {
+        Divider().opacity(0.10).padding(.leading, 56)
+    }
+
+    // MARK: - Rewrites
+
+    private var rewritesTab: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionBlurb(
+                "Rewrites replace a URL's host before routing. Disabled rows are skipped.",
+                trailing: {
+                    Button {
+                        withAnimation(.easeOut(duration: 0.18)) {
+                            settings.settings.redirects.append(
+                                DomainRedirect(
+                                    fromHost: "example.com",
+                                    toHost: "example.net",
+                                    enabled: true,
+                                    label: nil
+                                )
+                            )
+                        }
+                    } label: {
+                        Label("Add", systemImage: "plus")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
+            )
+
+            if settings.settings.redirects.isEmpty {
+                emptyState(
+                    icon: "arrow.triangle.2.circlepath",
+                    title: "No rewrites yet",
+                    message: "Add a host rewrite to send links through a different domain."
+                )
+            } else {
+                Card {
+                    VStack(spacing: 0) {
+                        ForEach(Array($settings.settings.redirects.enumerated()), id: \.element.id) { idx, $redirect in
+                            redirectRow(redirect: $redirect)
+                            if idx < settings.settings.redirects.count - 1 {
+                                cardDivider
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
     private func redirectRow(redirect: Binding<DomainRedirect>) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Toggle("", isOn: redirect.enabled)
                 .toggleStyle(.switch)
                 .labelsHidden()
+                .controlSize(.small)
+
             TextField("from-host", text: redirect.fromHost)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(.body, design: .monospaced))
-                .frame(minWidth: 140)
-            Image(systemName: "arrow.right").foregroundColor(.secondary)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12, design: .monospaced))
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.primary.opacity(0.06))
+                )
+                .frame(maxWidth: .infinity)
+
+            Image(systemName: "arrow.right")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.secondary.opacity(0.6))
+
             TextField("to-host", text: redirect.toHost)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(.body, design: .monospaced))
-                .frame(minWidth: 140)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12, design: .monospaced))
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.primary.opacity(0.06))
+                )
+                .frame(maxWidth: .infinity)
+
             if let label = redirect.wrappedValue.label {
-                Text(label).font(.system(size: 11)).foregroundColor(.secondary)
+                Text(label)
+                    .font(.system(size: 10, weight: .medium))
+                    .lineLimit(1)
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(
+                        Capsule().fill(Color.secondary.opacity(0.14))
+                    )
+                    .foregroundColor(.secondary)
+                    .fixedSize()
             }
-            Spacer()
+
             Button {
-                if let idx = settings.settings.redirects.firstIndex(where: { $0.id == redirect.wrappedValue.id }) {
-                    settings.settings.redirects.remove(at: idx)
+                withAnimation(.easeOut(duration: 0.18)) {
+                    if let idx = settings.settings.redirects.firstIndex(where: { $0.id == redirect.wrappedValue.id }) {
+                        settings.settings.redirects.remove(at: idx)
+                    }
                 }
             } label: {
-                Image(systemName: "trash").foregroundColor(.red)
+                Image(systemName: "trash")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(Color.primary.opacity(0.06)))
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
+            .help("Remove rewrite")
         }
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.04)))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 
-    private var targetsTab: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Detected targets").font(.headline)
-                Spacer()
-                Text("\(visibleCount) of \(options.count) visible")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-            }
-            Text("Junction discovers installed browsers and their profiles. Uncheck a target to hide it from the picker, or drag rows to reorder how they appear. Hidden targets still work for saved rules and the Batch window.")
-                .foregroundColor(.secondary)
-                .font(.callout)
+    // MARK: - Targets
 
-            HStack(spacing: 8) {
-                Button("Show all") { setAllHidden(false) }
+    private var targetsTab: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionBlurb(
+                "Detected browsers and profiles. Toggle to hide from the picker, drag to reorder.",
+                trailing: {
+                    Text("\(visibleCount) of \(options.count)")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Capsule().fill(Color.secondary.opacity(0.14)))
+                }
+            )
+
+            HStack(spacing: 6) {
+                pillButton("Show all", symbol: "eye") { setAllHidden(false) }
                     .disabled(visibleCount == options.count)
-                Button("Hide all") { setAllHidden(true) }
+                pillButton("Hide all", symbol: "eye.slash") { setAllHidden(true) }
                     .disabled(visibleCount == 0)
-                Button("Reset order") { resetOrder() }
+                pillButton("Reset order", symbol: "arrow.uturn.backward") { resetOrder() }
                     .disabled(settings.settings.targetOrder.isEmpty)
                 Spacer()
             }
-            .font(.system(size: 11))
 
-            List {
-                Section {
-                    if visibleTargets.isEmpty {
-                        Text("No visible targets — enable at least one below.")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                            .padding(.vertical, 4)
-                            .listRowSeparator(.hidden)
-                    } else {
-                        ForEach(visibleTargets) { option in
-                            targetRow(option)
-                                .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
-                                .listRowSeparator(.hidden)
-                        }
-                        .onMove(perform: moveVisible)
-                    }
-                } header: {
-                    sectionHeader("Visible", count: visibleTargets.count)
-                }
-
-                if !hiddenTargets.isEmpty {
+            Card(padding: 0) {
+                List {
                     Section {
-                        ForEach(hiddenTargets) { option in
-                            targetRow(option)
-                                .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
+                        if visibleTargets.isEmpty {
+                            Text("No visible targets. Enable at least one below.")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                                .padding(.vertical, 6)
                                 .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                        } else {
+                            ForEach(visibleTargets) { option in
+                                targetRow(option)
+                                    .listRowInsets(EdgeInsets(top: 3, leading: 8, bottom: 3, trailing: 8))
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
+                            }
+                            .onMove(perform: moveVisible)
                         }
-                        .onMove(perform: moveHidden)
                     } header: {
-                        sectionHeader("Hidden", count: hiddenTargets.count)
+                        sectionHeader("Visible", count: visibleTargets.count)
+                    }
+
+                    if !hiddenTargets.isEmpty {
+                        Section {
+                            ForEach(hiddenTargets) { option in
+                                targetRow(option)
+                                    .listRowInsets(EdgeInsets(top: 3, leading: 8, bottom: 3, trailing: 8))
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
+                            }
+                            .onMove(perform: moveHidden)
+                        } header: {
+                            sectionHeader("Hidden", count: hiddenTargets.count)
+                        }
                     }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
+                .frame(minHeight: 340)
             }
-            .listStyle(.plain)
-            .frame(minHeight: 260)
         }
     }
 
@@ -226,27 +501,31 @@ struct PreferencesView: View {
     private func sectionHeader(_ title: String, count: Int) -> some View {
         HStack(spacing: 6) {
             Text(title.uppercased())
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 10, weight: .bold))
                 .foregroundColor(.secondary)
+                .tracking(0.8)
             Text("\(count)")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.secondary.opacity(0.7))
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 6).padding(.vertical, 1)
+                .background(Capsule().fill(Color.secondary.opacity(0.14)))
             Spacer()
         }
-        .padding(.vertical, 2)
+        .padding(.top, 10)
+        .padding(.bottom, 4)
+        .padding(.horizontal, 4)
     }
 
-    private var visibleCount: Int {
-        visibleTargets.count
-    }
+    private var visibleCount: Int { visibleTargets.count }
 
     private func targetRow(_ option: LaunchOption) -> some View {
         let key = option.target.storageKey
         let isHidden = settings.settings.hiddenTargetKeys.contains(key)
-        return HStack(spacing: 10) {
+        return HStack(spacing: 12) {
             Image(systemName: "line.3.horizontal")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary.opacity(0.7))
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.secondary.opacity(0.5))
+                .frame(width: 14)
                 .help("Drag to reorder")
 
             Toggle("", isOn: Binding(
@@ -255,39 +534,57 @@ struct PreferencesView: View {
             ))
             .toggleStyle(.switch)
             .labelsHidden()
+            .controlSize(.small)
 
             ZStack(alignment: .bottomTrailing) {
                 Image(nsImage: option.icon)
                     .resizable()
-                    .frame(width: 22, height: 22)
+                    .interpolation(.high)
+                    .frame(width: 26, height: 26)
                     .opacity(isHidden ? 0.4 : 1.0)
                 if let hex = option.colorHex, let color = Color(hexString: hex) {
                     Circle()
                         .fill(color)
-                        .frame(width: 8, height: 8)
+                        .frame(width: 9, height: 9)
+                        .overlay(Circle().stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
                         .offset(x: 2, y: 2)
                         .opacity(isHidden ? 0.4 : 1.0)
                 }
             }
-            VStack(alignment: .leading, spacing: 1) {
+            .frame(width: 28, height: 28)
+
+            VStack(alignment: .leading, spacing: 2) {
                 Text(option.displayName)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(isHidden ? .secondary : .primary)
+                    .lineLimit(1)
                 Text(option.target.storageKey)
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.75))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
+
             Spacer()
+
             if isHidden {
                 Text("Hidden")
-                    .font(.system(size: 10, weight: .medium))
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Capsule().fill(Color.secondary.opacity(0.18)))
+                    .font(.system(size: 10, weight: .semibold))
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(Capsule().fill(Color.secondary.opacity(0.16)))
                     .foregroundColor(.secondary)
             }
         }
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.04)))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(isHidden ? 0.025 : 0.045))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
+        )
     }
 
     private func moveVisible(from source: IndexSet, to destination: Int) {
@@ -315,101 +612,150 @@ struct PreferencesView: View {
         }
     }
 
+    // MARK: - Rules
+
     private var rulesTab: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Rules").font(.headline)
-                Spacer()
-                Menu("Import recipe") {
-                    ForEach(RuleRecipes.all) { recipe in
-                        Button(recipe.name) {
-                            RulesStore.shared.importRecipe(recipe)
+        VStack(alignment: .leading, spacing: 14) {
+            sectionBlurb(
+                "Rules are evaluated top to bottom. First match wins.",
+                trailing: {
+                    HStack(spacing: 6) {
+                        Menu {
+                            ForEach(RuleRecipes.all) { recipe in
+                                Button(recipe.name) {
+                                    RulesStore.shared.importRecipe(recipe)
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 10, weight: .semibold))
+                                Text("Recipe")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(Color.primary.opacity(0.07))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+                            )
+                        }
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+
+                        pillButton("Open", symbol: "doc.text") {
+                            NSWorkspace.shared.open(RulesStore.shared.fileURL)
+                        }
+                        pillButton("Reveal", symbol: "folder") {
+                            NSWorkspace.shared.activateFileViewerSelecting([RulesStore.shared.fileURL])
                         }
                     }
                 }
-                Button("Open rules file") { NSWorkspace.shared.open(RulesStore.shared.fileURL) }
-                Button("Reveal in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([RulesStore.shared.fileURL])
-                }
-            }
-            Text("Rules are evaluated top to bottom; the first match wins. Edit them here or open the JSON file directly. Changes on disk hot-reload.")
-                .foregroundColor(.secondary)
-                .font(.callout)
+            )
 
             rulesList
             fallbackRow
         }
     }
 
+    @ViewBuilder
     private var rulesList: some View {
-        Group {
-            if rulesFile.rules.isEmpty {
-                VStack(spacing: 6) {
-                    Text("No rules yet").font(.system(size: 14, weight: .medium))
-                    Text("Use the Remember toggle in the picker, or edit the rules file directly.")
-                        .foregroundColor(.secondary)
-                        .font(.callout)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity, minHeight: 200)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 4) {
-                        ForEach(rulesFile.rules) { rule in
-                            ruleRow(rule)
+        if rulesFile.rules.isEmpty {
+            emptyState(
+                icon: "list.bullet.rectangle",
+                title: "No rules yet",
+                message: "Use the Remember toggle in the picker to save a rule, import a recipe, or edit the rules file directly."
+            )
+        } else {
+            Card {
+                VStack(spacing: 0) {
+                    ForEach(Array(rulesFile.rules.enumerated()), id: \.element.id) { idx, rule in
+                        ruleRow(rule)
+                        if idx < rulesFile.rules.count - 1 {
+                            cardDivider
                         }
                     }
                 }
-                .frame(minHeight: 260)
             }
         }
     }
 
     private func ruleRow(_ rule: DomainRule) -> some View {
-        HStack(spacing: 10) {
-            Text(rule.host.kindLabel)
-                .font(.system(size: 10, weight: .semibold))
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(Capsule().fill(Color.secondary.opacity(0.18)))
+        HStack(spacing: 12) {
+            Text(rule.host.kindLabel.uppercased())
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .tracking(0.6)
+                .padding(.horizontal, 7).padding(.vertical, 3)
+                .background(Capsule().fill(Color.secondary.opacity(0.14)))
                 .foregroundColor(.secondary)
+                .frame(width: 58, alignment: .center)
 
             Text(rule.host.displayValue)
-                .font(.system(.body, design: .monospaced))
+                .font(.system(size: 12, design: .monospaced))
                 .lineLimit(1)
+                .truncationMode(.middle)
 
             Spacer()
 
             actionLabel(rule.action)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.primary.opacity(0.05))
+                )
 
             Button {
-                RulesStore.shared.remove(ruleID: rule.id)
+                withAnimation(.easeOut(duration: 0.18)) {
+                    RulesStore.shared.remove(ruleID: rule.id)
+                }
             } label: {
-                Image(systemName: "trash").foregroundColor(.red)
+                Image(systemName: "trash")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(Color.primary.opacity(0.06)))
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
+            .help("Remove rule")
         }
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.04)))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 
     private func actionLabel(_ action: RuleAction) -> some View {
         HStack(spacing: 6) {
             switch action {
             case .ask:
-                Image(systemName: "questionmark.circle")
+                Image(systemName: "questionmark.circle.fill")
+                    .foregroundColor(.orange)
                 Text("Always ask")
                     .font(.system(size: 12, weight: .medium))
             case .open(let target):
                 if let opt = options.first(where: { $0.target == target }) {
-                    Image(nsImage: opt.icon).resizable().frame(width: 14, height: 14)
-                    Text(opt.displayName).font(.system(size: 12))
+                    Image(nsImage: opt.icon)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 14, height: 14)
+                    Text(opt.displayName)
+                        .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                     if let hex = opt.colorHex, let color = Color(hexString: hex) {
-                        Circle().fill(color).frame(width: 8, height: 8)
+                        Circle()
+                            .fill(color)
+                            .frame(width: 7, height: 7)
+                            .overlay(Circle().stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
                     }
                 } else {
-                    Image(systemName: "exclamationmark.triangle")
+                    Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.orange)
-                    Text(target.storageKey).font(.system(size: 12)).foregroundColor(.secondary)
+                    Text(target.storageKey)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(.secondary)
                 }
             }
         }
@@ -417,11 +763,28 @@ struct PreferencesView: View {
     }
 
     private var fallbackRow: some View {
-        HStack {
-            Text("Fallback").font(.system(size: 12, weight: .semibold)).foregroundColor(.secondary)
-            actionLabel(rulesFile.fallback)
+        HStack(spacing: 12) {
+            Image(systemName: "arrow.down.right.circle.fill")
+                .font(.system(size: 16))
+                .foregroundColor(.accentColor)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Fallback")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("Used when no rule matches")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+
             Spacer()
-            Menu("Change") {
+
+            actionLabel(rulesFile.fallback)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.primary.opacity(0.06))
+                )
+
+            Menu {
                 Button("Always ask") { RulesStore.shared.setFallback(.ask) }
                 Divider()
                 ForEach(options) { option in
@@ -429,16 +792,139 @@ struct PreferencesView: View {
                         RulesStore.shared.setFallback(.open(option.target))
                     }
                 }
+            } label: {
+                HStack(spacing: 4) {
+                    Text("Change")
+                        .font(.system(size: 11, weight: .semibold))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .bold))
+                }
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.primary.opacity(0.07))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+                )
             }
             .menuStyle(.borderlessButton)
-            .frame(width: 90)
+            .menuIndicator(.hidden)
+            .fixedSize()
         }
-        .padding(.horizontal, 10).padding(.vertical, 8)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color.accentColor.opacity(0.08)))
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.accentColor.opacity(0.12), Color.accentColor.opacity(0.04)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.accentColor.opacity(0.22), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Shared UI helpers
+
+    private func sectionBlurb<Trailing: View>(
+        _ text: String,
+        @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(text)
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 12)
+            trailing()
+        }
+    }
+
+    private func pillButton(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: symbol)
+                    .font(.system(size: 10, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.primary.opacity(0.07))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+            )
+            .foregroundColor(.primary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func emptyState(icon: String, title: String, message: String) -> some View {
+        VStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.secondary.opacity(0.16), Color.secondary.opacity(0.06)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: 48, height: 48)
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+            Text(message)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+        .padding(.horizontal, 28)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.primary.opacity(0.025))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.05), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+        )
     }
 
     private func reload() {
         options = LaunchOptionDiscovery.options()
         rulesFile = RulesStore.shared.rules
+    }
+}
+
+private struct Card<Content: View>: View {
+    var padding: CGFloat = 4
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        content()
+            .padding(padding)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.primary.opacity(0.04))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
+            )
     }
 }

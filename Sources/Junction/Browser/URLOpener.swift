@@ -9,8 +9,6 @@ enum URLOpener {
             let (dirName, spaceID) = splitProfileDirectory(profile.directoryName)
 
             if option.browser.bundleID == ArcSpacesDiscovery.bundleID, let spaceID {
-                let script = "open -b \(option.browser.bundleID) \(url.absoluteString.shellQuoted)"
-                _ = script
                 if let spaceURL = URL(string: "arc://space/\(spaceID)") {
                     let openConfig = NSWorkspace.OpenConfiguration()
                     openConfig.activates = true
@@ -55,11 +53,5 @@ enum URLOpener {
             return (dir, space)
         }
         return (raw, nil)
-    }
-}
-
-private extension String {
-    var shellQuoted: String {
-        "'" + replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 }
