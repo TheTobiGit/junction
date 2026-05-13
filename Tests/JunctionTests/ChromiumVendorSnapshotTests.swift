@@ -15,6 +15,7 @@ final class ChromiumVendorSnapshotTests: XCTestCase {
         "com.brave.Browser",
         "com.brave.Browser.beta",
         "com.brave.Browser.nightly",
+        "net.imput.helium",
         "com.vivaldi.Vivaldi",
         "com.operasoftware.Opera",
         "com.operasoftware.OperaGX",

@@ -177,6 +177,7 @@ enum URLOpener {
     private static func isChromiumBundleID(_ bundleID: String) -> Bool {
         let chromiumPrefixes = [
             "com.google.Chrome", "com.microsoft.edgemac", "com.brave.Browser",
+            "net.imput.helium",
             "com.vivaldi.Vivaldi", "com.operasoftware.Opera", "com.operasoftware.OperaGX",
             "org.chromium.Chromium", diaBundleID,
             "com.kagi.kagimacOS", "app.sigmaos.sigmaos",

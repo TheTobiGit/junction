@@ -10,11 +10,9 @@ enum BrowserDiscovery {
 
         var urls = ws.urlsForApplications(toOpen: probe)
 
-        if urls.isEmpty {
-            for bid in knownBrowserBundleIDs {
-                if let u = ws.urlForApplication(withBundleIdentifier: bid) {
-                    urls.append(u)
-                }
+        for bid in knownBrowserBundleIDs {
+            if let u = ws.urlForApplication(withBundleIdentifier: bid) {
+                urls.append(u)
             }
         }
 
@@ -51,6 +49,7 @@ enum BrowserDiscovery {
         "com.brave.Browser",
         "com.brave.Browser.beta",
         "com.brave.Browser.nightly",
+        "net.imput.helium",
         "com.operasoftware.Opera",
         "com.operasoftware.OperaGX",
         "com.vivaldi.Vivaldi",

@@ -318,13 +318,19 @@ struct PickerView: View {
     }
 
     private func tile(idx: Int, option: LaunchOption) -> some View {
-        PickerTile(
+        let incognitoUnsupported = model.incognitoMode
+            && !URLOpener.supportsIncognito(bundleID: option.browser.bundleID)
+        return PickerTile(
             option: option,
             number: idx + 1,
             selected: idx == model.selectedIndex,
             multiSelected: model.multiSelection.contains(option.id),
+            dimmed: incognitoUnsupported,
             appearDelay: Double(idx) * 0.018
         )
+        .help(incognitoUnsupported
+              ? "\(option.browser.name) doesn't support private windows — it will open normally."
+              : "Open in \(option.displayName)")
         .contentShape(Rectangle())
         .onTapGesture {
             let flags = NSEvent.modifierFlags
@@ -338,7 +344,7 @@ struct PickerView: View {
     }
 
     private var footer: some View {
-        HStack(alignment: .center, spacing: 14) {
+        HStack(alignment: .center, spacing: 10) {
             if !model.multiSelection.isEmpty {
                 Text("\(model.multiSelection.count) selected")
                     .font(.system(size: 11, weight: .medium))
@@ -347,7 +353,9 @@ struct PickerView: View {
                     .background(Capsule().fill(Color.accentColor.opacity(0.15)))
             }
 
-            if let host = model.rememberHost {
+            privateToggle
+
+            if let host = model.rememberHost, !model.incognitoMode {
                 rememberToggle(host: host)
             }
 
@@ -357,6 +365,38 @@ struct PickerView: View {
         }
         .frame(height: 36)
         .padding(.horizontal, 16)
+    }
+
+    private var privateToggle: some View {
+        Button {
+            model.toggleIncognito()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: model.incognitoMode ? "eyeglasses" : "eyeglasses")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("Private")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .foregroundColor(model.incognitoMode ? .indigo : .secondary)
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(
+                Capsule().fill(
+                    model.incognitoMode
+                        ? Color.indigo.opacity(0.18)
+                        : Color.white.opacity(0.06)
+                )
+            )
+            .overlay(
+                Capsule().strokeBorder(
+                    model.incognitoMode
+                        ? Color.indigo.opacity(0.55)
+                        : Color.white.opacity(0.08),
+                    lineWidth: 1
+                )
+            )
+        }
+        .buttonStyle(.plain)
+        .help("Open in private/incognito window (⌥P to toggle, ⌥⏎ to confirm, ⌥click a tile)")
     }
 
     private func rememberToggle(host: String) -> some View {
@@ -401,6 +441,7 @@ struct PickerView: View {
         HStack(alignment: .center, spacing: 8) {
             HintPill(key: "␣", label: "Preview")
             HintPill(key: "↵", label: "Open")
+            HintPill(key: "⌥", label: "Private")
             HintPill(key: "1-9", label: "Switch")
         }
         .help(PickerShortcutHelp.picker)
@@ -416,6 +457,7 @@ private struct PickerTile: View {
     let number: Int
     let selected: Bool
     let multiSelected: Bool
+    let dimmed: Bool
     let appearDelay: Double
     @State private var hovered: Bool = false
     @State private var appeared: Bool = false
@@ -494,6 +536,7 @@ private struct PickerTile: View {
             x: 0,
             y: selected ? 6 : 3
         )
+        .opacity(dimmed ? 0.45 : 1.0)
         .contentShape(Rectangle())
         .scaleEffect(appeared ? 1.0 : 0.9)
         .opacity(appeared ? 1.0 : 0.0)

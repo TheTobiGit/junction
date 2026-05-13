@@ -41,6 +41,11 @@ final class URLOpenerRoutingTests: XCTestCase {
         return LaunchOption(browser: browser, profile: profile)
     }
 
+    private func makeHelium(profile: ChromiumProfile? = nil) -> LaunchOption {
+        let browser = Browser(bundleID: "net.imput.helium", name: "Helium", url: fakeAppURL)
+        return LaunchOption(browser: browser, profile: profile)
+    }
+
     // MARK: - VAL-OPENER-001: Chromium profile path uses BrowserLauncher
 
     func test_chromiumProfileNoIncognito_usesBrowserLauncher() {
@@ -107,10 +112,26 @@ final class URLOpenerRoutingTests: XCTestCase {
         XCTAssertEqual(mock.calls[0].url, targetURL)
     }
 
+    func test_heliumProfile_usesBrowserLauncher() {
+        let mock = MockBrowserLauncher()
+        let profile = ChromiumProfile(directoryName: "Profile 1", displayName: "Test", colorHex: nil)
+        let option = makeHelium(profile: profile)
+
+        let exp = expectation(description: "completion fires")
+        URLOpener.open(targetURL, with: option, incognito: false, launcher: mock) { _ in exp.fulfill() }
+        waitForExpectations(timeout: 1.0)
+
+        XCTAssertEqual(mock.calls.count, 1, "Helium profiles should use Chromium-style launching")
+        XCTAssertEqual(mock.calls[0].profileDirectory, "Profile 1")
+        XCTAssertFalse(mock.calls[0].incognito)
+        XCTAssertEqual(mock.calls[0].url, targetURL)
+    }
+
     // MARK: - Incognito support stays pure and side-effect free
 
     func test_supportsIncognito_knownBrowserCapabilities() {
         XCTAssertTrue(URLOpener.supportsIncognito(bundleID: "com.brave.Browser"))
+        XCTAssertTrue(URLOpener.supportsIncognito(bundleID: "net.imput.helium"))
         XCTAssertTrue(URLOpener.supportsIncognito(bundleID: "company.thebrowser.dia"))
         XCTAssertTrue(URLOpener.supportsIncognito(bundleID: "org.mozilla.firefox"))
         XCTAssertTrue(URLOpener.supportsIncognito(bundleID: "com.apple.Safari"))

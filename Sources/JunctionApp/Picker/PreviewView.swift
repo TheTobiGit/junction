@@ -128,11 +128,17 @@ struct PreviewView: View {
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(Array(options.enumerated()), id: \.element.id) { idx, option in
+                    let incognitoUnsupported = model.incognitoMode
+                        && !URLOpener.supportsIncognito(bundleID: option.browser.bundleID)
                     DockTile(
                         option: option,
                         number: idx + 1,
-                        selected: idx == model.selectedIndex
+                        selected: idx == model.selectedIndex,
+                        dimmed: incognitoUnsupported
                     )
+                    .help(incognitoUnsupported
+                          ? "\(option.browser.name) doesn't support private windows — it will open normally."
+                          : "Open in \(option.displayName) (\(idx + 1))")
                     .onTapGesture {
                         let flags = NSEvent.modifierFlags
                         let incognito = flags.contains(.option) || model.incognitoMode
@@ -147,7 +153,9 @@ struct PreviewView: View {
 
     private var hintBar: some View {
         HStack(spacing: 10) {
-            if let host = model.rememberHost {
+            privateToggle
+
+            if let host = model.rememberHost, !model.incognitoMode {
                 rememberToggle(host: host)
             }
 
@@ -166,11 +174,44 @@ struct PreviewView: View {
 
             HintPill(key: "␣", label: "Back")
             HintPill(key: "↵", label: "Open")
+            HintPill(key: "⌥", label: "Private")
             HintPill(key: "1-9", label: "Switch")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 7)
         .help(PickerShortcutHelp.preview)
+    }
+
+    private var privateToggle: some View {
+        Button {
+            model.toggleIncognito()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "eyeglasses")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("Private")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .foregroundColor(model.incognitoMode ? .indigo : .secondary)
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(
+                Capsule().fill(
+                    model.incognitoMode
+                        ? Color.indigo.opacity(0.18)
+                        : Color.white.opacity(0.06)
+                )
+            )
+            .overlay(
+                Capsule().strokeBorder(
+                    model.incognitoMode
+                        ? Color.indigo.opacity(0.55)
+                        : Color.white.opacity(0.08),
+                    lineWidth: 1
+                )
+            )
+        }
+        .buttonStyle(.plain)
+        .help("Open in private/incognito window (⌥P to toggle, ⌥⏎ to confirm, ⌥click a browser)")
     }
 
     private func rememberToggle(host: String) -> some View {
@@ -265,6 +306,7 @@ private struct DockTile: View {
     let option: LaunchOption
     let number: Int
     let selected: Bool
+    let dimmed: Bool
     @State private var hovered: Bool = false
 
     var body: some View {
@@ -311,6 +353,7 @@ private struct DockTile: View {
             x: 0,
             y: selected ? 3 : 2
         )
+        .opacity(dimmed ? 0.45 : 1.0)
         .contentShape(Rectangle())
         .scaleEffect(hovered ? 1.03 : 1.0)
         .onHover { isHovered in
@@ -319,7 +362,6 @@ private struct DockTile: View {
         }
         .animation(.spring(response: 0.22, dampingFraction: 0.78), value: hovered)
         .animation(.easeOut(duration: 0.14), value: selected)
-        .help("Open in \(option.displayName) (\(number))")
     }
 
     private var iconStack: some View {
@@ -381,68 +423,25 @@ private struct WebContainer: NSViewRepresentable {
     @Binding var isLoading: Bool
     @Binding var progress: Double
 
-    private static let scrollbarCSS: String = """
-    ::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb {
-        background: rgba(255, 255, 255, 0.18);
-        border-radius: 999px;
-        border: 2px solid transparent;
-        background-clip: padding-box;
-        transition: background 0.15s ease;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-        background: rgba(255, 255, 255, 0.32);
-        background-clip: padding-box;
-        border: 2px solid transparent;
-    }
-    ::-webkit-scrollbar-corner { background: transparent; }
-    html { scrollbar-color: rgba(255,255,255,0.18) transparent; scrollbar-width: thin; }
-    """
-
-    private static let scrollbarScript: String = {
-        let css = scrollbarCSS
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "`", with: "\\`")
-            .replacingOccurrences(of: "\n", with: " ")
-        return """
-        (function() {
-            var style = document.createElement('style');
-            style.setAttribute('data-junction-scrollbar', '1');
-            style.textContent = `\(css)`;
-            (document.head || document.documentElement).appendChild(style);
-        })();
-        """
-    }()
-
     func makeNSView(context: Context) -> WKWebView {
-        let config = WKWebViewConfiguration()
-        config.websiteDataStore = .nonPersistent()
-        config.defaultWebpagePreferences.allowsContentJavaScript = true
-
-        let userScript = WKUserScript(
-            source: Self.scrollbarScript,
-            injectionTime: .atDocumentStart,
-            forMainFrameOnly: false
-        )
-        config.userContentController.addUserScript(userScript)
-
-        let webView = WKWebView(frame: .zero, configuration: config)
+        let webView = PreviewWebViewPool.shared.acquireWebView()
         webView.navigationDelegate = context.coordinator
-        webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
-        webView.allowsBackForwardNavigationGestures = true
-        webView.setValue(false, forKey: "drawsBackground")
-        context.coordinator.scrollbarScript = Self.scrollbarScript
         context.coordinator.observe(webView: webView)
-        webView.load(URLRequest(url: url))
+        if webView.url != url {
+            webView.load(URLRequest(url: url))
+        }
         return webView
     }
 
-    func updateNSView(_ nsView: WKWebView, context: Context) {}
+    func updateNSView(_ nsView: WKWebView, context: Context) {
+        if nsView.url != url {
+            nsView.load(URLRequest(url: url))
+        }
+    }
 
     static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
         coordinator.invalidate(webView: nsView)
-        nsView.stopLoading()
+        PreviewWebViewPool.shared.release(nsView)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -453,7 +452,6 @@ private struct WebContainer: NSViewRepresentable {
         @Binding var title: String?
         @Binding var isLoading: Bool
         @Binding var progress: Double
-        var scrollbarScript: String?
         private var progressObservation: NSKeyValueObservation?
         private var titleObservation: NSKeyValueObservation?
         private var loadingObservation: NSKeyValueObservation?
@@ -477,11 +475,6 @@ private struct WebContainer: NSViewRepresentable {
                 guard let value = change.newValue else { return }
                 DispatchQueue.main.async { self?.isLoading = value }
             }
-        }
-
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            guard let script = scrollbarScript else { return }
-            webView.evaluateJavaScript(script, completionHandler: nil)
         }
 
         func invalidate(webView: WKWebView) {

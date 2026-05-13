@@ -21,6 +21,7 @@ enum ChromiumProfileDiscovery {
         Vendor(bundleID: "com.brave.Browser", localStatePaths: ["BraveSoftware/Brave-Browser/Local State"]),
         Vendor(bundleID: "com.brave.Browser.beta", localStatePaths: ["BraveSoftware/Brave-Browser-Beta/Local State"]),
         Vendor(bundleID: "com.brave.Browser.nightly", localStatePaths: ["BraveSoftware/Brave-Browser-Nightly/Local State"]),
+        Vendor(bundleID: "net.imput.helium", localStatePaths: ["net.imput.helium/Local State"]),
         Vendor(bundleID: "com.vivaldi.Vivaldi", localStatePaths: ["Vivaldi/Local State"]),
         Vendor(bundleID: "com.operasoftware.Opera", localStatePaths: ["com.operasoftware.Opera/Local State"]),
         Vendor(bundleID: "com.operasoftware.OperaGX", localStatePaths: ["com.operasoftware.OperaGX/Local State"]),

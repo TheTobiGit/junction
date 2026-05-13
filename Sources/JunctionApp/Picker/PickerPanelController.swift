@@ -48,6 +48,7 @@ final class PickerPanelController {
         )
 
         LastURLStore.shared.recordPicker(url)
+        PreviewWebViewPool.shared.warmup()
 
         let width = PickerView.desiredWidth(forOptionCount: options.count)
         let view = PickerView(model: model, width: width)
