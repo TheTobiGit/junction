@@ -1,13 +1,28 @@
 import AppKit
 
 enum URLOpener {
-    static func open(_ url: URL, with option: LaunchOption, incognito: Bool = false, completion: ((Bool) -> Void)? = nil) {
-        let config = NSWorkspace.OpenConfiguration()
-        config.activates = true
+    /// Opens `url` in the browser described by `option`.
+    ///
+    /// - Parameters:
+    ///   - url: The URL to open.
+    ///   - option: The browser (and optional profile) to use.
+    ///   - incognito: Whether to request a private/incognito window.
+    ///   - launcher: The `BrowserLaunching` implementation used for all Chromium
+    ///     paths. Defaults to `BrowserLauncher()`. Inject a mock in unit tests.
+    ///   - completion: Called on the main queue with `true` on success.
+    static func open(
+        _ url: URL,
+        with option: LaunchOption,
+        incognito: Bool = false,
+        launcher: BrowserLaunching = BrowserLauncher(),
+        completion: ((Bool) -> Void)? = nil
+    ) {
+        // MARK: Profile branch
 
         if let profile = option.profile {
             let (dirName, spaceID) = splitProfileDirectory(profile.directoryName)
 
+            // Arc branch — preserved as-is. Exit early via arc://space/<id>.
             if option.browser.bundleID == ArcSpacesDiscovery.bundleID, let spaceID {
                 if let spaceURL = URL(string: "arc://space/\(spaceID)") {
                     let openConfig = NSWorkspace.OpenConfiguration()
@@ -23,13 +38,25 @@ enum URLOpener {
                 }
             }
 
-            var args = ["--profile-directory=\(dirName)"]
-            if incognito, isChromiumBundleID(option.browser.bundleID) {
-                args.append("--incognito")
+            // Chromium profile path (paths 1 & 2) — use BrowserLauncher so the
+            // URL is delivered even when the browser is already running.
+            if isChromiumBundleID(option.browser.bundleID) {
+                launcher.launch(
+                    appURL: option.browser.url,
+                    profileDirectory: dirName,
+                    incognito: incognito,
+                    url: url
+                ) { success in
+                    DispatchQueue.main.async { completion?(success) }
+                }
+                return
             }
-            args.append(url.absoluteString)
 
-            config.arguments = args
+            // Non-Chromium profile path (e.g. Firefox with a profile) — keep
+            // NSWorkspace so Firefox-specific behaviour is unchanged.
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            config.arguments = ["--profile-directory=\(dirName)", url.absoluteString]
             config.createsNewApplicationInstance = false
             NSWorkspace.shared.openApplication(
                 at: option.browser.url,
@@ -40,7 +67,25 @@ enum URLOpener {
             return
         }
 
+        // MARK: No-profile incognito branch
+
+        // Chromium no-profile incognito (path 3) — use BrowserLauncher.
+        if incognito, isChromiumBundleID(option.browser.bundleID) {
+            launcher.launch(
+                appURL: option.browser.url,
+                profileDirectory: nil,
+                incognito: true,
+                url: url
+            ) { success in
+                DispatchQueue.main.async { completion?(success) }
+            }
+            return
+        }
+
+        // Firefox incognito — preserved as-is via NSWorkspace + --private-window.
         if incognito, let args = incognitoArguments(for: option.browser.bundleID, url: url) {
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
             config.arguments = args
             config.createsNewApplicationInstance = false
             NSWorkspace.shared.openApplication(
@@ -52,6 +97,7 @@ enum URLOpener {
             return
         }
 
+        // Safari incognito — preserved as-is via AppleScript.
         if incognito, option.browser.bundleID == "com.apple.Safari" {
             openSafariPrivate(url: url, app: option.browser.url) { success in
                 DispatchQueue.main.async { completion?(success) }
@@ -59,6 +105,25 @@ enum URLOpener {
             return
         }
 
+        // MARK: Default branch
+
+        // Chromium no-profile, non-incognito (path 4) — use BrowserLauncher so
+        // the URL is delivered even when the browser is already running.
+        if isChromiumBundleID(option.browser.bundleID) {
+            launcher.launch(
+                appURL: option.browser.url,
+                profileDirectory: nil,
+                incognito: false,
+                url: url
+            ) { success in
+                DispatchQueue.main.async { completion?(success) }
+            }
+            return
+        }
+
+        // Non-Chromium, non-incognito (e.g. Safari plain launch) — NSWorkspace.
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
         NSWorkspace.shared.open(
             [url],
             withApplicationAt: option.browser.url,
