@@ -1,0 +1,3 @@
+import JunctionApp
+
+JunctionApp.main()

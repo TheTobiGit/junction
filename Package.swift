@@ -9,15 +9,25 @@ let package = Package(
             name: "JunctionCore",
             path: "Sources/JunctionCore"
         ),
+        .target(
+            name: "JunctionApp",
+            dependencies: ["JunctionCore"],
+            path: "Sources/JunctionApp"
+        ),
         .executableTarget(
             name: "Junction",
-            dependencies: ["JunctionCore"],
+            dependencies: ["JunctionApp"],
             path: "Sources/Junction"
         ),
         .executableTarget(
             name: "JunctionCLI",
             dependencies: ["JunctionCore"],
             path: "Sources/JunctionCLI"
+        ),
+        .testTarget(
+            name: "JunctionTests",
+            dependencies: ["JunctionApp", "JunctionCore"],
+            path: "Tests/JunctionTests"
         )
     ]
 )
