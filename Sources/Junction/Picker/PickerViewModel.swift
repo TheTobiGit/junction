@@ -75,9 +75,10 @@ final class PickerViewModel: ObservableObject {
         if previewMode { exitPreview() } else { enterPreview() }
     }
 
-    func openInBrowserFromPreview() {
+    func openInBrowserFromPreview(remember: Bool? = nil, incognito: Bool? = nil) {
         guard let option = selectedOption() else { return }
-        pickHandler(option, rememberChoice, incognitoMode)
+        let shouldRemember = remember ?? rememberChoice
+        pickHandler(option, shouldRemember, incognito ?? incognitoMode)
     }
 
     var didClean: Bool {

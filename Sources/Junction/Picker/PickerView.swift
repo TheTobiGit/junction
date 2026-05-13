@@ -400,28 +400,13 @@ struct PickerView: View {
 
     private var hintSegments: some View {
         HStack(spacing: 8) {
-            hintKey("␣", "Preview")
-            hintKey("↵", "Open")
-            hintKey("⌘↵", "Keep")
-            hintKey("⎋", "Close")
+            HintPill(key: "␣", label: "Preview")
+            HintPill(key: "↵", label: "Open")
+            HintPill(key: "⌘↵", label: "Keep")
+            HintPill(key: "1-9", label: "Switch")
+            HintPill(key: "⎋", label: "Close")
         }
-        .help("␣ preview • ← → or 1-9 navigate • ⇧␣ multi-select • ⇧Click multi-open • ⌘C copy cleaned URL • ⌥ toggle private")
-    }
-
-    private func hintKey(_ key: String, _ label: String) -> some View {
-        HStack(spacing: 3) {
-            Text(key)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundColor(.primary.opacity(0.85))
-                .padding(.horizontal, 4).padding(.vertical, 1)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.white.opacity(0.1))
-                )
-            Text(label)
-                .font(.system(size: 10))
-                .foregroundColor(.secondary)
-        }
+        .help(PickerShortcutHelp.picker)
     }
 }
 
@@ -615,16 +600,49 @@ private final class KeyCatcherView: NSView {
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, let model = self.model, event.window === self.window else { return event }
             let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let cmd = modifiers.contains(.command)
+            let opt = modifiers.contains(.option)
+            let shift = modifiers.contains(.shift)
 
             if model.previewMode {
                 switch event.keyCode {
-                case 49, 53:
+                case 53:
+                    model.exitPreview(); return nil
+                case 49 where !shift && !cmd:
                     model.exitPreview(); return nil
                 case 36, 76:
-                    model.openInBrowserFromPreview(); return nil
-                default:
-                    return event
+                    model.openInBrowserFromPreview(
+                        remember: cmd ? true : nil,
+                        incognito: opt ? true : nil
+                    )
+                    return nil
+                case 123 where cmd, 126 where cmd:
+                    model.moveSelection(-1); return nil
+                case 124 where cmd, 125 where cmd:
+                    model.moveSelection(1); return nil
+                default: break
                 }
+                if cmd && shift,
+                   event.charactersIgnoringModifiers?.lowercased() == "c" {
+                    model.copyCleanedURL()
+                    return nil
+                }
+                if modifiers == .option,
+                   event.charactersIgnoringModifiers?.lowercased() == "p" {
+                    model.toggleIncognito()
+                    return nil
+                }
+                if cmd, !shift,
+                   let chars = event.charactersIgnoringModifiers,
+                   chars.count == 1,
+                   let digit = Int(chars),
+                   digit >= 1, digit <= 9 {
+                    let idx = digit - 1
+                    guard model.filteredOptions.indices.contains(idx) else { return nil }
+                    model.selectedIndex = idx
+                    return nil
+                }
+                return event
             }
 
             switch event.keyCode {
@@ -635,18 +653,16 @@ private final class KeyCatcherView: NSView {
             case 53:
                 model.cancel(); return nil
             case 49:
-                if modifiers.contains(.shift) {
+                if shift {
                     model.toggleMultiAtSelection()
                 } else {
                     model.enterPreview()
                 }
                 return nil
             case 36, 76:
-                let withRemember = modifiers.contains(.command)
-                let withPrivate = modifiers.contains(.option) ? true : nil
                 model.confirmSelection(
-                    remember: withRemember ? true : nil,
-                    incognito: withPrivate
+                    remember: cmd ? true : nil,
+                    incognito: opt ? true : nil
                 )
                 return nil
             default: break

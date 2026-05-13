@@ -75,7 +75,7 @@ struct PreviewView: View {
     private var backButton: some View {
         FloatingIconButton(
             systemName: "chevron.left",
-            help: "Back to picker (␣ or Esc)"
+            help: "Back to picker (␣ or ⎋)"
         ) {
             model.exitPreview()
         }
@@ -129,7 +129,7 @@ struct PreviewView: View {
                     .background(Circle().fill(Color.white.opacity(0.06)))
             }
             .buttonStyle(.plain)
-            .help("Copy cleaned URL (⌘C)")
+            .help("Copy cleaned URL (⇧⌘C)")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -158,12 +158,12 @@ struct PreviewView: View {
     }
 
     private var hintBar: some View {
-        HStack(spacing: 12) {
-            hintKey("␣", "Close")
-            hintKey("⏎", "Open")
-            hintKey("1-9", "Switch")
-            hintKey("⌘C", "Copy")
-            hintKey("⌥", "Private")
+        HStack(spacing: 10) {
+            HintPill(key: "␣", label: "Back")
+            HintPill(key: "↵", label: "Open")
+            HintPill(key: "⌘↵", label: "Keep")
+            HintPill(key: "⌘1-9", label: "Switch")
+            HintPill(key: "⌥P", label: "Private")
             Spacer(minLength: 0)
             if model.previewLoading {
                 HStack(spacing: 5) {
@@ -179,22 +179,7 @@ struct PreviewView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 7)
         .background(Color.black.opacity(0.22))
-    }
-
-    private func hintKey(_ key: String, _ label: String) -> some View {
-        HStack(spacing: 4) {
-            Text(key)
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                .foregroundColor(.primary.opacity(0.85))
-                .padding(.horizontal, 4).padding(.vertical, 1)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.white.opacity(0.08))
-                )
-            Text(label)
-                .font(.system(size: 10))
-                .foregroundColor(.secondary)
-        }
+        .help(PickerShortcutHelp.preview)
     }
 
     @ViewBuilder
