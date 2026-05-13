@@ -73,9 +73,7 @@ struct PickerView: View {
     private var pickerBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            Divider().opacity(0.15)
             optionList
-            Divider().opacity(0.15)
             footer
         }
         .background(
@@ -340,50 +338,7 @@ struct PickerView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 14) {
-            Toggle(isOn: $model.rememberChoice) {
-                HStack(spacing: 3) {
-                    Text("Remember")
-                        .foregroundColor(.secondary)
-                    Text(model.host)
-                        .foregroundColor(.primary)
-                        .fontWeight(.medium)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            }
-            .toggleStyle(.checkbox)
-            .font(.system(size: 11))
-            .fixedSize()
-
-            Button {
-                model.toggleIncognito()
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: model.incognitoMode ? "eyeglasses" : "eyeglasses")
-                        .font(.system(size: 10, weight: .semibold))
-                    Text("Private")
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .foregroundColor(model.incognitoMode ? .white : .secondary)
-                .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(
-                    Capsule().fill(model.incognitoMode ? Color.indigo.opacity(0.85) : Color.white.opacity(0.05))
-                )
-                .overlay(
-                    Capsule().strokeBorder(
-                        model.incognitoMode ? Color.indigo : Color.white.opacity(0.1),
-                        lineWidth: 1
-                    )
-                )
-            }
-            .buttonStyle(.plain)
-            .help("Open in private/incognito window (⌥)")
-            .disabled(!model.selectedSupportsIncognito())
-            .opacity(model.selectedSupportsIncognito() ? 1.0 : 0.4)
-
-            Spacer(minLength: 8)
-
+        HStack(alignment: .center, spacing: 14) {
             if !model.multiSelection.isEmpty {
                 Text("\(model.multiSelection.count) selected")
                     .font(.system(size: 11, weight: .medium))
@@ -392,19 +347,19 @@ struct PickerView: View {
                     .background(Capsule().fill(Color.accentColor.opacity(0.15)))
             }
 
+            Spacer(minLength: 8)
+
             hintSegments
         }
+        .frame(height: 36)
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
     }
 
     private var hintSegments: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .center, spacing: 8) {
             HintPill(key: "␣", label: "Preview")
             HintPill(key: "↵", label: "Open")
-            HintPill(key: "⌘↵", label: "Keep")
             HintPill(key: "1-9", label: "Switch")
-            HintPill(key: "⎋", label: "Close")
         }
         .help(PickerShortcutHelp.picker)
     }
@@ -616,9 +571,9 @@ private final class KeyCatcherView: NSView {
                         incognito: opt ? true : nil
                     )
                     return nil
-                case 123 where cmd, 126 where cmd:
+                case 123, 126:
                     model.moveSelection(-1); return nil
-                case 124 where cmd, 125 where cmd:
+                case 124, 125:
                     model.moveSelection(1); return nil
                 default: break
                 }
@@ -632,7 +587,7 @@ private final class KeyCatcherView: NSView {
                     model.toggleIncognito()
                     return nil
                 }
-                if cmd, !shift,
+                if (modifiers.isEmpty || modifiers == .command) && !shift,
                    let chars = event.charactersIgnoringModifiers,
                    chars.count == 1,
                    let digit = Int(chars),

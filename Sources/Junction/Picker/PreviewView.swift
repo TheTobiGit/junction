@@ -118,18 +118,6 @@ struct PreviewView: View {
                 .truncationMode(.middle)
 
             Spacer(minLength: 8)
-
-            Button {
-                model.copyCleanedURL()
-            } label: {
-                Image(systemName: "doc.on.doc")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .frame(width: 22, height: 22)
-                    .background(Circle().fill(Color.white.opacity(0.06)))
-            }
-            .buttonStyle(.plain)
-            .help("Copy cleaned URL (⇧⌘C)")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -161,9 +149,7 @@ struct PreviewView: View {
         HStack(spacing: 10) {
             HintPill(key: "␣", label: "Back")
             HintPill(key: "↵", label: "Open")
-            HintPill(key: "⌘↵", label: "Keep")
-            HintPill(key: "⌘1-9", label: "Switch")
-            HintPill(key: "⌥P", label: "Private")
+            HintPill(key: "1-9", label: "Switch")
             Spacer(minLength: 0)
             if model.previewLoading {
                 HStack(spacing: 5) {
@@ -178,7 +164,6 @@ struct PreviewView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 7)
-        .background(Color.black.opacity(0.22))
         .help(PickerShortcutHelp.preview)
     }
 
