@@ -1,6 +1,26 @@
 import Foundation
 import Combine
 
+struct HotkeyBinding: Codable, Hashable {
+    var keyCode: UInt32
+    var modifiers: UInt32
+    var enabled: Bool
+
+    static let none = HotkeyBinding(keyCode: 0, modifiers: 0, enabled: false)
+}
+
+struct HotkeySettings: Codable, Hashable {
+    var summonPicker: HotkeyBinding
+    var rerouteLast: HotkeyBinding
+    var pasteAndOpen: HotkeyBinding
+
+    static let defaults = HotkeySettings(
+        summonPicker: .none,
+        rerouteLast: .none,
+        pasteAndOpen: .none
+    )
+}
+
 struct JunctionSettings: Codable {
     var cleanURLsBeforeOpening: Bool = true
     var expandShortenedURLs: Bool = true
@@ -8,6 +28,9 @@ struct JunctionSettings: Codable {
     var redirects: [DomainRedirect] = DefaultRedirects.all
     var hiddenTargetKeys: [String] = []
     var targetOrder: [String] = []
+    var appSchemes: [AppSchemeRewrite] = AppSchemeCatalog.defaults
+    var hotkeys: HotkeySettings = .defaults
+    var hasCompletedOnboarding: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case cleanURLsBeforeOpening
@@ -16,6 +39,9 @@ struct JunctionSettings: Codable {
         case redirects
         case hiddenTargetKeys
         case targetOrder
+        case appSchemes
+        case hotkeys
+        case hasCompletedOnboarding
     }
 
     init() {}
@@ -28,7 +54,37 @@ struct JunctionSettings: Codable {
         self.redirects = (try? c.decode([DomainRedirect].self, forKey: .redirects)) ?? DefaultRedirects.all
         self.hiddenTargetKeys = (try? c.decode([String].self, forKey: .hiddenTargetKeys)) ?? []
         self.targetOrder = (try? c.decode([String].self, forKey: .targetOrder)) ?? []
+
+        let storedSchemes = (try? c.decode([AppSchemeRewrite].self, forKey: .appSchemes)) ?? []
+        self.appSchemes = JunctionSettings.mergeAppSchemes(stored: storedSchemes)
+
+        self.hotkeys = (try? c.decode(HotkeySettings.self, forKey: .hotkeys)) ?? .defaults
+        self.hasCompletedOnboarding = (try? c.decode(Bool.self, forKey: .hasCompletedOnboarding)) ?? false
     }
+
+    static func mergeAppSchemes(stored: [AppSchemeRewrite]) -> [AppSchemeRewrite] {
+        let storedByID = Dictionary(uniqueKeysWithValues: stored.map { ($0.id, $0) })
+        var merged: [AppSchemeRewrite] = []
+        var seen = Set<String>()
+        for builtin in AppSchemeCatalog.defaults {
+            if let existing = storedByID[builtin.id] {
+                var updated = builtin
+                updated.enabled = existing.enabled
+                merged.append(updated)
+            } else {
+                merged.append(builtin)
+            }
+            seen.insert(builtin.id)
+        }
+        for entry in stored where !seen.contains(entry.id) {
+            merged.append(entry)
+        }
+        return merged
+    }
+}
+
+extension Notification.Name {
+    static let junctionHotkeysChanged = Notification.Name("junctionHotkeysChanged")
 }
 
 final class SettingsStore: ObservableObject {
@@ -38,6 +94,9 @@ final class SettingsStore: ObservableObject {
         didSet {
             persist()
             ClipboardWatcher.shared.updateEnabledState()
+            if oldValue.hotkeys != settings.hotkeys {
+                NotificationCenter.default.post(name: .junctionHotkeysChanged, object: nil)
+            }
         }
     }
 
@@ -74,6 +133,21 @@ final class SettingsStore: ObservableObject {
 
     func setTargetOrder(_ order: [String]) {
         settings.targetOrder = order
+    }
+
+    func setAppSchemeEnabled(id: String, enabled: Bool) {
+        var schemes = settings.appSchemes
+        guard let idx = schemes.firstIndex(where: { $0.id == id }) else { return }
+        schemes[idx].enabled = enabled
+        settings.appSchemes = schemes
+    }
+
+    func setHotkey(_ binding: HotkeyBinding, for keyPath: WritableKeyPath<HotkeySettings, HotkeyBinding>) {
+        settings.hotkeys[keyPath: keyPath] = binding
+    }
+
+    func markOnboardingComplete() {
+        settings.hasCompletedOnboarding = true
     }
 
     private func persist() {

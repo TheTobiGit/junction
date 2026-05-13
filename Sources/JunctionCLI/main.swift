@@ -112,6 +112,9 @@ enum JunctionCLI {
         var hostValue: String? = nil
         var target: String? = nil
         var ask = false
+        var block = false
+        var incognitoTarget: String? = nil
+        var scheme: String? = nil
 
         var i = 0
         while i < args.count {
@@ -123,6 +126,14 @@ enum JunctionCLI {
             case "--in":
                 guard i + 1 < args.count else { throw CLIError(message: "--in requires a value") }
                 target = args[i + 1]; i += 2
+            case "--incognito":
+                guard i + 1 < args.count else { throw CLIError(message: "--incognito requires a target key") }
+                incognitoTarget = args[i + 1]; i += 2
+            case "--scheme":
+                guard i + 1 < args.count else { throw CLIError(message: "--scheme requires a scheme name") }
+                scheme = args[i + 1]; i += 2
+            case "--block":
+                block = true; i += 1
             case "--ask":
                 ask = true; i += 1
             default:
@@ -134,13 +145,27 @@ enum JunctionCLI {
         }
 
         guard let value = hostValue else {
-            throw CLIError(message: "missing host (usage: junction rules add <host> [--suffix|--equals|--regex] [--in <target>|--ask])")
-        }
-        if !ask && target == nil {
-            throw CLIError(message: "either --in <target> or --ask is required")
+            throw CLIError(message: "missing host (usage: junction rules add <host> [--suffix|--equals|--regex] [--in <target>|--ask|--block|--incognito <target>|--scheme <name>])")
         }
 
-        let response = try sendRequest(.addRule(hostKind: hostKind, hostValue: value, target: ask ? nil : target))
+        let resolvedTarget: String?
+        let chosen = [ask, block, incognitoTarget != nil, scheme != nil, target != nil].filter { $0 }.count
+        guard chosen == 1 else {
+            throw CLIError(message: "specify exactly one of --in, --ask, --block, --incognito, --scheme")
+        }
+        if ask {
+            resolvedTarget = nil
+        } else if block {
+            resolvedTarget = "__block__"
+        } else if let incognitoTarget {
+            resolvedTarget = "incognito:\(incognitoTarget)"
+        } else if let scheme {
+            resolvedTarget = "scheme:\(scheme)"
+        } else {
+            resolvedTarget = target
+        }
+
+        let response = try sendRequest(.addRule(hostKind: hostKind, hostValue: value, target: resolvedTarget))
         switch response {
         case .ok(let m): if let m { print(m) }
         case .error(let m): throw CLIError(message: m)
@@ -235,7 +260,9 @@ enum JunctionCLI {
         usage:
           junction open <url> [--in <target>] [--ask] [--clean|--no-clean]
           junction rules list
-          junction rules add <host> [--suffix|--equals|--regex] [--in <target>|--ask]
+          junction rules add <host> [--suffix|--equals|--regex]
+                            (--in <target> | --ask | --block
+                             | --incognito <target> | --scheme <name>)
           junction rules remove <host>
           junction targets
           junction ping
@@ -245,6 +272,9 @@ enum JunctionCLI {
           junction open https://example.com --in app:com.google.Chrome
           junction rules add github.com --in profile:com.google.Chrome:Default
           junction rules add "^.*slack\\.com" --regex --ask
+          junction rules add reddit.com --block
+          junction rules add twitter.com --incognito app:com.apple.Safari
+          junction rules add slack.com --scheme slack
           junction rules remove github.com
           junction targets   # list known target keys
 

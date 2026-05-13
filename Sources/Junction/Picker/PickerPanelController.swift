@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Combine
 
 final class KeyablePanel: NSPanel {
     override var canBecomeKey: Bool { true }
@@ -12,12 +13,18 @@ final class PickerPanelController {
     private var hosting: NSHostingView<PickerView>?
     private var resignMonitor: Any?
     private var globalClickMonitor: Any?
+    private var previewObserver: AnyCancellable?
+    private var pickerSize: CGSize = .zero
 
     func present(url: URL, context: RouteContext) {
-        let openOnce: (LaunchOption) -> Void = { option in
+        let openOnce: (LaunchOption, Bool) -> Void = { option, incognito in
             let cleaned = SettingsStore.shared.settings.cleanURLsBeforeOpening
             let urlToOpen = cleaned ? URLTransformers.default.run(url) : url
-            URLOpener.open(urlToOpen, with: option)
+            URLOpener.open(urlToOpen, with: option, incognito: incognito) { success in
+                if success {
+                    LastURLStore.shared.recordRouted(urlToOpen)
+                }
+            }
         }
 
         let options = LaunchOptionDiscovery.visibleOptions()
@@ -25,19 +32,22 @@ final class PickerPanelController {
             url: url,
             options: options,
             context: context,
-            onPick: { [weak self] option, remember in
+            onPick: { [weak self] option, remember, incognito in
                 if remember, let host = RulesStore.normalizedHost(for: url) {
-                    RulesStore.shared.remember(target: option.target, forHost: host)
+                    let action: RuleAction = incognito ? .openIncognito(option.target) : .open(option.target)
+                    RulesStore.shared.addRule(host: .equals(host), action: action)
                 }
-                openOnce(option)
+                openOnce(option, incognito)
                 self?.dismiss()
             },
-            onPickMulti: { [weak self] options in
-                for option in options { openOnce(option) }
+            onPickMulti: { [weak self] options, incognito in
+                for option in options { openOnce(option, incognito) }
                 self?.dismiss()
             },
             onCancel: { [weak self] in self?.dismiss() }
         )
+
+        LastURLStore.shared.recordPicker(url)
 
         let width = PickerView.desiredWidth(forOptionCount: options.count)
         let view = PickerView(model: model, width: width)
@@ -76,6 +86,13 @@ final class PickerPanelController {
 
         self.panel = panel
         self.hosting = host
+        self.pickerSize = CGSize(width: width, height: PickerView.pickerHeight)
+
+        previewObserver = model.$previewMode
+            .removeDuplicates()
+            .sink { [weak self] inPreview in
+                self?.resize(forPreview: inPreview)
+            }
 
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
@@ -92,7 +109,35 @@ final class PickerPanelController {
         }
     }
 
+    private func resize(forPreview inPreview: Bool) {
+        guard let panel else { return }
+        let target: CGSize = inPreview ? PickerView.previewSize() : pickerSize
+        let current = panel.frame
+        let newOrigin = NSPoint(
+            x: current.midX - target.width / 2,
+            y: current.midY - target.height / 2
+        )
+        let newFrame = NSRect(origin: newOrigin, size: target)
+        let clamped = clampToScreen(newFrame)
+        panel.animator().setFrame(clamped, display: true, animate: true)
+    }
+
+    private func clampToScreen(_ frame: NSRect) -> NSRect {
+        guard let screen = panel?.screen ?? NSScreen.main else { return frame }
+        let visible = screen.visibleFrame
+        var out = frame
+        if out.width > visible.width { out.size.width = visible.width }
+        if out.height > visible.height { out.size.height = visible.height }
+        if out.minX < visible.minX { out.origin.x = visible.minX + 8 }
+        if out.minY < visible.minY { out.origin.y = visible.minY + 8 }
+        if out.maxX > visible.maxX { out.origin.x = visible.maxX - out.width - 8 }
+        if out.maxY > visible.maxY { out.origin.y = visible.maxY - out.height - 8 }
+        return out
+    }
+
     func dismiss() {
+        previewObserver?.cancel()
+        previewObserver = nil
         if let token = globalClickMonitor {
             NSEvent.removeMonitor(token)
             globalClickMonitor = nil

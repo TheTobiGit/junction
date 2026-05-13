@@ -22,6 +22,9 @@ struct PickerView: View {
     static let tileSpacing: CGFloat = 10
     static let listHorizontalPadding: CGFloat = 18
     static let minWidth: CGFloat = 480
+    static let pickerHeight: CGFloat = 300
+    static let previewWidth: CGFloat = 1120
+    static let previewHeight: CGFloat = 760
 
     static func desiredWidth(forOptionCount count: Int) -> CGFloat {
         let content = CGFloat(count) * tileWidth
@@ -36,7 +39,38 @@ struct PickerView: View {
         return max(minWidth, min(content, screenMax))
     }
 
+    static func previewSize() -> CGSize {
+        if let screen = NSScreen.main {
+            let w = min(previewWidth, screen.visibleFrame.width - 80)
+            let h = min(previewHeight, screen.visibleFrame.height - 120)
+            return CGSize(width: max(minWidth, w), height: max(360, h))
+        }
+        return CGSize(width: previewWidth, height: previewHeight)
+    }
+
     var body: some View {
+        ZStack {
+            if model.previewMode {
+                PreviewView(model: model)
+                    .frame(width: Self.previewSize().width, height: Self.previewSize().height)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            } else {
+                pickerBody
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            }
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: model.previewMode)
+        .background(KeyEventCatcher(model: model))
+        .scaleEffect(appeared ? 1.0 : 0.96)
+        .opacity(appeared ? 1.0 : 0.0)
+        .onAppear {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                appeared = true
+            }
+        }
+    }
+
+    private var pickerBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider().opacity(0.15)
@@ -66,15 +100,7 @@ struct PickerView: View {
                     lineWidth: 1
                 )
         )
-        .frame(width: width, height: 300)
-        .background(KeyEventCatcher(model: model))
-        .scaleEffect(appeared ? 1.0 : 0.96)
-        .opacity(appeared ? 1.0 : 0.0)
-        .onAppear {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                appeared = true
-            }
-        }
+        .frame(width: width, height: Self.pickerHeight)
     }
 
     private func previewIsMeaningful(_ preview: LinkPreview) -> Bool {
@@ -91,6 +117,9 @@ struct PickerView: View {
                 }
                 if let focus = model.focusName {
                     focusBadge(focus)
+                }
+                if model.incognitoMode {
+                    incognitoBadge
                 }
                 if !model.riskFlags.isEmpty {
                     riskChip(model.riskFlags)
@@ -124,6 +153,19 @@ struct PickerView: View {
         .padding(.horizontal, 16)
         .padding(.top, 12)
         .padding(.bottom, 12)
+    }
+
+    private var incognitoBadge: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "eyeglasses")
+                .font(.system(size: 9, weight: .semibold))
+            Text("Private")
+                .font(.system(size: 10, weight: .medium))
+        }
+        .foregroundColor(.indigo)
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(Capsule().fill(Color.indigo.opacity(0.18)))
+        .help("Open in private/incognito mode (⌥ to toggle, ⌥⏎ to confirm)")
     }
 
     private var linkRow: some View {
@@ -287,10 +329,12 @@ struct PickerView: View {
         )
         .contentShape(Rectangle())
         .onTapGesture {
-            if NSEvent.modifierFlags.contains(.shift) {
+            let flags = NSEvent.modifierFlags
+            if flags.contains(.shift) {
                 model.toggleMulti(option)
             } else {
-                model.pick(option)
+                let incognito = flags.contains(.option) || model.incognitoMode
+                model.pick(option, incognito: incognito)
             }
         }
     }
@@ -312,6 +356,32 @@ struct PickerView: View {
             .font(.system(size: 11))
             .fixedSize()
 
+            Button {
+                model.toggleIncognito()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: model.incognitoMode ? "eyeglasses" : "eyeglasses")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text("Private")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .foregroundColor(model.incognitoMode ? .white : .secondary)
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(
+                    Capsule().fill(model.incognitoMode ? Color.indigo.opacity(0.85) : Color.white.opacity(0.05))
+                )
+                .overlay(
+                    Capsule().strokeBorder(
+                        model.incognitoMode ? Color.indigo : Color.white.opacity(0.1),
+                        lineWidth: 1
+                    )
+                )
+            }
+            .buttonStyle(.plain)
+            .help("Open in private/incognito window (⌥)")
+            .disabled(!model.selectedSupportsIncognito())
+            .opacity(model.selectedSupportsIncognito() ? 1.0 : 0.4)
+
             Spacer(minLength: 8)
 
             if !model.multiSelection.isEmpty {
@@ -330,11 +400,12 @@ struct PickerView: View {
 
     private var hintSegments: some View {
         HStack(spacing: 8) {
+            hintKey("␣", "Preview")
             hintKey("↵", "Open")
             hintKey("⌘↵", "Keep")
             hintKey("⎋", "Close")
         }
-        .help("← → or 1-9 navigate • ⇧Click multi-open • ⌘C copy cleaned URL")
+        .help("␣ preview • ← → or 1-9 navigate • ⇧␣ multi-select • ⇧Click multi-open • ⌘C copy cleaned URL • ⌥ toggle private")
     }
 
     private func hintKey(_ key: String, _ label: String) -> some View {
@@ -544,6 +615,18 @@ private final class KeyCatcherView: NSView {
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, let model = self.model, event.window === self.window else { return event }
             let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+            if model.previewMode {
+                switch event.keyCode {
+                case 49, 53:
+                    model.exitPreview(); return nil
+                case 36, 76:
+                    model.openInBrowserFromPreview(); return nil
+                default:
+                    return event
+                }
+            }
+
             switch event.keyCode {
             case 124, 125:
                 model.moveSelection(1); return nil
@@ -552,10 +635,19 @@ private final class KeyCatcherView: NSView {
             case 53:
                 model.cancel(); return nil
             case 49:
-                model.toggleMultiAtSelection(); return nil
+                if modifiers.contains(.shift) {
+                    model.toggleMultiAtSelection()
+                } else {
+                    model.enterPreview()
+                }
+                return nil
             case 36, 76:
                 let withRemember = modifiers.contains(.command)
-                model.confirmSelection(remember: withRemember ? true : nil)
+                let withPrivate = modifiers.contains(.option) ? true : nil
+                model.confirmSelection(
+                    remember: withRemember ? true : nil,
+                    incognito: withPrivate
+                )
                 return nil
             default: break
             }
@@ -564,13 +656,23 @@ private final class KeyCatcherView: NSView {
                 model.copyCleanedURL()
                 return nil
             }
-            if (modifiers.isEmpty || modifiers == .shift || modifiers == .command),
+            if modifiers == .option,
+               event.charactersIgnoringModifiers?.lowercased() == "p" {
+                model.toggleIncognito()
+                return nil
+            }
+            if (modifiers.isEmpty || modifiers == .shift || modifiers == .command || modifiers == .option),
                let chars = event.charactersIgnoringModifiers,
                chars.count == 1,
                let digit = Int(chars),
                digit >= 1, digit <= 9 {
                 let withRemember = modifiers.contains(.command)
-                model.pickByNumber(digit, remember: withRemember ? true : nil)
+                let withPrivate = modifiers.contains(.option) ? true : nil
+                model.pickByNumber(
+                    digit,
+                    remember: withRemember ? true : nil,
+                    incognito: withPrivate
+                )
                 return nil
             }
             return event

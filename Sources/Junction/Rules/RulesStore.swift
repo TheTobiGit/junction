@@ -35,11 +35,26 @@ final class RulesStore {
 
     func match(host: String, context: RouteContext) -> RuleAction {
         for rule in file.rules where rule.enabled {
+            guard rule.schemes == nil else { continue }
+            guard rule.path == nil, rule.queryContains == nil else { continue }
             if !rule.host.matches(host) { continue }
             if let condition = rule.when, !condition.matches(context: context) { continue }
             return rule.action
         }
         return file.fallback
+    }
+
+    struct RuleMatch {
+        let action: RuleAction
+        let rule: DomainRule?
+    }
+
+    func match(url: URL, context: RouteContext) -> RuleMatch {
+        let host = RulesStore.normalizedHost(for: url)
+        for rule in file.rules where rule.matches(url: url, host: host, context: context) {
+            return RuleMatch(action: rule.action, rule: rule)
+        }
+        return RuleMatch(action: file.fallback, rule: nil)
     }
 
     func remember(target: LaunchTarget, forHost host: String) {

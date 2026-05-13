@@ -30,43 +30,51 @@ final class PreferencesWindowController {
 }
 
 private enum PrefsSection: String, CaseIterable, Identifiable {
-    case general, rewrites, targets, rules
+    case general, rewrites, targets, rules, appSchemes, hotkeys
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .general:  return "General"
-        case .rewrites: return "Rewrites"
-        case .targets:  return "Targets"
-        case .rules:    return "Rules"
+        case .general:    return "General"
+        case .rewrites:   return "Rewrites"
+        case .targets:    return "Targets"
+        case .rules:      return "Rules"
+        case .appSchemes: return "Native Apps"
+        case .hotkeys:    return "Hotkeys"
         }
     }
 
     var subtitle: String {
         switch self {
-        case .general:  return "Link handling"
-        case .rewrites: return "Host rewrites"
-        case .targets:  return "Browsers and profiles"
-        case .rules:    return "Routing rules"
+        case .general:    return "Link handling"
+        case .rewrites:   return "Host rewrites"
+        case .targets:    return "Browsers and profiles"
+        case .rules:      return "Routing rules"
+        case .appSchemes: return "Open in desktop app instead"
+        case .hotkeys:    return "Global shortcuts"
         }
     }
 
     var symbol: String {
         switch self {
-        case .general:  return "gearshape.fill"
-        case .rewrites: return "arrow.triangle.2.circlepath"
-        case .targets:  return "globe"
-        case .rules:    return "list.bullet.rectangle.fill"
+        case .general:    return "gearshape.fill"
+        case .rewrites:   return "arrow.triangle.2.circlepath"
+        case .targets:    return "globe"
+        case .rules:      return "list.bullet.rectangle.fill"
+        case .appSchemes: return "app.badge"
+        case .hotkeys:    return "command.square.fill"
         }
     }
 
     var tint: Color {
         switch self {
-        case .general:  return .accentColor
-        case .rewrites: return .orange
-        case .targets:  return .teal
-        case .rules:    return .purple
+        case .general:    return .accentColor
+        case .rewrites:   return .orange
+        case .targets:    return .teal
+        case .rules:      return .purple
+        case .appSchemes: return .pink
+        case .hotkeys:    return .blue
         }
     }
 }
@@ -200,10 +208,12 @@ struct PreferencesView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     switch selection {
-                    case .general:  generalTab
-                    case .rewrites: rewritesTab
-                    case .targets:  targetsTab
-                    case .rules:    rulesTab
+                    case .general:    generalTab
+                    case .rewrites:   rewritesTab
+                    case .targets:    targetsTab
+                    case .rules:      rulesTab
+                    case .appSchemes: appSchemesTab
+                    case .hotkeys:    hotkeysTab
                     }
                 }
                 .padding(.horizontal, 28)
@@ -734,6 +744,29 @@ struct PreferencesView: View {
                     .foregroundColor(.orange)
                 Text("Always ask")
                     .font(.system(size: 12, weight: .medium))
+            case .block:
+                Image(systemName: "nosign")
+                    .foregroundColor(.red)
+                Text("Block")
+                    .font(.system(size: 12, weight: .medium))
+            case .appScheme(let scheme):
+                Image(systemName: "app.badge.fill")
+                    .foregroundColor(.pink)
+                Text(scheme)
+                    .font(.system(size: 12, design: .monospaced))
+            case .openIncognito(let target):
+                Image(systemName: "eyeglasses")
+                    .foregroundColor(.indigo)
+                if let opt = options.first(where: { $0.target == target }) {
+                    Text("Private · \(opt.displayName)")
+                        .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else {
+                    Text("Private · \(target.storageKey)")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
             case .open(let target):
                 if let opt = options.first(where: { $0.target == target }) {
                     Image(nsImage: opt.icon)
@@ -760,6 +793,103 @@ struct PreferencesView: View {
             }
         }
         .foregroundColor(.primary)
+    }
+
+    // MARK: - Native apps
+
+    private var appSchemesTab: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionBlurb(
+                "Matched URLs are handed to the native app when the app is installed. Useful for Slack, Linear, Figma, Notion, Zoom.",
+                trailing: { EmptyView() }
+            )
+
+            Card {
+                VStack(spacing: 0) {
+                    ForEach(Array(settings.settings.appSchemes.enumerated()), id: \.element.id) { idx, rewrite in
+                        appSchemeRow(rewrite)
+                        if idx < settings.settings.appSchemes.count - 1 {
+                            cardDivider
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func appSchemeRow(_ rewrite: AppSchemeRewrite) -> some View {
+        let installed = NSWorkspace.shared.urlForApplication(withBundleIdentifier: rewrite.bundleID) != nil
+        return HStack(spacing: 12) {
+            Toggle("", isOn: Binding(
+                get: { rewrite.enabled },
+                set: { settings.setAppSchemeEnabled(id: rewrite.id, enabled: $0) }
+            ))
+            .toggleStyle(.switch)
+            .labelsHidden()
+            .controlSize(.small)
+            .disabled(!installed)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(rewrite.name)
+                        .font(.system(size: 13, weight: .semibold))
+                    if !installed {
+                        Text("Not installed")
+                            .font(.system(size: 9, weight: .semibold))
+                            .padding(.horizontal, 6).padding(.vertical, 1)
+                            .background(Capsule().fill(Color.secondary.opacity(0.18)))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                Text(rewrite.rules.map { $0.host }.joined(separator: ", "))
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer()
+            Text(rewrite.bundleID)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(.secondary.opacity(0.7))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+    }
+
+    // MARK: - Hotkeys
+
+    private var hotkeysTab: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionBlurb(
+                "Global shortcuts work from any app. Click to record, Escape to clear.",
+                trailing: { EmptyView() }
+            )
+
+            HotkeyRowView(
+                title: "Open clipboard link in picker",
+                detail: "Trigger the picker for the URL on your clipboard (or the last routed URL if clipboard doesn't have one).",
+                binding: Binding(
+                    get: { settings.settings.hotkeys.summonPicker },
+                    set: { settings.setHotkey($0, for: \.summonPicker) }
+                )
+            )
+            HotkeyRowView(
+                title: "Reroute last link",
+                detail: "Show the picker for the most recently opened URL, so you can switch browsers.",
+                binding: Binding(
+                    get: { settings.settings.hotkeys.rerouteLast },
+                    set: { settings.setHotkey($0, for: \.rerouteLast) }
+                )
+            )
+            HotkeyRowView(
+                title: "Paste & open",
+                detail: "Open the clipboard URL using your rules, skipping the picker.",
+                binding: Binding(
+                    get: { settings.settings.hotkeys.pasteAndOpen },
+                    set: { settings.setHotkey($0, for: \.pasteAndOpen) }
+                )
+            )
+        }
     }
 
     private var fallbackRow: some View {
