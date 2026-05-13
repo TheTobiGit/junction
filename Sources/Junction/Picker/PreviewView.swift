@@ -147,10 +147,12 @@ struct PreviewView: View {
 
     private var hintBar: some View {
         HStack(spacing: 10) {
-            HintPill(key: "␣", label: "Back")
-            HintPill(key: "↵", label: "Open")
-            HintPill(key: "1-9", label: "Switch")
+            if let host = model.rememberHost {
+                rememberToggle(host: host)
+            }
+
             Spacer(minLength: 0)
+
             if model.previewLoading {
                 HStack(spacing: 5) {
                     ProgressView()
@@ -161,10 +163,52 @@ struct PreviewView: View {
                         .foregroundColor(.secondary)
                 }
             }
+
+            HintPill(key: "␣", label: "Back")
+            HintPill(key: "↵", label: "Open")
+            HintPill(key: "1-9", label: "Switch")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 7)
         .help(PickerShortcutHelp.preview)
+    }
+
+    private func rememberToggle(host: String) -> some View {
+        Button {
+            model.toggleRemember()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: model.rememberChoice ? "checkmark.square.fill" : "square")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("Always open ")
+                    .foregroundColor(.secondary)
+                + Text(host)
+                    .foregroundColor(.primary)
+                    .fontWeight(.medium)
+                + Text(" here")
+                    .foregroundColor(.secondary)
+            }
+            .font(.system(size: 11))
+            .foregroundColor(model.rememberChoice ? .accentColor : .secondary)
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(
+                Capsule().fill(
+                    model.rememberChoice
+                        ? Color.accentColor.opacity(0.16)
+                        : Color.white.opacity(0.06)
+                )
+            )
+            .overlay(
+                Capsule().strokeBorder(
+                    model.rememberChoice
+                        ? Color.accentColor.opacity(0.5)
+                        : Color.white.opacity(0.08),
+                    lineWidth: 1
+                )
+            )
+        }
+        .buttonStyle(.plain)
+        .help("Remember the browser you pick next as the default for \(host)")
     }
 
     @ViewBuilder

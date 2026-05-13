@@ -56,6 +56,14 @@ final class PickerViewModel: ObservableObject {
         cleanedURL.host ?? url.host ?? url.absoluteString
     }
 
+    var rememberHost: String? {
+        RulesStore.normalizedHost(for: url)
+    }
+
+    func toggleRemember() {
+        rememberChoice.toggle()
+    }
+
     func enterPreview() {
         guard !previewMode else { return }
         previewTitle = nil

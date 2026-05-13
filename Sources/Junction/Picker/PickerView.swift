@@ -347,12 +347,54 @@ struct PickerView: View {
                     .background(Capsule().fill(Color.accentColor.opacity(0.15)))
             }
 
+            if let host = model.rememberHost {
+                rememberToggle(host: host)
+            }
+
             Spacer(minLength: 8)
 
             hintSegments
         }
         .frame(height: 36)
         .padding(.horizontal, 16)
+    }
+
+    private func rememberToggle(host: String) -> some View {
+        Button {
+            model.toggleRemember()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: model.rememberChoice ? "checkmark.square.fill" : "square")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("Always open ")
+                    .foregroundColor(.secondary)
+                + Text(host)
+                    .foregroundColor(.primary)
+                    .fontWeight(.medium)
+                + Text(" here")
+                    .foregroundColor(.secondary)
+            }
+            .font(.system(size: 11))
+            .foregroundColor(model.rememberChoice ? .accentColor : .secondary)
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(
+                Capsule().fill(
+                    model.rememberChoice
+                        ? Color.accentColor.opacity(0.16)
+                        : Color.white.opacity(0.06)
+                )
+            )
+            .overlay(
+                Capsule().strokeBorder(
+                    model.rememberChoice
+                        ? Color.accentColor.opacity(0.5)
+                        : Color.white.opacity(0.08),
+                    lineWidth: 1
+                )
+            )
+        }
+        .buttonStyle(.plain)
+        .help("Remember the browser you pick next as the default for \(host)")
     }
 
     private var hintSegments: some View {
