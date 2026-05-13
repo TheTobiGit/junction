@@ -66,6 +66,16 @@ enum LaunchOptionDiscovery {
         return options().filter { !hidden.contains($0.target.storageKey) }
     }
 
+    static func resolve(target: LaunchTarget, in options: [LaunchOption] = options()) -> LaunchOption? {
+        if let match = options.first(where: { $0.target == target }) {
+            return match
+        }
+        if case .app = target {
+            return options.first { $0.browser.bundleID == target.bundleID }
+        }
+        return nil
+    }
+
     private static func applyUserOrder(_ options: [LaunchOption]) -> [LaunchOption] {
         let order = SettingsStore.shared.settings.targetOrder
         guard !order.isEmpty else { return options }

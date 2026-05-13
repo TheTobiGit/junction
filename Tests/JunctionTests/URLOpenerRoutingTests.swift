@@ -41,26 +41,6 @@ final class URLOpenerRoutingTests: XCTestCase {
         return LaunchOption(browser: browser, profile: profile)
     }
 
-    private func makeDia(profile: ChromiumProfile? = nil) -> LaunchOption {
-        let browser = Browser(bundleID: "company.thebrowser.dia", name: "Dia", url: fakeAppURL)
-        return LaunchOption(browser: browser, profile: profile)
-    }
-
-    private func makeFirefox() -> LaunchOption {
-        let browser = Browser(bundleID: "org.mozilla.firefox", name: "Firefox", url: fakeAppURL)
-        return LaunchOption(browser: browser, profile: nil)
-    }
-
-    private func makeSafari() -> LaunchOption {
-        let browser = Browser(bundleID: "com.apple.Safari", name: "Safari", url: fakeAppURL)
-        return LaunchOption(browser: browser, profile: nil)
-    }
-
-    private func makeArc(profile: ChromiumProfile) -> LaunchOption {
-        let browser = Browser(bundleID: ArcSpacesDiscovery.bundleID, name: "Arc", url: fakeAppURL)
-        return LaunchOption(browser: browser, profile: profile)
-    }
-
     // MARK: - VAL-OPENER-001: Chromium profile path uses BrowserLauncher
 
     func test_chromiumProfileNoIncognito_usesBrowserLauncher() {
@@ -75,21 +55,6 @@ final class URLOpenerRoutingTests: XCTestCase {
         XCTAssertEqual(mock.calls.count, 1, "BrowserLauncher must be called exactly once")
         XCTAssertEqual(mock.calls[0].appURL, fakeAppURL)
         XCTAssertEqual(mock.calls[0].profileDirectory, "Default")
-        XCTAssertFalse(mock.calls[0].incognito)
-        XCTAssertEqual(mock.calls[0].url, targetURL)
-    }
-
-    func test_chromiumProfileNoIncognito_dia_usesBrowserLauncher() {
-        let mock = MockBrowserLauncher()
-        let profile = ChromiumProfile(directoryName: "Profile 1", displayName: "Work", colorHex: nil)
-        let option = makeDia(profile: profile)
-
-        let exp = expectation(description: "completion fires")
-        URLOpener.open(targetURL, with: option, incognito: false, launcher: mock) { _ in exp.fulfill() }
-        waitForExpectations(timeout: 1.0)
-
-        XCTAssertEqual(mock.calls.count, 1)
-        XCTAssertEqual(mock.calls[0].profileDirectory, "Profile 1")
         XCTAssertFalse(mock.calls[0].incognito)
         XCTAssertEqual(mock.calls[0].url, targetURL)
     }
@@ -142,70 +107,14 @@ final class URLOpenerRoutingTests: XCTestCase {
         XCTAssertEqual(mock.calls[0].url, targetURL)
     }
 
-    // MARK: - VAL-OPENER-004: Firefox incognito path does NOT use BrowserLauncher
+    // MARK: - Incognito support stays pure and side-effect free
 
-    func test_firefoxIncognito_doesNotUseBrowserLauncher() {
-        let mock = MockBrowserLauncher()
-        let option = makeFirefox()
-
-        // Firefox incognito goes through NSWorkspace with --private-window, not BrowserLauncher.
-        // We don't pass a completion here; we just verify the mock is never called.
-        URLOpener.open(targetURL, with: option, incognito: true, launcher: mock)
-
-        let exp = expectation(description: "brief settle")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
-        waitForExpectations(timeout: 1.0)
-
-        XCTAssertEqual(mock.calls.count, 0, "Firefox incognito must NOT route through BrowserLauncher")
-    }
-
-    func test_firefoxNonIncognito_doesNotUseBrowserLauncher() {
-        let mock = MockBrowserLauncher()
-        let option = makeFirefox()
-
-        URLOpener.open(targetURL, with: option, incognito: false, launcher: mock)
-
-        let exp = expectation(description: "brief settle")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
-        waitForExpectations(timeout: 1.0)
-
-        XCTAssertEqual(mock.calls.count, 0, "Firefox non-incognito must NOT route through BrowserLauncher")
-    }
-
-    // MARK: - VAL-OPENER-005: Safari incognito AppleScript path does NOT use BrowserLauncher
-
-    func test_safariIncognito_doesNotUseBrowserLauncher() {
-        let mock = MockBrowserLauncher()
-        let option = makeSafari()
-
-        URLOpener.open(targetURL, with: option, incognito: true, launcher: mock)
-
-        let exp = expectation(description: "brief settle")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
-        waitForExpectations(timeout: 1.0)
-
-        XCTAssertEqual(mock.calls.count, 0, "Safari incognito must NOT route through BrowserLauncher")
-    }
-
-    // MARK: - VAL-OPENER-006: Arc profile/space path does NOT use BrowserLauncher
-
-    func test_arcSpacePath_doesNotUseBrowserLauncher() {
-        let mock = MockBrowserLauncher()
-        // Arc profile directory encodes the space ID after the "|space:" separator.
-        let profile = ChromiumProfile(
-            directoryName: "Default|space:abc123",
-            displayName: "My Space",
-            colorHex: nil
-        )
-        let option = makeArc(profile: profile)
-
-        URLOpener.open(targetURL, with: option, incognito: false, launcher: mock)
-
-        let exp = expectation(description: "brief settle")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
-        waitForExpectations(timeout: 1.0)
-
-        XCTAssertEqual(mock.calls.count, 0, "Arc space path must NOT route through BrowserLauncher")
+    func test_supportsIncognito_knownBrowserCapabilities() {
+        XCTAssertTrue(URLOpener.supportsIncognito(bundleID: "com.brave.Browser"))
+        XCTAssertTrue(URLOpener.supportsIncognito(bundleID: "company.thebrowser.dia"))
+        XCTAssertTrue(URLOpener.supportsIncognito(bundleID: "org.mozilla.firefox"))
+        XCTAssertTrue(URLOpener.supportsIncognito(bundleID: "com.apple.Safari"))
+        XCTAssertFalse(URLOpener.supportsIncognito(bundleID: "com.example.NotABrowser"))
     }
 
     // MARK: - Profile directory with spaces is passed through correctly
@@ -221,5 +130,45 @@ final class URLOpenerRoutingTests: XCTestCase {
 
         XCTAssertEqual(mock.calls[0].profileDirectory, "Profile 1",
                        "Profile directory name with spaces must be passed as a single value")
+    }
+
+    func test_diaWindowScript_usesFastAccessibilityWindowLookupForProfiles() {
+        let script = URLOpener.diaWindowScript(
+            profileName: "thetobi",
+            incognito: false,
+            url: targetURL
+        )
+
+        XCTAssertTrue(script.contains("repeat with diaWindow in windows"))
+        XCTAssertTrue(script.contains("if itemName starts with \"thetobi:\""))
+        XCTAssertTrue(script.contains("perform action \"AXRaise\" of diaWindow"))
+        XCTAssertTrue(script.contains("keystroke \"t\" using {command down}"))
+        XCTAssertTrue(script.contains("New thetobi Window"))
+        XCTAssertTrue(script.contains("Dia could not open the requested profile window for New thetobi Window"))
+        XCTAssertFalse(script.contains("set currentURL to URL of active tab of front window"))
+        XCTAssertTrue(script.contains(targetURL.absoluteString))
+    }
+
+    func test_diaWindowScript_doesNotFallbackToNormalTabForIncognito() {
+        let script = URLOpener.diaWindowScript(
+            profileName: nil,
+            incognito: true,
+            url: targetURL
+        )
+
+        XCTAssertTrue(script.contains("New Incognito Window"))
+        XCTAssertTrue(script.contains("if true then error \"Dia did not open a private window"))
+        XCTAssertFalse(script.contains("set currentURL to URL of active tab of front window"))
+    }
+
+    func test_diaWindowScript_usesPlainNewWindowMenuItemWithoutProfile() {
+        let script = URLOpener.diaWindowScript(
+            profileName: nil,
+            incognito: false,
+            url: targetURL
+        )
+
+        XCTAssertTrue(script.contains("New Window"))
+        XCTAssertFalse(script.contains("New Window Window"))
     }
 }

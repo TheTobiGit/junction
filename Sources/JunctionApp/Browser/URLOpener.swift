@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 
 enum URLOpener {
     /// Opens `url` in the browser described by `option`.
@@ -38,6 +39,17 @@ enum URLOpener {
                 }
             }
 
+            if option.browser.bundleID == diaBundleID {
+                openDiaWindow(
+                    profileName: incognito ? nil : profile.displayName,
+                    incognito: incognito,
+                    url: url
+                ) { success in
+                    DispatchQueue.main.async { completion?(success) }
+                }
+                return
+            }
+
             // Chromium profile path (paths 1 & 2) — use BrowserLauncher so the
             // URL is delivered even when the browser is already running.
             if isChromiumBundleID(option.browser.bundleID) {
@@ -68,6 +80,13 @@ enum URLOpener {
         }
 
         // MARK: No-profile incognito branch
+
+        if incognito, option.browser.bundleID == diaBundleID {
+            openDiaWindow(profileName: nil, incognito: true, url: url) { success in
+                DispatchQueue.main.async { completion?(success) }
+            }
+            return
+        }
 
         // Chromium no-profile incognito (path 3) — use BrowserLauncher.
         if incognito, isChromiumBundleID(option.browser.bundleID) {
@@ -107,6 +126,19 @@ enum URLOpener {
 
         // MARK: Default branch
 
+        if option.browser.bundleID == diaBundleID {
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            NSWorkspace.shared.open(
+                [url],
+                withApplicationAt: option.browser.url,
+                configuration: config
+            ) { _, error in
+                DispatchQueue.main.async { completion?(error == nil) }
+            }
+            return
+        }
+
         // Chromium no-profile, non-incognito (path 4) — use BrowserLauncher so
         // the URL is delivered even when the browser is already running.
         if isChromiumBundleID(option.browser.bundleID) {
@@ -140,11 +172,13 @@ enum URLOpener {
         return false
     }
 
+    private static let diaBundleID = "company.thebrowser.dia"
+
     private static func isChromiumBundleID(_ bundleID: String) -> Bool {
         let chromiumPrefixes = [
             "com.google.Chrome", "com.microsoft.edgemac", "com.brave.Browser",
             "com.vivaldi.Vivaldi", "com.operasoftware.Opera", "com.operasoftware.OperaGX",
-            "org.chromium.Chromium", "company.thebrowser.dia",
+            "org.chromium.Chromium", diaBundleID,
             "com.kagi.kagimacOS", "app.sigmaos.sigmaos",
         ]
         return chromiumPrefixes.contains { bundleID == $0 || bundleID.hasPrefix($0 + ".") }
@@ -177,15 +211,161 @@ enum URLOpener {
             tell application "System Events"
                 keystroke "n" using {command down, shift down}
             end tell
-            delay 0.15
+            delay 0.5
             open location "\(encoded)"
         end tell
         """
         DispatchQueue.global(qos: .userInitiated).async {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            process.arguments = ["-e", source]
+            do {
+                try process.run()
+                process.waitUntilExit()
+                completion(process.terminationStatus == 0)
+            } catch {
+                completion(false)
+            }
+        }
+    }
+
+    private static func openDiaWindow(
+        profileName: String?,
+        incognito: Bool,
+        url: URL,
+        completion: @escaping (Bool) -> Void
+    ) {
+        if !AXIsProcessTrusted() {
+            requestAccessibilityTrust()
+            completion(false)
+            return
+        }
+
+        runAppleScript(diaWindowScript(profileName: profileName, incognito: incognito, url: url)) { result in
+            completion(result == url.absoluteString)
+        }
+    }
+
+    static func diaWindowScript(
+        profileName: String?,
+        incognito: Bool,
+        url: URL
+    ) -> String {
+        let encodedURL = appleScriptString(url.absoluteString)
+        let rawMenuItem: String
+        if incognito {
+            rawMenuItem = "New Incognito Window"
+        } else if let profileName {
+            rawMenuItem = "New \(profileName) Window"
+        } else {
+            rawMenuItem = "New Window"
+        }
+        let menuItem = appleScriptString(rawMenuItem)
+        let profilePrefix = profileName.map { appleScriptString("\($0):") }
+        let profileWindowLookup = profilePrefix.map { prefix in
+            """
+                    repeat with diaWindow in windows
+                        try
+                            set itemName to name of diaWindow as text
+                            if itemName starts with "\(prefix)" then
+                                perform action "AXRaise" of diaWindow
+                                set foundExistingProfileWindow to true
+                                exit repeat
+                            end if
+                        end try
+                    end repeat
+            """
+        } ?? ""
+        let requiresExactProfileWindow = profileName != nil && !incognito
+
+        return """
+        tell application "Dia"
+            set beforeWindowCount to count of windows
+            activate
+        end tell
+        delay 0.05
+        set foundExistingProfileWindow to false
+        set menuOpenedWindow to false
+        tell application "System Events"
+            tell process "Dia"
+                try
+                    set frontmost to true
+        \(profileWindowLookup)
+                    if foundExistingProfileWindow then
+                        keystroke "t" using {command down}
+                    else
+                        click menu item "\(menuItem)" of menu 1 of menu item "New Window" of menu 1 of menu bar item "File" of menu bar 1
+                        set menuOpenedWindow to true
+                    end if
+                end try
+            end tell
+        end tell
+
+        if foundExistingProfileWindow then
+            delay 0.1
+            tell application "Dia"
+                set URL of active tab of front window to "\(encodedURL)"
+                return "\(encodedURL)"
+            end tell
+        end if
+
+        if menuOpenedWindow then
+            repeat 30 times
+                tell application "Dia"
+                    if (count of windows) > beforeWindowCount then exit repeat
+                end tell
+                delay 0.05
+            end repeat
+        end if
+
+        tell application "Dia"
+            if (count of windows) <= beforeWindowCount then
+                if \(requiresExactProfileWindow ? "true" : "false") then error "Dia could not open the requested profile window for \(menuItem)"
+                if \(incognito ? "true" : "false") then error "Dia did not open a private window for \(menuItem)"
+
+                try
+                    make new window
+                    delay 0.3
+                end try
+
+                if (count of windows) <= beforeWindowCount then
+                    if (count of windows) = 0 then error "Dia has no window available for \(encodedURL)"
+                    set newTab to make new tab at end of tabs of front window with properties {URL:"\(encodedURL)"}
+                    focus newTab
+                else
+                    set URL of active tab of front window to "\(encodedURL)"
+                end if
+            else
+                set URL of active tab of front window to "\(encodedURL)"
+            end if
+
+            return "\(encodedURL)"
+        end tell
+        """
+    }
+
+    private static func requestAccessibilityTrust() {
+        let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        let options = [key: true] as CFDictionary
+        _ = AXIsProcessTrustedWithOptions(options)
+    }
+
+    private static func appleScriptString(_ raw: String) -> String {
+        raw.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
+    private static func runAppleScript(_ source: String, completion: @escaping (String?) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
             var error: NSDictionary?
-            let script = NSAppleScript(source: source)
-            _ = script?.executeAndReturnError(&error)
-            completion(error == nil)
+            let result = NSAppleScript(source: source)?.executeAndReturnError(&error)
+            if let error {
+                NSLog("Junction: AppleScript failed: \(error)")
+                completion(nil)
+                return
+            }
+
+            completion(result?.stringValue)
         }
     }
 

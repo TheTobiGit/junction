@@ -9,6 +9,18 @@ APP_NAME="Junction"
 APP_BUNDLE="build/${APP_NAME}.app"
 CLI_NAME="junction"
 CLI_OUT="build/${CLI_NAME}"
+CODE_SIGN_IDENTITY="${JUNCTION_CODESIGN_IDENTITY:-}"
+
+if [[ -z "${CODE_SIGN_IDENTITY}" ]]; then
+    CODE_SIGN_IDENTITY="$(
+        security find-identity -v -p codesigning 2>/dev/null \
+            | sed -n 's/.*"\(Apple Development:[^"]*\)".*/\1/p' \
+            | head -n 1
+    )"
+fi
+if [[ -z "${CODE_SIGN_IDENTITY}" ]]; then
+    CODE_SIGN_IDENTITY="-"
+fi
 
 echo "Building Junction (${CONFIG})..."
 swift build -c "${CONFIG}" --product Junction
@@ -38,14 +50,15 @@ cat > "${APP_BUNDLE}/Contents/PkgInfo" <<EOF
 APPL????
 EOF
 
-codesign --force --deep --sign - "${APP_BUNDLE}" >/dev/null 2>&1 || true
+codesign --force --deep --sign "${CODE_SIGN_IDENTITY}" "${APP_BUNDLE}" >/dev/null 2>&1 || true
 
 cp "${CLI_EXEC_SRC}" "${CLI_OUT}"
 chmod +x "${CLI_OUT}"
-codesign --force --sign - "${CLI_OUT}" >/dev/null 2>&1 || true
+codesign --force --sign "${CODE_SIGN_IDENTITY}" "${CLI_OUT}" >/dev/null 2>&1 || true
 
 echo "Built ${APP_BUNDLE}"
 echo "Built ${CLI_OUT}"
+echo "Signed with ${CODE_SIGN_IDENTITY}"
 
 if [[ "${2:-}" == "--register" ]]; then
     /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "${APP_BUNDLE}"

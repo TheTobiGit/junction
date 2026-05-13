@@ -86,7 +86,7 @@ final class PickerViewModel: ObservableObject {
     func openInBrowserFromPreview(remember: Bool? = nil, incognito: Bool? = nil) {
         guard let option = selectedOption() else { return }
         let shouldRemember = remember ?? rememberChoice
-        pickHandler(option, shouldRemember, incognito ?? incognitoMode)
+        pickHandler(option, shouldRemember, resolvedIncognito(for: option, requested: incognito))
     }
 
     var didClean: Bool {
@@ -128,12 +128,13 @@ final class PickerViewModel: ObservableObject {
         let list = filteredOptions
         guard list.indices.contains(selectedIndex) else { return }
         let shouldRemember = remember ?? rememberChoice
-        pickHandler(list[selectedIndex], shouldRemember, incognito ?? incognitoMode)
+        let option = list[selectedIndex]
+        pickHandler(option, shouldRemember, resolvedIncognito(for: option, requested: incognito))
     }
 
     func pick(_ option: LaunchOption, remember: Bool? = nil, incognito: Bool? = nil) {
         let shouldRemember = remember ?? rememberChoice
-        pickHandler(option, shouldRemember, incognito ?? incognitoMode)
+        pickHandler(option, shouldRemember, resolvedIncognito(for: option, requested: incognito))
     }
 
     func pickByNumber(_ number: Int, remember: Bool? = nil, incognito: Bool? = nil) {
@@ -142,7 +143,8 @@ final class PickerViewModel: ObservableObject {
         guard list.indices.contains(idx) else { return }
         selectedIndex = idx
         let shouldRemember = remember ?? rememberChoice
-        pickHandler(list[idx], shouldRemember, incognito ?? incognitoMode)
+        let option = list[idx]
+        pickHandler(option, shouldRemember, resolvedIncognito(for: option, requested: incognito))
     }
 
     func toggleMulti(_ option: LaunchOption) {
@@ -163,7 +165,15 @@ final class PickerViewModel: ObservableObject {
     private func confirmMulti(incognito: Bool) {
         let chosen = options.filter { multiSelection.contains($0.id) }
         guard !chosen.isEmpty else { return }
-        pickMultiHandler(chosen, incognito)
+        let privateCapable = chosen.allSatisfy {
+            URLOpener.supportsIncognito(bundleID: $0.browser.bundleID)
+        }
+        pickMultiHandler(chosen, incognito && privateCapable)
+    }
+
+    private func resolvedIncognito(for option: LaunchOption, requested: Bool?) -> Bool {
+        let wantsPrivate = requested ?? incognitoMode
+        return wantsPrivate && URLOpener.supportsIncognito(bundleID: option.browser.bundleID)
     }
 
     func cancel() {
@@ -176,4 +186,3 @@ final class PickerViewModel: ObservableObject {
         pb.setString(cleanedURL.absoluteString, forType: .string)
     }
 }
-

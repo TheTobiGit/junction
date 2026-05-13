@@ -77,6 +77,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                let option = LaunchOptionDiscovery.options().first(where: { $0.target.storageKey == key }) {
                 let shouldClean = clean ?? SettingsStore.shared.settings.cleanURLsBeforeOpening
                 let finalURL = shouldClean ? URLTransformers.default.run(target) : target
+                if incognito, !supportsPrivate(option) {
+                    showPicker(for: target)
+                    return
+                }
                 URLOpener.open(finalURL, with: option, incognito: incognito) { success in
                     if success { LastURLStore.shared.recordRouted(finalURL) }
                 }
@@ -192,6 +196,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     let stripped = String(key.dropFirst("incognito:".count))
                     guard let option = LaunchOptionDiscovery.options().first(where: { $0.target.storageKey == stripped }) else {
                         return .error("unknown target: \(stripped)")
+                    }
+                    guard supportsPrivate(option) else {
+                        return .error("target does not support private/incognito windows: \(stripped)")
                     }
                     action = .openIncognito(option.target)
                 } else if key.hasPrefix("scheme:") {
@@ -328,6 +335,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 showPicker(for: resolved, context: context)
                 return
             }
+            guard supportsPrivate(option) else {
+                showPicker(for: resolved, context: context)
+                return
+            }
             let cleaned = SettingsStore.shared.settings.cleanURLsBeforeOpening
             let urlToOpen = cleaned ? URLTransformers.default.run(resolved) : resolved
             URLOpener.open(urlToOpen, with: option, incognito: true) { success in
@@ -370,11 +381,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func resolve(target: LaunchTarget) -> LaunchOption? {
-        let options = LaunchOptionDiscovery.options()
-        if let match = options.first(where: { $0.target == target }) {
-            return match
-        }
-        return options.first { $0.browser.bundleID == target.bundleID }
+        LaunchOptionDiscovery.resolve(target: target)
+    }
+
+    private func supportsPrivate(_ option: LaunchOption) -> Bool {
+        URLOpener.supportsIncognito(bundleID: option.browser.bundleID)
     }
 
     private func flushPendingURLs() {
@@ -413,4 +424,3 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 }
-
