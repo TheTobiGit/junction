@@ -14,6 +14,7 @@ final class PickerViewModel: ObservableObject {
     /// Host-level icon (e.g. DuckDuckGo service); page preview favicon takes precedence when present.
     @Published private(set) var hostFaviconData: Data? = nil
     @Published var incognitoMode: Bool = false
+    @Published var optionKeyHeld: Bool = false
     @Published var previewMode: Bool = false
     @Published var previewTitle: String? = nil
     @Published var previewLoading: Bool = false
