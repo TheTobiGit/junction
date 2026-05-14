@@ -319,7 +319,7 @@ struct PickerView: View {
             }
 
             if let host = model.rememberHost, !model.incognitoMode {
-                rememberToggle(host: host)
+                RememberHostToggle(host: host, isOn: model.rememberChoice, action: model.toggleRemember)
             }
 
             Spacer(minLength: 8)
@@ -329,29 +329,6 @@ struct PickerView: View {
         .frame(height: 28)
         .padding(.horizontal, 16)
         .padding(.bottom, 14)
-    }
-
-    private func rememberToggle(host: String) -> some View {
-        Button {
-            model.toggleRemember()
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: model.rememberChoice ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 10, weight: .semibold))
-                Text("Remember my choice for ")
-                    .foregroundColor(.secondary)
-                + Text(host)
-                    .foregroundColor(.primary)
-                    .fontWeight(.medium)
-                + Text(" links")
-                    .foregroundColor(.secondary)
-            }
-            .font(.system(size: 11))
-            .foregroundColor(model.rememberChoice ? .accentColor : .secondary)
-            .padding(.horizontal, 8).padding(.vertical, 4)
-        }
-        .buttonStyle(.plain)
-        .help("Remember the browser you pick next as the default for \(host) links")
     }
 
     private var hintSegments: some View {
