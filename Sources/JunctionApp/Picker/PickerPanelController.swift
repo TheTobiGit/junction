@@ -9,14 +9,27 @@ final class KeyablePanel: NSPanel {
 }
 
 final class PickerPanelController {
+    enum DismissReason {
+        case userPicked
+        case userCancelled
+        case clickedOutside
+        case resignedKey
+    }
+
+    private static let screenInsets: CGFloat = 8
+
     private var panel: NSPanel?
     private var hosting: NSHostingView<PickerView>?
     private var resignMonitor: Any?
     private var globalClickMonitor: Any?
     private var previewObserver: AnyCancellable?
     private var pickerSize: CGSize = .zero
+    private var isDismissed: Bool = false
 
     func present(url: URL, context: RouteContext) {
+        if panel != nil { dismiss(reason: .userCancelled) }
+        isDismissed = false
+
         let openOnce: (LaunchOption, Bool) -> Void = { option, incognito in
             let cleaned = SettingsStore.shared.settings.cleanURLsBeforeOpening
             let urlToOpen = cleaned ? URLTransformers.default.run(url) : url
@@ -38,17 +51,17 @@ final class PickerPanelController {
                     RulesStore.shared.addRule(host: .equals(host), action: action)
                 }
                 openOnce(option, incognito)
-                self?.dismiss()
+                self?.dismiss(reason: .userPicked)
             },
             onPickMulti: { [weak self] options, incognito in
                 for option in options { openOnce(option, incognito) }
-                self?.dismiss()
+                self?.dismiss(reason: .userPicked)
             },
-            onCancel: { [weak self] in self?.dismiss() }
+            onCancel: { [weak self] in self?.dismiss(reason: .userCancelled) }
         )
 
         LastURLStore.shared.recordPicker(url)
-        PreviewWebViewPool.shared.warmup()
+        PreviewWebViewFactory.warmup()
 
         let width = PickerView.desiredWidth(forOptionCount: options.count)
         let view = PickerView(model: model, width: width)
@@ -98,7 +111,7 @@ final class PickerPanelController {
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
         ) { [weak self] _ in
-            self?.dismiss()
+            self?.dismiss(reason: .clickedOutside)
         }
 
         resignMonitor = NotificationCenter.default.addObserver(
@@ -106,7 +119,7 @@ final class PickerPanelController {
             object: panel,
             queue: .main
         ) { [weak self] _ in
-            self?.dismiss()
+            self?.dismiss(reason: .resignedKey)
         }
     }
 
@@ -126,17 +139,26 @@ final class PickerPanelController {
     private func clampToScreen(_ frame: NSRect) -> NSRect {
         guard let screen = panel?.screen ?? NSScreen.main else { return frame }
         let visible = screen.visibleFrame
+        let inset = Self.screenInsets
         var out = frame
         if out.width > visible.width { out.size.width = visible.width }
         if out.height > visible.height { out.size.height = visible.height }
-        if out.minX < visible.minX { out.origin.x = visible.minX + 8 }
-        if out.minY < visible.minY { out.origin.y = visible.minY + 8 }
-        if out.maxX > visible.maxX { out.origin.x = visible.maxX - out.width - 8 }
-        if out.maxY > visible.maxY { out.origin.y = visible.maxY - out.height - 8 }
+        if out.minX < visible.minX { out.origin.x = visible.minX + inset }
+        if out.minY < visible.minY { out.origin.y = visible.minY + inset }
+        if out.maxX > visible.maxX { out.origin.x = visible.maxX - out.width - inset }
+        if out.maxY > visible.maxY { out.origin.y = visible.maxY - out.height - inset }
         return out
     }
 
     func dismiss() {
+        dismiss(reason: .userCancelled)
+    }
+
+    func dismiss(reason: DismissReason) {
+        guard !isDismissed else { return }
+        isDismissed = true
+        _ = reason
+
         previewObserver?.cancel()
         previewObserver = nil
         if let token = globalClickMonitor {

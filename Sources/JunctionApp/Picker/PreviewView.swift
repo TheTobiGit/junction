@@ -254,18 +254,7 @@ struct PreviewView: View {
 
     @ViewBuilder
     private var linkIcon: some View {
-        if let data = model.preview?.faviconData, let image = NSImage(data: data) {
-            Image(nsImage: image)
-                .resizable()
-                .interpolation(.high)
-        } else {
-            ZStack {
-                Color.secondary.opacity(0.15)
-                Image(systemName: "globe")
-                    .font(.system(size: 9))
-                    .foregroundColor(.secondary)
-            }
-        }
+        FaviconView(data: model.preview?.faviconData, fallbackSize: 9)
     }
 }
 
@@ -424,12 +413,10 @@ private struct WebContainer: NSViewRepresentable {
     @Binding var progress: Double
 
     func makeNSView(context: Context) -> WKWebView {
-        let webView = PreviewWebViewPool.shared.acquireWebView()
+        let webView = PreviewWebViewFactory.makeWebView()
         webView.navigationDelegate = context.coordinator
         context.coordinator.observe(webView: webView)
-        if webView.url != url {
-            webView.load(URLRequest(url: url))
-        }
+        webView.load(URLRequest(url: url))
         return webView
     }
 
@@ -441,7 +428,7 @@ private struct WebContainer: NSViewRepresentable {
 
     static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
         coordinator.invalidate(webView: nsView)
-        PreviewWebViewPool.shared.release(nsView)
+        PreviewWebViewFactory.teardown(nsView)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -463,6 +450,7 @@ private struct WebContainer: NSViewRepresentable {
         }
 
         func observe(webView: WKWebView) {
+            invalidate(webView: webView)
             progressObservation = webView.observe(\.estimatedProgress, options: [.new]) { [weak self] _, change in
                 guard let value = change.newValue else { return }
                 DispatchQueue.main.async { self?.progress = value }

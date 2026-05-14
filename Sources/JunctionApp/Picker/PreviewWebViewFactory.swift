@@ -1,11 +1,8 @@
 import AppKit
 import WebKit
 
-final class PreviewWebViewPool {
-    static let shared = PreviewWebViewPool()
-
-    private let dataStore: WKWebsiteDataStore = .nonPersistent()
-    private var cachedWebView: WKWebView?
+enum PreviewWebViewFactory {
+    private static let dataStore: WKWebsiteDataStore = .nonPersistent()
     private static let blankURL = URL(string: "about:blank")!
 
     private static let scrollbarCSS: String = """
@@ -43,44 +40,32 @@ final class PreviewWebViewPool {
         """
     }()
 
-    private init() {}
-
-    func warmup() {
-        let webView = acquireWebView()
-        if webView.url == nil {
-            webView.load(URLRequest(url: Self.blankURL))
-        }
+    static func warmup() {
+        _ = dataStore
     }
 
-    func acquireWebView() -> WKWebView {
-        if let cached = cachedWebView { return cached }
-        let webView = makeWebView()
-        cachedWebView = webView
-        return webView
-    }
-
-    func release(_ webView: WKWebView) {
-        webView.stopLoading()
-        webView.navigationDelegate = nil
-        webView.load(URLRequest(url: Self.blankURL))
-    }
-
-    private func makeWebView() -> WKWebView {
+    static func makeWebView() -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = dataStore
         config.defaultWebpagePreferences.allowsContentJavaScript = true
 
         let userScript = WKUserScript(
-            source: Self.scrollbarScript,
+            source: scrollbarScript,
             injectionTime: .atDocumentStart,
             forMainFrameOnly: false
         )
         config.userContentController.addUserScript(userScript)
 
         let webView = WKWebView(frame: .zero, configuration: config)
-        webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+        webView.customUserAgent = BrowserUserAgent.safariMacDesktop
         webView.allowsBackForwardNavigationGestures = true
         webView.setValue(false, forKey: "drawsBackground")
         return webView
+    }
+
+    static func teardown(_ webView: WKWebView) {
+        webView.stopLoading()
+        webView.navigationDelegate = nil
+        webView.load(URLRequest(url: blankURL))
     }
 }

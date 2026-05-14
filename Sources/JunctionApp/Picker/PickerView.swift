@@ -217,18 +217,7 @@ struct PickerView: View {
 
     @ViewBuilder
     private var linkIcon: some View {
-        if let data = model.preview?.faviconData, let image = NSImage(data: data) {
-            Image(nsImage: image)
-                .resizable()
-                .interpolation(.high)
-        } else {
-            ZStack {
-                Color.secondary.opacity(0.15)
-                Image(systemName: "globe")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-            }
-        }
+        FaviconView(data: model.preview?.faviconData, fallbackSize: 12)
     }
 
     private func sourceBadge(_ source: URLSource) -> some View {
