@@ -11,20 +11,20 @@ struct RememberHostToggle: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(alignment: .center, spacing: 8) {
+            HStack(alignment: .center, spacing: 10) {
                 Image(systemName: isOn ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(isOn ? Color.accentColor : Color.secondary.opacity(0.9))
 
                 label
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(Color.primary.opacity(hovered ? 0.07 : 0))
             )
-            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         }
         .buttonStyle(.plain)
         .animation(.easeOut(duration: 0.14), value: hovered)
@@ -47,6 +47,6 @@ struct RememberHostToggle: View {
             .fontWeight(.semibold)
             + Text(" links")
             .foregroundColor(.secondary))
-            .font(.system(size: 11))
+            .font(.system(size: 13))
     }
 }

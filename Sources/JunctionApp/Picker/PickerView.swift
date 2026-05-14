@@ -18,13 +18,13 @@ struct PickerView: View {
     let width: CGFloat
     @State private var appeared: Bool = false
 
-    static let tileWidth: CGFloat = 112
-    static let tileSpacing: CGFloat = 10
-    static let listHorizontalPadding: CGFloat = 16
-    static let minWidth: CGFloat = 480
-    static let pickerHeight: CGFloat = 268
-    static let previewWidth: CGFloat = 1120
-    static let previewHeight: CGFloat = 760
+    static let tileWidth: CGFloat = 144
+    static let tileSpacing: CGFloat = 13
+    static let listHorizontalPadding: CGFloat = 20
+    static let minWidth: CGFloat = 600
+    static let pickerHeight: CGFloat = 332
+    static let previewWidth: CGFloat = 1280
+    static let previewHeight: CGFloat = 880
 
     static func desiredWidth(forOptionCount count: Int) -> CGFloat {
         let content = CGFloat(count) * tileWidth
@@ -86,9 +86,9 @@ struct PickerView: View {
                     )
                 )
         )
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .strokeBorder(
                     LinearGradient(
                         colors: [Color.white.opacity(0.18), Color.white.opacity(0.04)],
@@ -102,8 +102,8 @@ struct PickerView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 10) {
-            HStack(spacing: 6) {
+        HStack(alignment: .center, spacing: 12) {
+            HStack(spacing: 8) {
                 if let source = model.sourceApp {
                     sourcePill(source)
                 }
@@ -120,17 +120,17 @@ struct PickerView: View {
             .fixedSize(horizontal: true, vertical: false)
 
             GeometryReader { geo in
-                let faviconSlot: CGFloat = 14 + 6
-                let textCap = max(48, geo.size.width - faviconSlot)
+                let faviconSlot: CGFloat = 18 + 8
+                let textCap = max(60, geo.size.width - faviconSlot)
                 HStack {
                     Spacer(minLength: 0)
-                    HStack(spacing: 4) {
-                        FaviconView(data: model.resolvedFaviconData, fallbackSize: 9)
-                            .frame(width: 14, height: 14)
-                            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                    HStack(spacing: 6) {
+                        FaviconView(data: model.resolvedFaviconData, fallbackSize: 11)
+                            .frame(width: 18, height: 18)
+                            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
 
                         Text(displayURL)
-                            .font(.system(size: 11))
+                            .font(.system(size: 14))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
@@ -141,16 +141,16 @@ struct PickerView: View {
                 }
                 .frame(width: geo.size.width, height: geo.size.height)
             }
-            .frame(height: 28)
+            .frame(height: 34)
 
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Button {
                     model.openPreferences()
                 } label: {
                     Image(systemName: "gearshape")
-                        .font(.system(size: 12, weight: .regular))
+                        .font(.system(size: 15, weight: .regular))
                         .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
+                        .frame(width: 34, height: 34)
                         .background(Circle().fill(Color.white.opacity(0.08)))
                 }
                 .buttonStyle(.plain)
@@ -158,20 +158,20 @@ struct PickerView: View {
             }
             .fixedSize(horizontal: true, vertical: false)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 14)
-        .padding(.bottom, 8)
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
+        .padding(.bottom, 10)
     }
 
     private var incognitoBadge: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
             Image(systemName: "eyeglasses")
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
             Text("Private")
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
         }
         .foregroundColor(.indigo)
-        .padding(.horizontal, 7).padding(.vertical, 3)
+        .padding(.horizontal, 9).padding(.vertical, 4)
         .background(Capsule().fill(Color.indigo.opacity(0.18)))
         .help("Open in private/incognito mode (⌥ to toggle, ⌥⏎ to confirm)")
     }
@@ -181,23 +181,23 @@ struct PickerView: View {
     }
 
     private func sourcePill(_ source: URLSource) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             ZStack {
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .fill(Color.black.opacity(0.35))
-                    .frame(width: 18, height: 18)
+                    .frame(width: 22, height: 22)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
                             .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
                     )
                 if let icon = source.icon {
                     Image(nsImage: icon)
                         .resizable()
                         .interpolation(.high)
-                        .frame(width: 12, height: 12)
+                        .frame(width: 15, height: 15)
                 } else {
                     Image(systemName: "link")
-                        .font(.system(size: 9, weight: .medium))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(Color.white.opacity(0.45))
                 }
             }
@@ -206,22 +206,22 @@ struct PickerView: View {
                 + Text(source.name)
                 .foregroundColor(.primary)
                 .fontWeight(.semibold))
-                .font(.system(size: 11))
+                .font(.system(size: 13))
         }
-        .padding(.leading, 8)
-        .padding(.trailing, 10)
-        .padding(.vertical, 5)
+        .padding(.leading, 10)
+        .padding(.trailing, 12)
+        .padding(.vertical, 6)
         .background(Capsule().fill(Color.white.opacity(0.08)))
     }
 
     private func focusBadge(_ name: String) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
             Image(systemName: "moon.fill")
-                .font(.system(size: 9))
+                .font(.system(size: 11))
             Text(name)
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
         }
-        .padding(.horizontal, 7).padding(.vertical, 3)
+        .padding(.horizontal, 9).padding(.vertical, 4)
         .foregroundColor(.purple)
         .background(Capsule().fill(Color.purple.opacity(0.18)))
     }
@@ -229,14 +229,14 @@ struct PickerView: View {
     private func riskChip(_ flags: [RiskFlag]) -> some View {
         let highest = flags.max(by: { $0.level.rawValue < $1.level.rawValue }) ?? flags[0]
         let tint = riskTint(highest.level)
-        return HStack(spacing: 4) {
+        return HStack(spacing: 5) {
             Image(systemName: riskIcon(highest.level))
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
             Text(flags.count == 1 ? highest.title : "\(flags.count) risk flags")
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
         }
         .foregroundColor(tint)
-        .padding(.horizontal, 7).padding(.vertical, 3)
+        .padding(.horizontal, 9).padding(.vertical, 4)
         .background(Capsule().fill(tint.opacity(0.18)))
         .help(flags.map { "\($0.title): \($0.detail)" }.joined(separator: "\n"))
     }
@@ -264,7 +264,7 @@ struct PickerView: View {
         return Group {
             if list.isEmpty {
                 Text("No browsers enabled — open Preferences to show some.")
-                    .font(.system(size: 12))
+                    .font(.system(size: 14))
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -274,7 +274,7 @@ struct PickerView: View {
                     }
                 }
                 .padding(.horizontal, Self.listHorizontalPadding)
-                .padding(.vertical, 8)
+                .padding(.vertical, 10)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
         }
@@ -309,12 +309,12 @@ struct PickerView: View {
     }
 
     private var footer: some View {
-        HStack(alignment: .center, spacing: 10) {
+        HStack(alignment: .center, spacing: 12) {
             if !model.multiSelection.isEmpty {
                 Text("\(model.multiSelection.count) selected")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.accentColor)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(Capsule().fill(Color.accentColor.opacity(0.15)))
             }
 
@@ -322,17 +322,17 @@ struct PickerView: View {
                 RememberHostToggle(host: host, isOn: model.rememberChoice, action: model.toggleRemember)
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 10)
 
             hintSegments
         }
-        .frame(height: 28)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 14)
+        .frame(height: 34)
+        .padding(.horizontal, 20)
+        .padding(.bottom, 18)
     }
 
     private var hintSegments: some View {
-        HStack(alignment: .center, spacing: 8) {
+        HStack(alignment: .center, spacing: 10) {
             HintPill(key: "␣", label: "Preview")
             HintPill(key: "↵", label: "Open")
             HintPill(key: "⌥", label: "Private")
@@ -358,60 +358,60 @@ private struct PickerTile: View {
     @State private var appeared: Bool = false
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             ZStack(alignment: .topTrailing) {
                 Image(nsImage: option.icon)
                     .resizable()
                     .interpolation(.high)
-                    .frame(width: 48, height: 48)
+                    .frame(width: 60, height: 60)
                     .scaleEffect(hovered && !selected ? 1.06 : (selected ? 1.03 : 1.0))
                     .overlay(alignment: .bottomTrailing) {
                         if showIncognito {
-                            IncognitoBadge(size: 18)
-                                .offset(x: 4, y: 4)
+                            IncognitoBadge(size: 22)
+                                .offset(x: 5, y: 5)
                                 .transition(.scale.combined(with: .opacity))
                         }
                     }
 
                 if number <= 9 {
                     Text("\(number)")
-                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundColor(.primary.opacity(0.85))
-                        .frame(width: 16, height: 16)
+                        .frame(width: 20, height: 20)
                         .background(
                             Circle()
                                 .fill(Color.black.opacity(0.4))
                                 .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 0.5))
                         )
-                        .offset(x: 6, y: -4)
+                        .offset(x: 8, y: -5)
                 }
 
                 if multiSelected {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.accentColor)
-                        .font(.system(size: 14))
+                        .font(.system(size: 17))
                         .background(Circle().fill(Color.black.opacity(0.5)))
-                        .offset(x: 6, y: 38)
+                        .offset(x: 8, y: 48)
                 }
             }
-            .frame(height: 54)
+            .frame(height: 68)
 
-            VStack(spacing: 2) {
+            VStack(spacing: 3) {
                 Text(option.browser.name)
-                    .font(.system(size: 12, weight: selected ? .semibold : .medium))
+                    .font(.system(size: 14, weight: selected ? .semibold : .medium))
                     .foregroundColor(.primary)
                     .lineLimit(1)
                     .truncationMode(.middle)
 
                 if let profile = option.profile {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 5) {
                         if let hex = option.colorHex, let color = Color(hexString: hex) {
                             Capsule()
                                 .fill(color)
-                                .frame(width: 10, height: 3)
+                                .frame(width: 12, height: 4)
                         }
                         Text(profile.displayName)
-                            .font(.system(size: 10))
+                            .font(.system(size: 12))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
@@ -419,17 +419,17 @@ private struct PickerTile: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 5)
         }
-        .padding(.vertical, 14)
-        .padding(.horizontal, 8)
-        .frame(width: 112, height: 124)
+        .padding(.vertical, 18)
+        .padding(.horizontal, 10)
+        .frame(width: 144, height: 156)
         .background(
             tileFill
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(tileStroke, lineWidth: selected || multiSelected ? 2 : 1)
         )
         .shadow(
