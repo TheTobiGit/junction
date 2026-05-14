@@ -156,7 +156,7 @@ struct PreviewView: View {
     private var hintBar: some View {
         HStack(spacing: 10) {
             if let host = model.rememberHost, !model.incognitoMode {
-                rememberToggle(host: host)
+                RememberHostToggle(host: host, isOn: model.rememberChoice, action: model.toggleRemember)
             }
 
             Spacer(minLength: 0)
@@ -180,29 +180,6 @@ struct PreviewView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 7)
         .help(PickerShortcutHelp.preview)
-    }
-
-    private func rememberToggle(host: String) -> some View {
-        Button {
-            model.toggleRemember()
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: model.rememberChoice ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 10, weight: .semibold))
-                Text("Remember my choice for ")
-                    .foregroundColor(.secondary)
-                + Text(host)
-                    .foregroundColor(.primary)
-                    .fontWeight(.medium)
-                + Text(" links")
-                    .foregroundColor(.secondary)
-            }
-            .font(.system(size: 11))
-            .foregroundColor(model.rememberChoice ? .accentColor : .secondary)
-            .padding(.horizontal, 8).padding(.vertical, 4)
-        }
-        .buttonStyle(.plain)
-        .help("Remember the browser you pick next as the default for \(host) links")
     }
 
     @ViewBuilder
