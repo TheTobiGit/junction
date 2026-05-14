@@ -159,8 +159,8 @@ struct PickerView: View {
             .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .padding(.bottom, 4)
+        .padding(.top, 14)
+        .padding(.bottom, 8)
     }
 
     private var incognitoBadge: some View {
@@ -324,8 +324,9 @@ struct PickerView: View {
 
             hintSegments
         }
-        .frame(height: 32)
+        .frame(height: 28)
         .padding(.horizontal, 16)
+        .padding(.bottom, 14)
     }
 
     private func rememberToggle(host: String) -> some View {

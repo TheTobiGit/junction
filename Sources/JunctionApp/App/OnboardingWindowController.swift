@@ -80,6 +80,12 @@ struct OnboardingView: View {
         }
     }
 
+    private var visibleStepIndex: Int {
+        visibleSteps.firstIndex(of: step)
+            ?? visibleSteps.firstIndex { $0.rawValue > step.rawValue }
+            ?? max(visibleSteps.count - 1, 0)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -100,7 +106,7 @@ struct OnboardingView: View {
             HStack(spacing: 8) {
                 ForEach(Array(visibleSteps.enumerated()), id: \.element) { index, _ in
                     Circle()
-                        .fill(index <= (visibleSteps.firstIndex(of: step) ?? 0) ? Color.accentColor : Color.secondary.opacity(0.3))
+                        .fill(index <= visibleStepIndex ? Color.accentColor : Color.secondary.opacity(0.3))
                         .frame(width: 7, height: 7)
                 }
                 Spacer()
@@ -149,7 +155,7 @@ struct OnboardingView: View {
             Button("Back") {
                 goBackStep()
             }
-            .disabled(step == visibleSteps.first)
+            .disabled(visibleStepIndex == 0)
             .keyboardShortcut(.leftArrow, modifiers: [.command])
 
             Spacer()
@@ -171,13 +177,25 @@ struct OnboardingView: View {
     }
 
     private func advanceStep() {
-        guard let i = visibleSteps.firstIndex(of: step), i + 1 < visibleSteps.count else { return }
-        step = visibleSteps[i + 1]
+        if let i = visibleSteps.firstIndex(of: step), i + 1 < visibleSteps.count {
+            step = visibleSteps[i + 1]
+            return
+        }
+
+        if let next = visibleSteps.first(where: { $0.rawValue > step.rawValue }) {
+            step = next
+        }
     }
 
     private func goBackStep() {
-        guard let i = visibleSteps.firstIndex(of: step), i > 0 else { return }
-        step = visibleSteps[i - 1]
+        if let i = visibleSteps.firstIndex(of: step), i > 0 {
+            step = visibleSteps[i - 1]
+            return
+        }
+
+        if let previous = visibleSteps.last(where: { $0.rawValue < step.rawValue }) {
+            step = previous
+        }
     }
 
     // MARK: Steps
