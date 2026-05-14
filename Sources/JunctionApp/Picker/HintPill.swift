@@ -5,17 +5,17 @@ struct HintPill: View {
     let label: String
 
     var body: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 4) {
             Text(key)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundColor(.primary.opacity(0.85))
-                .padding(.horizontal, 4).padding(.vertical, 1)
+                .padding(.horizontal, 6).padding(.vertical, 2)
                 .background(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
                         .fill(Color.white.opacity(0.1))
                 )
             Text(label)
-                .font(.system(size: 10))
+                .font(.system(size: 12))
                 .foregroundColor(.secondary)
         }
     }

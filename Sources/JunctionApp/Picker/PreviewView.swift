@@ -12,9 +12,9 @@ struct PreviewView: View {
             bottomChrome
         }
         .background(VisualEffectView(material: .hudWindow, blendingMode: .behindWindow))
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .strokeBorder(
                     LinearGradient(
                         colors: [Color.white.opacity(0.18), Color.white.opacity(0.04)],
@@ -42,8 +42,8 @@ struct PreviewView: View {
                     backButton
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 12)
-                .padding(.top, 10)
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
                 Spacer(minLength: 0)
             }
             .allowsHitTesting(true)
@@ -67,7 +67,7 @@ struct PreviewView: View {
                     .animation(.easeOut(duration: 0.18), value: model.previewProgress)
             }
         }
-        .frame(height: 2)
+        .frame(height: 3)
         .opacity(model.previewLoading || model.previewProgress < 1.0 ? 1 : 0)
         .animation(.easeOut(duration: 0.25), value: model.previewLoading)
     }
@@ -97,13 +97,13 @@ struct PreviewView: View {
     }
 
     private var titleStrip: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             linkIcon
-                .frame(width: 18, height: 18)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .frame(width: 22, height: 22)
+                .clipShape(RoundedRectangle(cornerRadius: 5))
 
             Text(model.previewTitle ?? model.preview?.title ?? model.displayHost)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(.primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -112,22 +112,22 @@ struct PreviewView: View {
                 .foregroundColor(.secondary.opacity(0.6))
 
             Text(model.cleanedURL.absoluteString)
-                .font(.system(size: 10, design: .monospaced))
+                .font(.system(size: 12, design: .monospaced))
                 .foregroundColor(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 10)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 10)
     }
 
     private var browserDock: some View {
         let options = model.filteredOptions
         let privateActive = model.incognitoMode || model.optionKeyHeld
         return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 ForEach(Array(options.enumerated()), id: \.element.id) { idx, option in
                     let supportsIncognito = URLOpener.supportsIncognito(bundleID: option.browser.bundleID)
                     let incognitoUnsupported = privateActive && !supportsIncognito
@@ -148,13 +148,13 @@ struct PreviewView: View {
                     }
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
         }
     }
 
     private var hintBar: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             if let host = model.rememberHost, !model.incognitoMode {
                 RememberHostToggle(host: host, isOn: model.rememberChoice, action: model.toggleRemember)
             }
@@ -162,12 +162,12 @@ struct PreviewView: View {
             Spacer(minLength: 0)
 
             if model.previewLoading {
-                HStack(spacing: 5) {
+                HStack(spacing: 6) {
                     ProgressView()
-                        .scaleEffect(0.45)
-                        .frame(width: 12, height: 12)
+                        .scaleEffect(0.55)
+                        .frame(width: 14, height: 14)
                     Text("Loading")
-                        .font(.system(size: 10))
+                        .font(.system(size: 12))
                         .foregroundColor(.secondary)
                 }
             }
@@ -177,8 +177,8 @@ struct PreviewView: View {
             HintPill(key: "⌥", label: "Private")
             HintPill(key: "1-9", label: "Switch")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 9)
         .help(PickerShortcutHelp.preview)
     }
 
@@ -197,9 +197,9 @@ private struct FloatingIconButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 12, weight: .bold))
+                .font(.system(size: 15, weight: .bold))
                 .foregroundColor(.primary.opacity(0.92))
-                .frame(width: 28, height: 28)
+                .frame(width: 36, height: 36)
                 .background(
                     Circle()
                         .fill(.ultraThinMaterial)
@@ -208,7 +208,7 @@ private struct FloatingIconButton: View {
                     Circle()
                         .strokeBorder(Color.white.opacity(hovered ? 0.25 : 0.14), lineWidth: 0.5)
                 )
-                .shadow(color: Color.black.opacity(hovered ? 0.4 : 0.22), radius: hovered ? 8 : 4, y: hovered ? 3 : 1)
+                .shadow(color: Color.black.opacity(hovered ? 0.4 : 0.22), radius: hovered ? 10 : 5, y: hovered ? 4 : 2)
                 .scaleEffect(hovered ? 1.08 : 1.0)
         }
         .buttonStyle(.plain)
@@ -230,46 +230,46 @@ private struct DockTile: View {
     @State private var hovered: Bool = false
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             iconStack
 
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(option.browser.name)
-                    .font(.system(size: 11, weight: selected ? .semibold : .medium))
+                    .font(.system(size: 13, weight: selected ? .semibold : .medium))
                     .foregroundColor(.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
 
                 if let profile = option.profile {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 5) {
                         if let hex = option.colorHex, let color = Color(hexString: hex) {
                             Capsule()
                                 .fill(color)
-                                .frame(width: 8, height: 2.5)
+                                .frame(width: 10, height: 3)
                         }
                         Text(profile.displayName)
-                            .font(.system(size: 9))
+                            .font(.system(size: 11))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
                 }
             }
-            .frame(maxWidth: 120, alignment: .leading)
+            .frame(maxWidth: 150, alignment: .leading)
             .fixedSize(horizontal: true, vertical: false)
         }
-        .padding(.leading, 6)
-        .padding(.trailing, 10)
-        .padding(.vertical, 5)
+        .padding(.leading, 8)
+        .padding(.trailing, 12)
+        .padding(.vertical, 7)
         .background(tileFill)
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(tileStroke, lineWidth: selected ? 1.2 : 0.6)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(tileStroke, lineWidth: selected ? 1.4 : 0.7)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .shadow(
             color: selected ? Color.accentColor.opacity(0.28) : Color.black.opacity(hovered ? 0.18 : 0),
-            radius: selected ? 8 : 4,
+            radius: selected ? 10 : 5,
             x: 0,
             y: selected ? 3 : 2
         )
@@ -289,29 +289,29 @@ private struct DockTile: View {
             Image(nsImage: option.icon)
                 .resizable()
                 .interpolation(.high)
-                .frame(width: 28, height: 28)
+                .frame(width: 36, height: 36)
                 .overlay(alignment: .bottomTrailing) {
                     if showIncognito {
-                        IncognitoBadge(size: 12)
-                            .offset(x: 2, y: 2)
+                        IncognitoBadge(size: 15)
+                            .offset(x: 3, y: 3)
                             .transition(.scale.combined(with: .opacity))
                     }
                 }
 
             if number <= 9 {
                 Text("\(number)")
-                    .font(.system(size: 8, weight: .bold, design: .rounded))
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
                     .foregroundColor(.primary.opacity(0.9))
-                    .frame(width: 13, height: 13)
+                    .frame(width: 16, height: 16)
                     .background(
                         Circle()
                             .fill(Color.black.opacity(0.55))
                             .overlay(Circle().strokeBorder(Color.white.opacity(0.22), lineWidth: 0.5))
                     )
-                    .offset(x: 4, y: -3)
+                    .offset(x: 5, y: -4)
             }
         }
-        .frame(width: 32, height: 28)
+        .frame(width: 40, height: 36)
         .animation(.spring(response: 0.25, dampingFraction: 0.75), value: showIncognito)
     }
 
