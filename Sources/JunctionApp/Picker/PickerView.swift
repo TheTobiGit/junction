@@ -281,14 +281,16 @@ struct PickerView: View {
     }
 
     private func tile(idx: Int, option: LaunchOption) -> some View {
-        let incognitoUnsupported = model.incognitoMode
-            && !URLOpener.supportsIncognito(bundleID: option.browser.bundleID)
+        let privateActive = model.incognitoMode || model.optionKeyHeld
+        let supportsIncognito = URLOpener.supportsIncognito(bundleID: option.browser.bundleID)
+        let incognitoUnsupported = privateActive && !supportsIncognito
         return PickerTile(
             option: option,
             number: idx + 1,
             selected: idx == model.selectedIndex,
             multiSelected: model.multiSelection.contains(option.id),
             dimmed: incognitoUnsupported,
+            showIncognito: privateActive && supportsIncognito,
             appearDelay: Double(idx) * 0.018
         )
         .help(incognitoUnsupported
@@ -336,35 +338,20 @@ struct PickerView: View {
             HStack(spacing: 5) {
                 Image(systemName: model.rememberChoice ? "checkmark.square.fill" : "square")
                     .font(.system(size: 10, weight: .semibold))
-                Text("Always open ")
+                Text("Remember my choice for ")
                     .foregroundColor(.secondary)
                 + Text(host)
                     .foregroundColor(.primary)
                     .fontWeight(.medium)
-                + Text(" here")
+                + Text(" links")
                     .foregroundColor(.secondary)
             }
             .font(.system(size: 11))
             .foregroundColor(model.rememberChoice ? .accentColor : .secondary)
             .padding(.horizontal, 8).padding(.vertical, 4)
-            .background(
-                Capsule().fill(
-                    model.rememberChoice
-                        ? Color.accentColor.opacity(0.16)
-                        : Color.white.opacity(0.06)
-                )
-            )
-            .overlay(
-                Capsule().strokeBorder(
-                    model.rememberChoice
-                        ? Color.accentColor.opacity(0.5)
-                        : Color.white.opacity(0.08),
-                    lineWidth: 1
-                )
-            )
         }
         .buttonStyle(.plain)
-        .help("Remember the browser you pick next as the default for \(host)")
+        .help("Remember the browser you pick next as the default for \(host) links")
     }
 
     private var hintSegments: some View {
@@ -388,6 +375,7 @@ private struct PickerTile: View {
     let selected: Bool
     let multiSelected: Bool
     let dimmed: Bool
+    let showIncognito: Bool
     let appearDelay: Double
     @State private var hovered: Bool = false
     @State private var appeared: Bool = false
@@ -400,6 +388,13 @@ private struct PickerTile: View {
                     .interpolation(.high)
                     .frame(width: 48, height: 48)
                     .scaleEffect(hovered && !selected ? 1.06 : (selected ? 1.03 : 1.0))
+                    .overlay(alignment: .bottomTrailing) {
+                        if showIncognito {
+                            IncognitoBadge(size: 18)
+                                .offset(x: 4, y: 4)
+                                .transition(.scale.combined(with: .opacity))
+                        }
+                    }
 
                 if number <= 9 {
                     Text("\(number)")
@@ -486,6 +481,7 @@ private struct PickerTile: View {
         .animation(.easeOut(duration: 0.15), value: hovered)
         .animation(.easeOut(duration: 0.15), value: selected)
         .animation(.easeOut(duration: 0.15), value: multiSelected)
+        .animation(.spring(response: 0.25, dampingFraction: 0.75), value: showIncognito)
     }
 
     @ViewBuilder
@@ -525,6 +521,26 @@ private struct PickerTile: View {
     }
 }
 
+struct IncognitoBadge: View {
+    let size: CGFloat
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color.black.opacity(0.78))
+                .overlay(
+                    Circle()
+                        .strokeBorder(Color.white.opacity(0.22), lineWidth: 0.5)
+                )
+            Image(systemName: "eyeglasses")
+                .font(.system(size: size * 0.55, weight: .semibold))
+                .foregroundColor(.white)
+        }
+        .frame(width: size, height: size)
+        .shadow(color: Color.black.opacity(0.35), radius: 2, x: 0, y: 1)
+    }
+}
+
 struct VisualEffectView: NSViewRepresentable {
     let material: NSVisualEffectView.Material
     let blendingMode: NSVisualEffectView.BlendingMode
@@ -559,13 +575,24 @@ private struct KeyEventCatcher: NSViewRepresentable {
 private final class KeyCatcherView: NSView {
     weak var model: PickerViewModel?
     private var monitor: Any?
+    private var flagsMonitor: Any?
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard window != nil else {
             if let monitor { NSEvent.removeMonitor(monitor) }
+            if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }
             monitor = nil
+            flagsMonitor = nil
             return
+        }
+        flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            guard let self, let model = self.model, event.window === self.window else { return event }
+            let held = event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.option)
+            if model.optionKeyHeld != held {
+                model.optionKeyHeld = held
+            }
+            return event
         }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, let model = self.model, event.window === self.window else { return event }
@@ -667,5 +694,6 @@ private final class KeyCatcherView: NSView {
 
     deinit {
         if let monitor { NSEvent.removeMonitor(monitor) }
+        if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }
     }
 }

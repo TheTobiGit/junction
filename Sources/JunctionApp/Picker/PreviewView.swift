@@ -125,16 +125,18 @@ struct PreviewView: View {
 
     private var browserDock: some View {
         let options = model.filteredOptions
+        let privateActive = model.incognitoMode || model.optionKeyHeld
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(Array(options.enumerated()), id: \.element.id) { idx, option in
-                    let incognitoUnsupported = model.incognitoMode
-                        && !URLOpener.supportsIncognito(bundleID: option.browser.bundleID)
+                    let supportsIncognito = URLOpener.supportsIncognito(bundleID: option.browser.bundleID)
+                    let incognitoUnsupported = privateActive && !supportsIncognito
                     DockTile(
                         option: option,
                         number: idx + 1,
                         selected: idx == model.selectedIndex,
-                        dimmed: incognitoUnsupported
+                        dimmed: incognitoUnsupported,
+                        showIncognito: privateActive && supportsIncognito
                     )
                     .help(incognitoUnsupported
                           ? "\(option.browser.name) doesn't support private windows — it will open normally."
@@ -187,35 +189,20 @@ struct PreviewView: View {
             HStack(spacing: 5) {
                 Image(systemName: model.rememberChoice ? "checkmark.square.fill" : "square")
                     .font(.system(size: 10, weight: .semibold))
-                Text("Always open ")
+                Text("Remember my choice for ")
                     .foregroundColor(.secondary)
                 + Text(host)
                     .foregroundColor(.primary)
                     .fontWeight(.medium)
-                + Text(" here")
+                + Text(" links")
                     .foregroundColor(.secondary)
             }
             .font(.system(size: 11))
             .foregroundColor(model.rememberChoice ? .accentColor : .secondary)
             .padding(.horizontal, 8).padding(.vertical, 4)
-            .background(
-                Capsule().fill(
-                    model.rememberChoice
-                        ? Color.accentColor.opacity(0.16)
-                        : Color.white.opacity(0.06)
-                )
-            )
-            .overlay(
-                Capsule().strokeBorder(
-                    model.rememberChoice
-                        ? Color.accentColor.opacity(0.5)
-                        : Color.white.opacity(0.08),
-                    lineWidth: 1
-                )
-            )
         }
         .buttonStyle(.plain)
-        .help("Remember the browser you pick next as the default for \(host)")
+        .help("Remember the browser you pick next as the default for \(host) links")
     }
 
     @ViewBuilder
@@ -262,6 +249,7 @@ private struct DockTile: View {
     let number: Int
     let selected: Bool
     let dimmed: Bool
+    let showIncognito: Bool
     @State private var hovered: Bool = false
 
     var body: some View {
@@ -325,6 +313,13 @@ private struct DockTile: View {
                 .resizable()
                 .interpolation(.high)
                 .frame(width: 28, height: 28)
+                .overlay(alignment: .bottomTrailing) {
+                    if showIncognito {
+                        IncognitoBadge(size: 12)
+                            .offset(x: 2, y: 2)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
 
             if number <= 9 {
                 Text("\(number)")
@@ -340,6 +335,7 @@ private struct DockTile: View {
             }
         }
         .frame(width: 32, height: 28)
+        .animation(.spring(response: 0.25, dampingFraction: 0.75), value: showIncognito)
     }
 
     @ViewBuilder
