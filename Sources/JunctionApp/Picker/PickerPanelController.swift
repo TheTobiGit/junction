@@ -26,7 +26,7 @@ final class PickerPanelController {
     private var pickerSize: CGSize = .zero
     private var isDismissed: Bool = false
 
-    func present(url: URL, context: RouteContext) {
+    func present(url: URL, context: RouteContext, onOpenPreferences: (() -> Void)? = nil) {
         if panel != nil { dismiss(reason: .userCancelled) }
         isDismissed = false
 
@@ -57,7 +57,8 @@ final class PickerPanelController {
                 for option in options { openOnce(option, incognito) }
                 self?.dismiss(reason: .userPicked)
             },
-            onCancel: { [weak self] in self?.dismiss(reason: .userCancelled) }
+            onCancel: { [weak self] in self?.dismiss(reason: .userCancelled) },
+            onOpenPreferences: onOpenPreferences
         )
 
         LastURLStore.shared.recordPicker(url)
@@ -69,7 +70,7 @@ final class PickerPanelController {
         host.translatesAutoresizingMaskIntoConstraints = false
 
         let panel = KeyablePanel(
-            contentRect: NSRect(x: 0, y: 0, width: width, height: 300),
+            contentRect: NSRect(x: 0, y: 0, width: width, height: PickerView.pickerHeight),
             styleMask: [.borderless, .fullSizeContentView],
             backing: .buffered,
             defer: false

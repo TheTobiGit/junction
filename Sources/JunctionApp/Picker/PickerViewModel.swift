@@ -11,6 +11,8 @@ final class PickerViewModel: ObservableObject {
     @Published var rememberChoice: Bool = false
     @Published var multiSelection: Set<String> = []
     @Published var preview: LinkPreview? = nil
+    /// Host-level icon (e.g. DuckDuckGo service); page preview favicon takes precedence when present.
+    @Published private(set) var hostFaviconData: Data? = nil
     @Published var incognitoMode: Bool = false
     @Published var previewMode: Bool = false
     @Published var previewTitle: String? = nil
@@ -20,6 +22,7 @@ final class PickerViewModel: ObservableObject {
     private let pickHandler: (LaunchOption, Bool, Bool) -> Void
     private let pickMultiHandler: ([LaunchOption], Bool) -> Void
     private let cancelHandler: () -> Void
+    private let openPreferencesHandler: (() -> Void)?
 
     init(
         url: URL,
@@ -27,7 +30,8 @@ final class PickerViewModel: ObservableObject {
         context: RouteContext,
         onPick: @escaping (LaunchOption, Bool, Bool) -> Void,
         onPickMulti: @escaping ([LaunchOption], Bool) -> Void,
-        onCancel: @escaping () -> Void
+        onCancel: @escaping () -> Void,
+        onOpenPreferences: (() -> Void)? = nil
     ) {
         self.url = url
         self.cleanedURL = URLTransformers.default.run(url)
@@ -37,13 +41,29 @@ final class PickerViewModel: ObservableObject {
         self.pickHandler = onPick
         self.pickMultiHandler = onPickMulti
         self.cancelHandler = onCancel
+        self.openPreferencesHandler = onOpenPreferences
         loadPreview()
+        loadHostFavicon()
+    }
+
+    /// Favicon for the link destination: HTML preview when available, otherwise fast host fetch.
+    var resolvedFaviconData: Data? {
+        preview?.faviconData ?? hostFaviconData
     }
 
     private func loadPreview() {
         LinkPreviewFetcher.fetch(cleanedURL) { [weak self] preview in
             DispatchQueue.main.async {
                 self?.preview = preview
+            }
+        }
+    }
+
+    private func loadHostFavicon() {
+        guard let host = cleanedURL.host ?? url.host else { return }
+        HostFaviconFetcher.fetch(host: host) { [weak self] data in
+            DispatchQueue.main.async {
+                self?.hostFaviconData = data
             }
         }
     }
@@ -178,6 +198,10 @@ final class PickerViewModel: ObservableObject {
 
     func cancel() {
         cancelHandler()
+    }
+
+    func openPreferences() {
+        openPreferencesHandler?()
     }
 
     func copyCleanedURL() {

@@ -153,8 +153,6 @@ struct PreviewView: View {
 
     private var hintBar: some View {
         HStack(spacing: 10) {
-            privateToggle
-
             if let host = model.rememberHost, !model.incognitoMode {
                 rememberToggle(host: host)
             }
@@ -180,38 +178,6 @@ struct PreviewView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 7)
         .help(PickerShortcutHelp.preview)
-    }
-
-    private var privateToggle: some View {
-        Button {
-            model.toggleIncognito()
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "eyeglasses")
-                    .font(.system(size: 10, weight: .semibold))
-                Text("Private")
-                    .font(.system(size: 11, weight: .medium))
-            }
-            .foregroundColor(model.incognitoMode ? .indigo : .secondary)
-            .padding(.horizontal, 8).padding(.vertical, 4)
-            .background(
-                Capsule().fill(
-                    model.incognitoMode
-                        ? Color.indigo.opacity(0.18)
-                        : Color.white.opacity(0.06)
-                )
-            )
-            .overlay(
-                Capsule().strokeBorder(
-                    model.incognitoMode
-                        ? Color.indigo.opacity(0.55)
-                        : Color.white.opacity(0.08),
-                    lineWidth: 1
-                )
-            )
-        }
-        .buttonStyle(.plain)
-        .help("Open in private/incognito window (⌥P to toggle, ⌥⏎ to confirm, ⌥click a browser)")
     }
 
     private func rememberToggle(host: String) -> some View {
@@ -254,7 +220,7 @@ struct PreviewView: View {
 
     @ViewBuilder
     private var linkIcon: some View {
-        FaviconView(data: model.preview?.faviconData, fallbackSize: 9)
+        FaviconView(data: model.resolvedFaviconData, fallbackSize: 9)
     }
 }
 
