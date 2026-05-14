@@ -20,9 +20,9 @@ struct PickerView: View {
 
     static let tileWidth: CGFloat = 112
     static let tileSpacing: CGFloat = 10
-    static let listHorizontalPadding: CGFloat = 18
+    static let listHorizontalPadding: CGFloat = 16
     static let minWidth: CGFloat = 480
-    static let pickerHeight: CGFloat = 300
+    static let pickerHeight: CGFloat = 268
     static let previewWidth: CGFloat = 1120
     static let previewHeight: CGFloat = 760
 
@@ -101,17 +101,11 @@ struct PickerView: View {
         .frame(width: width, height: Self.pickerHeight)
     }
 
-    private func previewIsMeaningful(_ preview: LinkPreview) -> Bool {
-        let hasTitle = (preview.title?.isEmpty == false)
-        let hasSite = (preview.siteName?.isEmpty == false)
-        return hasTitle || hasSite
-    }
-
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        HStack(alignment: .center, spacing: 10) {
             HStack(spacing: 6) {
                 if let source = model.sourceApp {
-                    sourceBadge(source)
+                    sourcePill(source)
                 }
                 if let focus = model.focusName {
                     focusBadge(focus)
@@ -122,35 +116,51 @@ struct PickerView: View {
                 if !model.riskFlags.isEmpty {
                     riskChip(model.riskFlags)
                 }
-                Spacer(minLength: 4)
-                Button {
-                    model.copyCleanedURL()
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .frame(width: 22, height: 22)
-                        .background(Circle().fill(Color.white.opacity(0.08)))
-                }
-                .buttonStyle(.plain)
-                .help("Copy cleaned URL (⌘C)")
-
-                Button(action: { model.cancel() }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(.secondary)
-                        .frame(width: 22, height: 22)
-                        .background(Circle().fill(Color.white.opacity(0.08)))
-                }
-                .buttonStyle(.plain)
-                .help("Cancel (Esc)")
             }
+            .fixedSize(horizontal: true, vertical: false)
 
-            linkRow
+            GeometryReader { geo in
+                let faviconSlot: CGFloat = 14 + 6
+                let textCap = max(48, geo.size.width - faviconSlot)
+                HStack {
+                    Spacer(minLength: 0)
+                    HStack(spacing: 4) {
+                        FaviconView(data: model.resolvedFaviconData, fallbackSize: 9)
+                            .frame(width: 14, height: 14)
+                            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+
+                        Text(displayURL)
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .textSelection(.enabled)
+                    }
+                    .frame(maxWidth: textCap)
+                    Spacer(minLength: 0)
+                }
+                .frame(width: geo.size.width, height: geo.size.height)
+            }
+            .frame(height: 28)
+
+            HStack(spacing: 6) {
+                Button {
+                    model.openPreferences()
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(Color.white.opacity(0.08)))
+                }
+                .buttonStyle(.plain)
+                .help("Open Preferences")
+            }
+            .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 4)
     }
 
     private var incognitoBadge: some View {
@@ -166,78 +176,42 @@ struct PickerView: View {
         .help("Open in private/incognito mode (⌥ to toggle, ⌥⏎ to confirm)")
     }
 
-    private var linkRow: some View {
-        HStack(spacing: 10) {
-            linkIcon
-                .frame(width: 28, height: 28)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-
-            VStack(alignment: .leading, spacing: 2) {
-                if let preview = model.preview,
-                   let title = preview.title, !title.isEmpty {
-                    Text(title)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-                HStack(spacing: 6) {
-                    if model.didClean {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(.accentColor)
-                            .help("Cleaned URL — was \(model.url.absoluteString)")
-                    }
-                    Text(displayURL)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .textSelection(.enabled)
-                }
-            }
-
-            Spacer(minLength: 6)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.white.opacity(0.05))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
-        )
-    }
-
     private var displayURL: String {
         model.didClean ? model.cleanedURL.absoluteString : model.url.absoluteString
     }
 
-    @ViewBuilder
-    private var linkIcon: some View {
-        FaviconView(data: model.preview?.faviconData, fallbackSize: 12)
-    }
-
-    private func sourceBadge(_ source: URLSource) -> some View {
-        HStack(spacing: 5) {
-            if let icon = source.icon {
-                Image(nsImage: icon)
-                    .resizable()
-                    .frame(width: 12, height: 12)
+    private func sourcePill(_ source: URLSource) -> some View {
+        HStack(spacing: 6) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(Color.black.opacity(0.35))
+                    .frame(width: 18, height: 18)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                    )
+                if let icon = source.icon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 12, height: 12)
+                } else {
+                    Image(systemName: "link")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(Color.white.opacity(0.45))
+                }
             }
-            Text("from ")
+            (Text("from ")
                 .foregroundColor(.secondary)
-            + Text(source.name)
+                + Text(source.name)
                 .foregroundColor(.primary)
-                .fontWeight(.medium)
+                .fontWeight(.semibold))
+                .font(.system(size: 11))
         }
-        .font(.system(size: 10))
-        .padding(.horizontal, 7).padding(.vertical, 3)
-        .background(
-            Capsule().fill(Color.white.opacity(0.08))
-        )
+        .padding(.leading, 8)
+        .padding(.trailing, 10)
+        .padding(.vertical, 5)
+        .background(Capsule().fill(Color.white.opacity(0.08)))
     }
 
     private func focusBadge(_ name: String) -> some View {
@@ -300,8 +274,8 @@ struct PickerView: View {
                     }
                 }
                 .padding(.horizontal, Self.listHorizontalPadding)
-                .padding(.vertical, 16)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
         }
     }
@@ -342,8 +316,6 @@ struct PickerView: View {
                     .background(Capsule().fill(Color.accentColor.opacity(0.15)))
             }
 
-            privateToggle
-
             if let host = model.rememberHost, !model.incognitoMode {
                 rememberToggle(host: host)
             }
@@ -352,40 +324,8 @@ struct PickerView: View {
 
             hintSegments
         }
-        .frame(height: 36)
+        .frame(height: 32)
         .padding(.horizontal, 16)
-    }
-
-    private var privateToggle: some View {
-        Button {
-            model.toggleIncognito()
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: model.incognitoMode ? "eyeglasses" : "eyeglasses")
-                    .font(.system(size: 10, weight: .semibold))
-                Text("Private")
-                    .font(.system(size: 11, weight: .medium))
-            }
-            .foregroundColor(model.incognitoMode ? .indigo : .secondary)
-            .padding(.horizontal, 8).padding(.vertical, 4)
-            .background(
-                Capsule().fill(
-                    model.incognitoMode
-                        ? Color.indigo.opacity(0.18)
-                        : Color.white.opacity(0.06)
-                )
-            )
-            .overlay(
-                Capsule().strokeBorder(
-                    model.incognitoMode
-                        ? Color.indigo.opacity(0.55)
-                        : Color.white.opacity(0.08),
-                    lineWidth: 1
-                )
-            )
-        }
-        .buttonStyle(.plain)
-        .help("Open in private/incognito window (⌥P to toggle, ⌥⏎ to confirm, ⌥click a tile)")
     }
 
     private func rememberToggle(host: String) -> some View {

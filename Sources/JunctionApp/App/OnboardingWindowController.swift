@@ -72,6 +72,14 @@ struct OnboardingView: View {
     @State private var step: OnboardingStep = .welcome
     @ObservedObject private var settings = SettingsStore.shared
 
+    private var visibleSteps: [OnboardingStep] {
+        if DefaultWebBrowserStatus.isJunctionDefaultForHTTPAndHTTPS {
+            OnboardingStep.allCases.filter { $0 != .defaultBrowser }
+        } else {
+            Array(OnboardingStep.allCases)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -90,9 +98,9 @@ struct OnboardingView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                ForEach(OnboardingStep.allCases, id: \.rawValue) { dot in
+                ForEach(Array(visibleSteps.enumerated()), id: \.element) { index, _ in
                     Circle()
-                        .fill(dot.rawValue <= step.rawValue ? Color.accentColor : Color.secondary.opacity(0.3))
+                        .fill(index <= (visibleSteps.firstIndex(of: step) ?? 0) ? Color.accentColor : Color.secondary.opacity(0.3))
                         .frame(width: 7, height: 7)
                 }
                 Spacer()
@@ -139,9 +147,9 @@ struct OnboardingView: View {
     private var footer: some View {
         HStack {
             Button("Back") {
-                if let previous = OnboardingStep(rawValue: step.rawValue - 1) { step = previous }
+                goBackStep()
             }
-            .disabled(step == .welcome)
+            .disabled(step == visibleSteps.first)
             .keyboardShortcut(.leftArrow, modifiers: [.command])
 
             Spacer()
@@ -152,7 +160,7 @@ struct OnboardingView: View {
                     .buttonStyle(.borderedProminent)
             } else {
                 Button("Continue") {
-                    if let next = OnboardingStep(rawValue: step.rawValue + 1) { step = next }
+                    advanceStep()
                 }
                 .keyboardShortcut(.return, modifiers: [])
                 .buttonStyle(.borderedProminent)
@@ -160,6 +168,16 @@ struct OnboardingView: View {
         }
         .padding(.horizontal, 32)
         .padding(.vertical, 16)
+    }
+
+    private func advanceStep() {
+        guard let i = visibleSteps.firstIndex(of: step), i + 1 < visibleSteps.count else { return }
+        step = visibleSteps[i + 1]
+    }
+
+    private func goBackStep() {
+        guard let i = visibleSteps.firstIndex(of: step), i > 0 else { return }
+        step = visibleSteps[i - 1]
     }
 
     // MARK: Steps
@@ -295,7 +313,7 @@ struct OnboardingView: View {
     private var doneStep: some View {
         VStack(alignment: .leading, spacing: 12) {
             bullet(icon: "command", title: "Menu bar",
-                   detail: "Preferences, rules file, and setup are all available from the menu bar arrow icon.")
+                   detail: "Preferences (including rules) are available from the menu bar arrow icon.")
             bullet(icon: "questionmark.circle", title: "Picker tips",
                    detail: "↩ opens, ⌘↩ remembers the choice, ⌥↩ opens private, ⌘C copies the cleaned URL, 1-9 opens a specific tile.")
             bullet(icon: "terminal", title: "CLI",

@@ -20,8 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         menuBar = MenuBarController(
-            openPreferences: { [weak self] in self?.showPreferences() },
-            openOnboarding: { [weak self] in self?.showOnboarding() }
+            openPreferences: { [weak self] in self?.showPreferences() }
         )
         _ = FrontmostTracker.shared
         ClipboardWatcher.shared.updateEnabledState()
@@ -257,6 +256,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        let contextAtReceive = RouteContext(
+            source: FrontmostTracker.shared.lastNonJunction,
+            focus: FocusTracker.current()
+        )
+
         if let rewritten = AppSchemeRewriter.rewrite(
             url,
             using: SettingsStore.shared.settings.appSchemes
@@ -270,20 +274,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            ShortenerExpander.isShortened(url) {
             ShortenerExpander.expand(url) { [weak self] expanded in
                 DispatchQueue.main.async {
-                    self?.routeAfterExpansion(original: url, resolved: expanded)
+                    self?.routeAfterExpansion(
+                        original: url,
+                        resolved: expanded,
+                        context: contextAtReceive
+                    )
                 }
             }
             return
         }
 
-        routeAfterExpansion(original: url, resolved: url)
+        routeAfterExpansion(original: url, resolved: url, context: contextAtReceive)
     }
 
-    private func routeAfterExpansion(original: URL, resolved: URL) {
-        let context = RouteContext(
-            source: FrontmostTracker.shared.lastNonJunction,
-            focus: FocusTracker.current()
-        )
+    private func routeAfterExpansion(original: URL, resolved: URL, context: RouteContext) {
 
         if let rewritten = AppSchemeRewriter.rewrite(
             resolved,
@@ -401,7 +405,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             source: FrontmostTracker.shared.lastNonJunction,
             focus: FocusTracker.current()
         )
-        controller.present(url: url, context: ctx)
+        controller.present(url: url, context: ctx, onOpenPreferences: { [weak self] in
+            self?.showPreferences()
+        })
     }
 
     private func showPreferences() {
