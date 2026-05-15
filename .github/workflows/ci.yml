@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+# Default-deny token scope. Each job opts in explicitly below.
+permissions: {}
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -15,12 +18,20 @@ jobs:
     name: Build & Test
     runs-on: macos-14
     timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        # SHA-pinned per CVE-2025-30066 / CVE-2025-30154 mitigation.
+        # Dependabot will rewrite the SHA and update the comment.
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # No git credentials kept on disk — defeats credential theft via
+          # later-step command injection (Nx s1ngularity pattern).
+          persist-credentials: false
 
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
           xcode-version: latest-stable
 
@@ -28,15 +39,18 @@ jobs:
         run: swift --version
 
       - name: Cache SwiftPM build
-        uses: actions/cache@v4
+        # Cache key namespaced by event_name so PR caches cannot
+        # be restored on push-to-main runs (cache-poisoning defense
+        # against the TanStack May 2026 attack pattern).
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             .build
             ~/Library/Caches/org.swift.swiftpm
             ~/Library/org.swift.swiftpm
-          key: spm-${{ runner.os }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          key: spm-${{ github.event_name }}-${{ runner.os }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
           restore-keys: |
-            spm-${{ runner.os }}-
+            spm-${{ github.event_name }}-${{ runner.os }}-
 
       - name: Build (debug)
         run: swift build -c debug --product Junction --product JunctionCLI
