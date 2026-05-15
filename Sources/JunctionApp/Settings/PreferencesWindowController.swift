@@ -98,6 +98,7 @@ struct PreferencesView: View {
         .background(
             VisualEffectView(material: .underWindowBackground, blendingMode: .behindWindow)
         )
+        .tint(settings.settings.accentPreset.swiftUIColor)
         .frame(minWidth: 720, minHeight: 500)
         .onAppear(perform: reload)
         .onReceive(NotificationCenter.default.publisher(for: .junctionRulesChanged)) { _ in
@@ -241,33 +242,128 @@ struct PreferencesView: View {
     // MARK: - General
 
     private var generalTab: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 0) {
-                toggleRow(
-                    title: "Clean URLs",
-                    subtitle: "Strip utm_*, fbclid, gclid, and similar trackers before opening.",
-                    symbol: "sparkles",
-                    tint: .accentColor,
-                    isOn: $settings.settings.cleanURLsBeforeOpening
-                )
-                cardDivider
-                toggleRow(
-                    title: "Expand shortened links",
-                    subtitle: "Resolve t.co, bit.ly, lnkd.in and other shorteners first.",
-                    symbol: "arrow.up.right.square",
-                    tint: .blue,
-                    isOn: $settings.settings.expandShortenedURLs
-                )
-                cardDivider
-                toggleRow(
-                    title: "Watch clipboard",
-                    subtitle: "Show a HUD when you copy a link so you can clean or route it.",
-                    symbol: "doc.on.clipboard",
-                    tint: .pink,
-                    isOn: $settings.settings.clipboardWatcherEnabled
-                )
+        VStack(alignment: .leading, spacing: 18) {
+            appearanceCard
+            Card {
+                VStack(alignment: .leading, spacing: 0) {
+                    toggleRow(
+                        title: "Clean URLs",
+                        subtitle: "Strip utm_*, fbclid, gclid, and similar trackers before opening.",
+                        symbol: "sparkles",
+                        tint: .accentColor,
+                        isOn: $settings.settings.cleanURLsBeforeOpening
+                    )
+                    cardDivider
+                    toggleRow(
+                        title: "Expand shortened links",
+                        subtitle: "Resolve t.co, bit.ly, lnkd.in and other shorteners first.",
+                        symbol: "arrow.up.right.square",
+                        tint: .blue,
+                        isOn: $settings.settings.expandShortenedURLs
+                    )
+                    cardDivider
+                    toggleRow(
+                        title: "Watch clipboard",
+                        subtitle: "Show a HUD when you copy a link so you can clean or route it.",
+                        symbol: "doc.on.clipboard",
+                        tint: .pink,
+                        isOn: $settings.settings.clipboardWatcherEnabled
+                    )
+                }
             }
         }
+    }
+
+    private var appearanceCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .center, spacing: 12) {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.accentColor.opacity(0.35), Color.accentColor.opacity(0.14)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 30, height: 30)
+                        .overlay(
+                            Image(systemName: "paintpalette.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.accentColor)
+                        )
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Appearance")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("Glass blurs the desktop behind the picker and clipboard HUD. Solid uses an opaque, textured surface.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Surface")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                    Picker("Surface style", selection: $settings.settings.chromeTheme) {
+                        ForEach(ChromeTheme.allCases) { theme in
+                            Text(theme.title).tag(theme)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Accent")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                    LazyVGrid(
+                        columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4),
+                        spacing: 8
+                    ) {
+                        ForEach(AccentPreset.allCases) { preset in
+                            accentSwatch(preset)
+                        }
+                    }
+                }
+            }
+            .padding(10)
+        }
+    }
+
+    private func accentSwatch(_ preset: AccentPreset) -> some View {
+        let isSelected = settings.settings.accentPreset == preset
+        return Button {
+            settings.settings.accentPreset = preset
+        } label: {
+            ZStack {
+                if preset == .system {
+                    Circle()
+                        .fill(Color.primary.opacity(0.08))
+                        .frame(width: 30, height: 30)
+                    Image(systemName: "apple.logo")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.primary)
+                } else {
+                    Circle()
+                        .fill(preset.swiftUIColor)
+                        .frame(width: 30, height: 30)
+                }
+                Circle()
+                    .strokeBorder(
+                        Color.primary.opacity(isSelected ? 0.85 : 0.15),
+                        lineWidth: isSelected ? 2.25 : 1
+                    )
+                    .frame(width: isSelected ? 34 : 31, height: isSelected ? 34 : 31)
+            }
+            .frame(width: 36, height: 36)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(preset.title))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func toggleRow(

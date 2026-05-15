@@ -15,6 +15,7 @@ extension Color {
 
 struct PickerView: View {
     @ObservedObject var model: PickerViewModel
+    @ObservedObject private var appSettings = SettingsStore.shared
     let width: CGFloat
     @State private var appeared: Bool = false
 
@@ -61,6 +62,7 @@ struct PickerView: View {
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: model.previewMode)
         .background(KeyEventCatcher(model: model))
+        .tint(appSettings.settings.accentPreset.swiftUIColor)
         .scaleEffect(appeared ? 1.0 : 0.96)
         .opacity(appeared ? 1.0 : 0.0)
         .onAppear {
@@ -77,14 +79,10 @@ struct PickerView: View {
             footer
         }
         .background(
-            VisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
-                .overlay(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.04), Color.black.opacity(0.06)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+            JunctionChromeBackground(
+                theme: appSettings.settings.chromeTheme,
+                accent: appSettings.settings.accentPreset.swiftUIColor
+            )
         )
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
