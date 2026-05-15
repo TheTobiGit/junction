@@ -1,0 +1,97 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.rp.outputs.releases_created }}
+      tag: ${{ steps.rp.outputs.tag_name }}
+      version: ${{ steps.rp.outputs.version }}
+    steps:
+      - name: Run release-please
+        id: rp
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  build-publish:
+    name: Build & Attach Release Assets
+    needs: release-please
+    if: needs.release-please.outputs.released == 'true'
+    runs-on: macos-14
+    timeout-minutes: 60
+    env:
+      APP_NAME: Junction
+      CLI_NAME: junction
+      TAG: ${{ needs.release-please.outputs.tag }}
+      VERSION: ${{ needs.release-please.outputs.version }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Sync Info.plist version
+        run: |
+          PLIST="Resources/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST"
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: spm-release-${{ runner.os }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            spm-release-${{ runner.os }}-
+
+      - name: Build release artifacts
+        run: ./build-app.sh release
+
+      - name: Verify artifacts
+        run: |
+          test -d "build/${APP_NAME}.app"
+          test -x "build/${CLI_NAME}"
+
+      - name: Package artifacts
+        run: |
+          cd build
+          ditto -c -k --sequesterRsrc --keepParent "${APP_NAME}.app" "${APP_NAME}-${VERSION}-macos.zip"
+          ditto -c -k --sequesterRsrc "${CLI_NAME}" "${CLI_NAME}-cli-${VERSION}-macos.zip"
+          shasum -a 256 "${APP_NAME}-${VERSION}-macos.zip" "${CLI_NAME}-cli-${VERSION}-macos.zip" \
+            > "checksums-${VERSION}.txt"
+
+      - name: Upload assets to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$TAG" \
+            "build/${APP_NAME}-${VERSION}-macos.zip" \
+            "build/${CLI_NAME}-cli-${VERSION}-macos.zip" \
+            "build/checksums-${VERSION}.txt" \
+            --clobber
