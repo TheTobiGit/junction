@@ -1,0 +1,109 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+
+# Default-deny token scope. Each job opts in explicitly below.
+permissions: {}
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      released: ${{ steps.rp.outputs.releases_created }}
+      tag: ${{ steps.rp.outputs.tag_name }}
+      version: ${{ steps.rp.outputs.version }}
+    steps:
+      - name: Run release-please
+        id: rp
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  build-publish:
+    name: Build & Attach Release Assets
+    needs: release-please
+    if: needs.release-please.outputs.released == 'true'
+    runs-on: macos-14
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      APP_NAME: Junction
+      CLI_NAME: junction
+      TAG: ${{ needs.release-please.outputs.tag }}
+      VERSION: ${{ needs.release-please.outputs.version }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.release-please.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        with:
+          xcode-version: latest-stable
+
+      - name: Sync Info.plist version
+        run: |
+          PLIST="Resources/Info.plist"
+          # CFBundleShortVersionString accepts any SemVer string.
+          # CFBundleVersion must be dot-separated integers — strip any
+          # prerelease suffix (e.g. 0.2.0-beta.1 → 0.2.0) and append the
+          # CI run number so it's monotonically increasing across re-runs.
+          SHORT="$VERSION"
+          BUILD="${VERSION%%-*}.${GITHUB_RUN_NUMBER}"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SHORT" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST"
+
+      # No build cache on the release path. A poisoned cache from a
+      # CI run cannot influence a release artifact this way. Trade
+      # 1-2 minutes of build time for zero cache-poisoning surface.
+
+      - name: Build release artifacts
+        run: ./build-app.sh release
+
+      - name: Verify artifacts
+        run: |
+          test -d "build/${APP_NAME}.app"
+          test -x "build/${CLI_NAME}"
+          # build-app.sh swallows codesign errors with `|| true` so we
+          # verify the signature explicitly here. Ad-hoc signature ('-')
+          # is acceptable for unsigned dev builds; this still rejects a
+          # completely missing/corrupt signature.
+          codesign --verify --strict --verbose=2 "build/${APP_NAME}.app"
+          codesign --verify --strict --verbose=2 "build/${CLI_NAME}"
+
+      - name: Package artifacts
+        run: |
+          cd build
+          ditto -c -k --sequesterRsrc --keepParent "${APP_NAME}.app" "${APP_NAME}-${VERSION}-macos.zip"
+          ditto -c -k --sequesterRsrc "${CLI_NAME}" "${CLI_NAME}-cli-${VERSION}-macos.zip"
+          shasum -a 256 "${APP_NAME}-${VERSION}-macos.zip" "${CLI_NAME}-cli-${VERSION}-macos.zip" \
+            > "checksums-${VERSION}.txt"
+
+      - name: Upload assets to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$TAG" \
+            "build/${APP_NAME}-${VERSION}-macos.zip" \
+            "build/${CLI_NAME}-cli-${VERSION}-macos.zip" \
+            "build/checksums-${VERSION}.txt" \
+            --clobber
