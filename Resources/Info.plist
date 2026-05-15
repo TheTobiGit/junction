@@ -30,6 +30,8 @@
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Junction needs to control browsers such as Dia and Safari to open private windows and selected browser profiles.</string>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>Junction can notify you when a link cannot open in private browsing until accessibility access is granted.</string>
 	<key>NSSupportsAutomaticTermination</key>
 	<false/>
 	<key>NSSupportsSuddenTermination</key>

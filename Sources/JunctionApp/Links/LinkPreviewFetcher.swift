@@ -9,6 +9,20 @@ struct LinkPreview {
 
 enum LinkPreviewFetcher {
     static func fetch(_ url: URL, timeout: TimeInterval = 2.5, completion: @escaping (LinkPreview?) -> Void) {
+        Task { await fetch(url, timeout: timeout, cache: PreviewCache.shared, completion: completion) }
+    }
+
+    static func fetch(_ url: URL, cache: PreviewCache, timeout: TimeInterval = 2.5, completion: @escaping (LinkPreview?) -> Void) {
+        Task { await fetch(url, timeout: timeout, cache: cache, completion: completion) }
+    }
+
+    private static func fetch(_ url: URL, timeout: TimeInterval, cache: PreviewCache, completion: @escaping (LinkPreview?) -> Void) async {
+        if let payload = await cache.previewPayload(for: url) {
+            let preview = LinkPreview(title: payload.title, siteName: payload.siteName, faviconData: payload.faviconData)
+            await MainActor.run { completion(preview) }
+            return
+        }
+
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = timeout
         config.timeoutIntervalForResource = timeout
@@ -18,56 +32,81 @@ enum LinkPreviewFetcher {
         ]
         let session = URLSession(configuration: config)
 
-        let task = session.dataTask(with: url) { data, response, _ in
-            defer { session.finishTasksAndInvalidate() }
-            guard let data, let html = String(data: data.prefix(200_000), encoding: .utf8)
+        let htmlResult = await loadHTML(session: session, url: url, timeout: timeout)
+        defer { session.finishTasksAndInvalidate() }
+
+        guard let (data, responseURL, shouldPersistPreview) = htmlResult,
+              let html = String(data: data.prefix(200_000), encoding: .utf8)
                 ?? String(data: data.prefix(200_000), encoding: .isoLatin1)
-            else {
-                completion(nil)
-                return
-            }
-            let title = extractMetaContent(html: html, property: "og:title")
-                ?? extractMetaContent(html: html, name: "twitter:title")
-                ?? extractTitleTag(html: html)
-            let siteName = extractMetaContent(html: html, property: "og:site_name")
-
-            let baseURL = (response?.url ?? url)
-            let faviconURL = discoverFaviconURL(html: html, baseURL: baseURL)
-
-            fetchFavicon(faviconURL, timeout: timeout) { faviconData in
-                let preview = LinkPreview(
-                    title: title,
-                    siteName: siteName,
-                    faviconData: faviconData
-                )
-                completion(preview)
-            }
-        }
-        task.resume()
-    }
-
-    private static func fetchFavicon(_ url: URL?, timeout: TimeInterval, completion: @escaping (Data?) -> Void) {
-        guard let url else {
-            completion(nil)
+        else {
+            await MainActor.run { completion(nil) }
             return
         }
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = timeout
-        config.timeoutIntervalForResource = timeout
-        let session = URLSession(configuration: config)
-        let task = session.dataTask(with: url) { data, response, _ in
-            defer { session.finishTasksAndInvalidate() }
-            if let data,
-               let http = response as? HTTPURLResponse,
-               (200...299).contains(http.statusCode),
-               data.count < 200_000,
-               NSImage(data: data) != nil {
-                completion(data)
-            } else {
-                completion(nil)
-            }
+
+        let rawTitle = extractMetaContent(html: html, property: "og:title")
+            ?? extractMetaContent(html: html, name: "twitter:title")
+            ?? extractTitleTag(html: html)
+        let rawSite = extractMetaContent(html: html, property: "og:site_name")
+
+        let title = rawTitle.map { HTMLEntityDecoder.decode($0) }
+        let siteName = rawSite.map { HTMLEntityDecoder.decode($0) }
+
+        let baseURL = responseURL
+        let faviconURL = discoverFaviconURL(html: html, baseURL: baseURL)
+
+        let faviconData = await fetchFavicon(faviconURL, timeout: timeout)
+
+        let preview = LinkPreview(title: title, siteName: siteName, faviconData: faviconData)
+        if shouldPersistPreview {
+            let payload = PreviewCache.CachedPreviewPayload(title: title, siteName: siteName, faviconData: faviconData)
+            await cache.storePreview(payload, for: url)
         }
-        task.resume()
+        await MainActor.run { completion(preview) }
+    }
+
+    /// - Returns: Body, final URL after redirects, and whether the response is safe to persist (HTTP(S) 2xx only).
+    private static func loadHTML(session: URLSession, url: URL, timeout: TimeInterval) async -> (Data, URL, shouldPersistPreview: Bool)? {
+        return await withCheckedContinuation { cont in
+            let task = session.dataTask(with: url) { data, response, _ in
+                guard let data else {
+                    cont.resume(returning: nil)
+                    return
+                }
+                let finalURL = response?.url ?? url
+                let shouldPersist: Bool
+                if let http = response as? HTTPURLResponse {
+                    shouldPersist = (200...299).contains(http.statusCode)
+                } else {
+                    // Non-HTTP (or unexpected); still show a one-off preview but never poison disk/memory TTL caches.
+                    shouldPersist = false
+                }
+                cont.resume(returning: (data, finalURL, shouldPersist))
+            }
+            task.resume()
+        }
+    }
+
+    private static func fetchFavicon(_ url: URL?, timeout: TimeInterval) async -> Data? {
+        guard let url else { return nil }
+        return await withCheckedContinuation { (cont: CheckedContinuation<Data?, Never>) in
+            let config = URLSessionConfiguration.ephemeral
+            config.timeoutIntervalForRequest = timeout
+            config.timeoutIntervalForResource = timeout
+            let session = URLSession(configuration: config)
+            let task = session.dataTask(with: url) { data, response, _ in
+                defer { session.finishTasksAndInvalidate() }
+                if let data,
+                   let http = response as? HTTPURLResponse,
+                   (200...299).contains(http.statusCode),
+                   data.count < 200_000,
+                   NSImage(data: data) != nil {
+                    cont.resume(returning: data)
+                } else {
+                    cont.resume(returning: nil)
+                }
+            }
+            task.resume()
+        }
     }
 
     private static func discoverFaviconURL(html: String, baseURL: URL) -> URL? {

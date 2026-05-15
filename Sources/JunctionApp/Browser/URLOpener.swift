@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import UserNotifications
 
 enum URLOpener {
     /// Opens `url` in the browser described by `option`.
@@ -203,7 +204,52 @@ enum URLOpener {
         return nil
     }
 
+    /// Single notification per process when Safari private mode falls back to a normal window. Persist with `UserDefaults` if we ever want to cap across launches.
+    private static var safariPrivateAccessibilityFallbackNotified = false
+
+    private static func openSafariRegular(url: URL, app: URL, completion: @escaping (Bool) -> Void) {
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        NSWorkspace.shared.open([url], withApplicationAt: app, configuration: config) { _, error in
+            completion(error == nil)
+        }
+    }
+
+    private static func notifySafariPrivateNeedsAccessibility() {
+        guard !safariPrivateAccessibilityFallbackNotified else { return }
+        safariPrivateAccessibilityFallbackNotified = true
+
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { settings in
+            let deliver: () -> Void = {
+                let content = UNMutableNotificationContent()
+                content.title = "Private Safari unavailable"
+                content.body = "Grant Junction accessibility access in System Settings ▸ Privacy & Security ▸ Accessibility to open Private Browsing automatically. This link opened in a regular Safari window."
+                let request = UNNotificationRequest(identifier: "junction.safari-private-accessibility", content: content, trigger: nil)
+                center.add(request)
+            }
+
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                deliver()
+            case .notDetermined:
+                center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+                    if granted { deliver() }
+                }
+            default:
+                NSLog("Junction: Safari private browsing requires accessibility trust; notifications denied.")
+            }
+        }
+    }
+
     private static func openSafariPrivate(url: URL, app: URL, completion: @escaping (Bool) -> Void) {
+        guard AXIsProcessTrusted() else {
+            requestAccessibilityTrust()
+            notifySafariPrivateNeedsAccessibility()
+            openSafariRegular(url: url, app: app, completion: completion)
+            return
+        }
+
         let encoded = url.absoluteString.replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
         let source = """

@@ -18,38 +18,62 @@ enum HostFaviconFetcher {
         ".local",
         ".localhost",
         ".onion",
-        ".test"
+        ".test",
     ]
 
     static func fetch(host: String, timeout: TimeInterval = 2.0, completion: @escaping (Data?) -> Void) {
+        Task { await fetch(host: host, timeout: timeout, cache: PreviewCache.shared, completion: completion) }
+    }
+
+    /// Variant that routes reads/writes through a specific ``PreviewCache`` (e.g. tests with a temp directory).
+    static func fetch(host: String, cache: PreviewCache, timeout: TimeInterval = 2.0, completion: @escaping (Data?) -> Void) {
+        Task { await fetch(host: host, timeout: timeout, cache: cache, completion: completion) }
+    }
+
+    private static func fetch(host: String, timeout: TimeInterval, cache: PreviewCache, completion: @escaping (Data?) -> Void) async {
         guard let remoteHost = remoteIconHost(for: host) else {
-            completion(nil)
+            await MainActor.run { completion(nil) }
+            return
+        }
+
+        if let cached = await cache.favicon(for: remoteHost) {
+            await MainActor.run { completion(cached) }
             return
         }
 
         guard let url = URL(string: "https://icons.duckduckgo.com/ip3/\(remoteHost).ico") else {
-            completion(nil)
+            await MainActor.run { completion(nil) }
             return
         }
 
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = timeout
-        config.timeoutIntervalForResource = timeout
-        let session = URLSession(configuration: config)
-        let task = session.dataTask(with: url) { data, response, _ in
-            defer { session.finishTasksAndInvalidate() }
-            guard let data,
-                  let http = response as? HTTPURLResponse,
-                  (200...299).contains(http.statusCode),
-                  data.count <= maxBytes,
-                  NSImage(data: data) != nil
-            else {
-                completion(nil)
-                return
-            }
-            completion(data)
+        let data = await downloadFavicon(from: url, timeout: timeout)
+        if let data {
+            await cache.storeFavicon(data, for: remoteHost)
         }
-        task.resume()
+        await MainActor.run { completion(data) }
+    }
+
+    private static func downloadFavicon(from url: URL, timeout: TimeInterval) async -> Data? {
+        await withCheckedContinuation { cont in
+            let config = URLSessionConfiguration.ephemeral
+            config.timeoutIntervalForRequest = timeout
+            config.timeoutIntervalForResource = timeout
+            let session = URLSession(configuration: config)
+            let task = session.dataTask(with: url) { data, response, _ in
+                defer { session.finishTasksAndInvalidate() }
+                guard let data,
+                      let http = response as? HTTPURLResponse,
+                      (200...299).contains(http.statusCode),
+                      data.count <= maxBytes,
+                      NSImage(data: data) != nil
+                else {
+                    cont.resume(returning: nil)
+                    return
+                }
+                cont.resume(returning: data)
+            }
+            task.resume()
+        }
     }
 
     static func remoteIconHost(for host: String) -> String? {

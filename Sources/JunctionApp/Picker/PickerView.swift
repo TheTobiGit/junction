@@ -125,7 +125,7 @@ struct PickerView: View {
                 HStack {
                     Spacer(minLength: 0)
                     HStack(spacing: 6) {
-                        FaviconView(data: model.resolvedFaviconData, fallbackSize: 11)
+                        FaviconView(data: model.displayFaviconData, fallbackSize: 11)
                             .frame(width: 18, height: 18)
                             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
 
