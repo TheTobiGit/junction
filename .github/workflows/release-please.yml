@@ -3,6 +3,16 @@ name: Release Please
 on:
   push:
     branches: [main]
+    # Only run when files that affect the shipped binary change.
+    # Doc / CI / hook / scripts edits (which use chore:/docs:/ci:
+    # commit types) wouldn't bump the version anyway, but skipping
+    # the workflow entirely also avoids opening a no-op release PR.
+    paths:
+      - 'Sources/**'
+      - 'Resources/**'
+      - 'Package.swift'
+      - 'Package.resolved'
+      - 'build-app.sh'
 
 # Default-deny token scope. Each job opts in explicitly below.
 permissions: {}
