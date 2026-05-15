@@ -4,9 +4,8 @@ on:
   push:
     branches: [main]
 
-permissions:
-  contents: write
-  pull-requests: write
+# Default-deny token scope. Each job opts in explicitly below.
+permissions: {}
 
 concurrency:
   group: release-please-${{ github.ref }}
@@ -16,6 +15,10 @@ jobs:
   release-please:
     name: Release Please
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
     outputs:
       released: ${{ steps.rp.outputs.releases_created }}
       tag: ${{ steps.rp.outputs.tag_name }}
@@ -23,7 +26,7 @@ jobs:
     steps:
       - name: Run release-please
         id: rp
-        uses: googleapis/release-please-action@v4
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
@@ -35,6 +38,8 @@ jobs:
     if: needs.release-please.outputs.released == 'true'
     runs-on: macos-14
     timeout-minutes: 60
+    permissions:
+      contents: write
     env:
       APP_NAME: Junction
       CLI_NAME: junction
@@ -42,13 +47,14 @@ jobs:
       VERSION: ${{ needs.release-please.outputs.version }}
     steps:
       - name: Checkout release tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ needs.release-please.outputs.tag }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
           xcode-version: latest-stable
 
@@ -59,16 +65,9 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$PLIST"
           /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST"
 
-      - name: Cache SwiftPM build
-        uses: actions/cache@v4
-        with:
-          path: |
-            .build
-            ~/Library/Caches/org.swift.swiftpm
-            ~/Library/org.swift.swiftpm
-          key: spm-release-${{ runner.os }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
-          restore-keys: |
-            spm-release-${{ runner.os }}-
+      # No build cache on the release path. A poisoned cache from a
+      # CI run cannot influence a release artifact this way. Trade
+      # 1-2 minutes of build time for zero cache-poisoning surface.
 
       - name: Build release artifacts
         run: ./build-app.sh release
