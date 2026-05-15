@@ -22,6 +22,7 @@ enum BrowserDiscovery {
         for url in urls {
             guard let bundle = Bundle(url: url), let bid = bundle.bundleIdentifier else { continue }
             if bid == ownBundleID { continue }
+            if isNestedHelperApp(url: url) { continue }
             if !seen.insert(bid).inserted { continue }
 
             let name = (bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
@@ -32,6 +33,18 @@ enum BrowserDiscovery {
 
         browsers.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         return browsers
+    }
+
+    private static func isNestedHelperApp(url: URL) -> Bool {
+        let components = url.pathComponents
+        var foundOuterApp = false
+        for component in components {
+            if component.hasSuffix(".app") {
+                if foundOuterApp { return true }
+                foundOuterApp = true
+            }
+        }
+        return false
     }
 
     private static let knownBrowserBundleIDs: [String] = [
