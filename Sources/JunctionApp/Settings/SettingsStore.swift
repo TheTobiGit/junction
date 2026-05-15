@@ -31,6 +31,8 @@ struct JunctionSettings: Codable {
     var appSchemes: [AppSchemeRewrite] = AppSchemeCatalog.defaults
     var hotkeys: HotkeySettings = .defaults
     var hasCompletedOnboarding: Bool = false
+    var chromeTheme: ChromeTheme = .glass
+    var accentPreset: AccentPreset = .system
 
     enum CodingKeys: String, CodingKey {
         case cleanURLsBeforeOpening
@@ -42,6 +44,8 @@ struct JunctionSettings: Codable {
         case appSchemes
         case hotkeys
         case hasCompletedOnboarding
+        case chromeTheme
+        case accentPreset
     }
 
     init() {}
@@ -60,6 +64,8 @@ struct JunctionSettings: Codable {
 
         self.hotkeys = (try? c.decode(HotkeySettings.self, forKey: .hotkeys)) ?? .defaults
         self.hasCompletedOnboarding = (try? c.decode(Bool.self, forKey: .hasCompletedOnboarding)) ?? false
+        self.chromeTheme = (try? c.decode(ChromeTheme.self, forKey: .chromeTheme)) ?? .glass
+        self.accentPreset = (try? c.decode(AccentPreset.self, forKey: .accentPreset)) ?? .system
     }
 
     static func mergeAppSchemes(stored: [AppSchemeRewrite]) -> [AppSchemeRewrite] {
