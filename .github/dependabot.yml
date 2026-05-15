@@ -1,0 +1,21 @@
+version: 2
+
+updates:
+  # Keeps SHA-pinned action versions current. When a pinned action ships
+  # a new release, Dependabot rewrites the SHA and updates the trailing
+  # version comment in a PR. Reviewing the PR (and the diff of the new
+  # SHA's contents) is the human checkpoint that survives tag-mutation
+  # attacks like tj-actions/changed-files (CVE-2025-30066).
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns:
+          - "*"
+    labels:
+      - dependencies
+      - github-actions
