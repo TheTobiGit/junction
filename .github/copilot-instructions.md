@@ -21,8 +21,8 @@ Junction is a macOS menu-bar app that routes URLs to the right browser/profile. 
 - No force-unwraps (`!`) on optionals outside tests; prefer `guard let`, `if let`, `??`, or `assertionFailure` with a message.
 - No `try!` outside tests. No `as!` unless the cast is provably safe and commented.
 - `@MainActor` on anything that touches AppKit/SwiftUI from async contexts.
-- Use `Logger` (os.log) or stderr `FileHandle`, not `print`, in shipping code.
-- Pin SwiftUI views' frame sizes only when AppKit hosting needs it.
+- Logging: `NSLog` in the app, `FileHandle.standardError.write` for CLI errors, `print` for CLI stdout the user reads.
+- Pin SwiftUI frame sizes only when AppKit hosting needs it.
 
 ## Security (flag these)
 
@@ -40,15 +40,15 @@ Junction is a macOS menu-bar app that routes URLs to the right browser/profile. 
 
 ## URL routing rules
 
-- New browser additions go in `BrowserDiscovery.knownBrowserBundleIDs` (sorted).
+- New browser additions go in `BrowserDiscovery.knownBrowserBundleIDs`, grouped by vendor family (not lexicographic).
 - New Chromium-family browsers also need entries in `ChromiumProfileDiscovery.vendors`.
 - Skip nested `.app` bundles via `isNestedHelperApp(url:)` — don't reintroduce duplicates.
 
 ## Testing
 
-- Tests live in `Tests/JunctionTests`, XCTest only.
-- Pure logic (URL parsing, rules matching, browser dedup) must have unit tests. UI views are exempt.
-- New `LaunchOption`/`Browser` discovery code needs a snapshot test in `ChromiumVendorSnapshotTests` if applicable.
+- Tests live in `Tests/JunctionTests` (XCTest).
+- Pure logic (URL parsing, rules matching, browser dedup) needs unit tests. UI views are exempt.
+- New `LaunchOption`/`Browser` discovery code: add a snapshot test in `ChromiumVendorSnapshotTests` if applicable.
 
 ## CI / release hygiene
 
@@ -60,6 +60,6 @@ Junction is a macOS menu-bar app that routes URLs to the right browser/profile. 
 
 - Be specific. Cite file paths and line numbers. Quote the offending snippet.
 - Distinguish blocking issues (security, crash, correctness) from suggestions (style, naming, minor refactor). Label them.
-- Skip nitpicks already handled by SwiftFormat or compiler warnings.
-- Don't recommend dependencies. Don't propose npm/Node/Homebrew tooling. Don't propose `print` for logging.
+- Skip nitpicks already handled by compiler warnings.
+- Don't recommend deps or npm/Node/Homebrew tooling. Don't propose swapping `NSLog`/`print` for `Logger` — current logging is intentional.
 - If a PR adds files outside `Sources/`, `Tests/`, `Resources/`, `.github/`, `scripts/`, `.githooks/`, ask why.
