@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Enforce Conventional Commits so release-please can drive versioning + changelog.
+#
+# Activated per-clone via:   git config core.hooksPath .githooks
+# Or run scripts/setup.sh once after cloning.
+
+set -euo pipefail
+
+MSG_FILE="$1"
+# Strip trailing whitespace so rules like "must not end with '.'" can't
+# be sidestepped by a stray trailing space (e.g. "feat: foo. ").
+FIRST_LINE="$(head -n1 "$MSG_FILE" | sed -E 's/[[:space:]]+$//')"
+
+# Allow merge/revert/fixup commits to pass — git generates these.
+case "$FIRST_LINE" in
+  "Merge "*|"Revert "*|"fixup! "*|"squash! "*|"amend! "*)
+    exit 0
+    ;;
+esac
+
+# Conventional Commits 1.0.0 — type(scope)!: subject
+# Types accepted: feat fix chore docs refactor perf test build ci style revert
+PATTERN='^(feat|fix|chore|docs|refactor|perf|test|build|ci|style|revert)(\([a-z0-9._-]+\))?!?: .{1,}'
+
+if ! printf '%s' "$FIRST_LINE" | grep -qE "$PATTERN"; then
+  cat >&2 <<'EOF'
+✖ Commit message must follow Conventional Commits.
+
+  Format:  type(scope)!: subject
+
+  Types:   feat | fix | chore | docs | refactor | perf
+           test | build | ci | style | revert
+
+  Examples:
+    feat: add horizontal scroll to picker
+    fix(picker): dedup nested helper apps
+    feat!: rename CLI flag (breaking)
+    chore: bump release-please action
+
+  Why this matters: release-please reads these to decide version
+  bumps (feat → minor, fix → patch, ! or BREAKING CHANGE → major)
+  and to build the CHANGELOG automatically.
+
+  Bypass once (rare):  git commit --no-verify
+EOF
+  exit 1
+fi
+
+# Subject must not end with a period (Conventional convention).
+if printf '%s' "$FIRST_LINE" | grep -qE '\.$'; then
+  echo "✖ Commit subject must not end with a period." >&2
+  exit 1
+fi
+
+# Subject length cap.
+LEN="${#FIRST_LINE}"
+if [ "$LEN" -gt 100 ]; then
+  echo "✖ Commit subject is ${LEN} chars (max 100). Keep it tight." >&2
+  exit 1
+fi
+
+exit 0
