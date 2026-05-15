@@ -724,43 +724,7 @@ struct PreferencesView: View {
         VStack(alignment: .leading, spacing: 14) {
             sectionBlurb(
                 "Rules are evaluated top to bottom. First match wins.",
-                trailing: {
-                    HStack(spacing: 6) {
-                        Menu {
-                            ForEach(RuleRecipes.all) { recipe in
-                                Button(recipe.name) {
-                                    RulesStore.shared.importRecipe(recipe)
-                                }
-                            }
-                        } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: "sparkles")
-                                    .font(.system(size: 10, weight: .semibold))
-                                Text("Recipe")
-                                    .font(.system(size: 11, weight: .semibold))
-                            }
-                            .padding(.horizontal, 10).padding(.vertical, 5)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .fill(Color.primary.opacity(0.07))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
-                            )
-                        }
-                        .menuStyle(.borderlessButton)
-                        .menuIndicator(.hidden)
-                        .fixedSize()
-
-                        pillButton("Open", symbol: "doc.text") {
-                            NSWorkspace.shared.open(RulesStore.shared.fileURL)
-                        }
-                        pillButton("Reveal", symbol: "folder") {
-                            NSWorkspace.shared.activateFileViewerSelecting([RulesStore.shared.fileURL])
-                        }
-                    }
-                }
+                trailing: { EmptyView() }
             )
 
             rulesList
