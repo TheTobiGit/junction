@@ -97,18 +97,6 @@ final class RulesStore {
         update { f in f.fallback = action }
     }
 
-    func importRecipe(_ recipe: RuleRecipe) {
-        update { f in
-            var existingKeys = Set(f.rules.map { "\($0.host.kindLabel):\($0.host.displayValue.lowercased())" })
-            for rule in recipe.rules {
-                let key = "\(rule.host.kindLabel):\(rule.host.displayValue.lowercased())"
-                if existingKeys.insert(key).inserted {
-                    f.rules.append(rule)
-                }
-            }
-        }
-    }
-
     private func update(_ mutation: (inout RulesFile) -> Void) {
         var next = file
         mutation(&next)
