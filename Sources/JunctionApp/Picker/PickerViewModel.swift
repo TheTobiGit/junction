@@ -7,11 +7,13 @@ final class PickerViewModel: ObservableObject {
     let options: [LaunchOption]
     let context: RouteContext
     let riskFlags: [RiskFlag]
+    /// Stable favicon: host service icon fills first; page preview replaces it when sharper **or** when still showing the generic host placeholder (same-size page icons beat DuckDuckGo).
+    @Published private(set) var displayFaviconData: Data? = nil
     @Published var selectedIndex: Int = 0
     @Published var rememberChoice: Bool = false
     @Published var multiSelection: Set<String> = []
     @Published var preview: LinkPreview? = nil
-    /// Host-level icon (e.g. DuckDuckGo service); page preview favicon takes precedence when present.
+    /// Fast host-level icon (e.g. DuckDuckGo); superseded by page favicon when available.
     @Published private(set) var hostFaviconData: Data? = nil
     @Published var incognitoMode: Bool = false
     @Published var optionKeyHeld: Bool = false
@@ -38,7 +40,12 @@ final class PickerViewModel: ObservableObject {
         self.cleanedURL = URLTransformers.default.run(url)
         self.options = options
         self.context = context
-        self.riskFlags = URLRiskAssessor.assess(url)
+        // Warn about what will actually open (matches ``PickerPanelController.openOnce``).
+        self.riskFlags = PickerURLRisk.flags(
+            for: url,
+            cleanedURL: cleanedURL,
+            cleanURLsBeforeOpening: SettingsStore.shared.settings.cleanURLsBeforeOpening
+        )
         self.pickHandler = onPick
         self.pickMultiHandler = onPickMulti
         self.cancelHandler = onCancel
@@ -47,15 +54,16 @@ final class PickerViewModel: ObservableObject {
         loadHostFavicon()
     }
 
-    /// Favicon for the link destination: HTML preview when available, otherwise fast host fetch.
-    var resolvedFaviconData: Data? {
-        preview?.faviconData ?? hostFaviconData
-    }
+    private var displayedFaviconPixelMin: Int?
+    /// True when ``displayFaviconData`` came from ``applyHostFaviconCandidate`` (generic host service), not HTML preview.
+    private var displayUsesHostServiceFavicon = false
 
     private func loadPreview() {
         LinkPreviewFetcher.fetch(cleanedURL) { [weak self] preview in
             DispatchQueue.main.async {
-                self?.preview = preview
+                guard let self else { return }
+                self.preview = preview
+                self.applyPreviewFaviconCandidate(preview?.faviconData)
             }
         }
     }
@@ -64,9 +72,64 @@ final class PickerViewModel: ObservableObject {
         guard let host = cleanedURL.host ?? url.host else { return }
         HostFaviconFetcher.fetch(host: host) { [weak self] data in
             DispatchQueue.main.async {
-                self?.hostFaviconData = data
+                guard let self else { return }
+                self.hostFaviconData = data
+                self.applyHostFaviconCandidate(data)
             }
         }
+    }
+
+    private func applyHostFaviconCandidate(_ data: Data?) {
+        guard let data, NSImage(data: data) != nil else { return }
+        guard displayFaviconData == nil else { return }
+        displayFaviconData = data
+        displayedFaviconPixelMin = pixelMinDimension(for: data)
+        displayUsesHostServiceFavicon = true
+    }
+
+    private func applyPreviewFaviconCandidate(_ data: Data?) {
+        guard let data, NSImage(data: data) != nil else { return }
+        let newMin = pixelMinDimension(for: data) ?? 0
+        if displayFaviconData == nil {
+            displayFaviconData = data
+            displayedFaviconPixelMin = newMin
+            displayUsesHostServiceFavicon = false
+            return
+        }
+        let oldMin = displayedFaviconPixelMin ?? 0
+        // Page favicon always replaces the DuckDuckGo placeholder, even at matching size (P2).
+        // Otherwise avoid pointless swaps unless meaningfully sharper (1.5× min side).
+        let previewWins: Bool
+        if displayUsesHostServiceFavicon {
+            previewWins = true
+        } else if oldMin <= 0 {
+            previewWins = newMin > 0
+        } else {
+            previewWins = newMin * 2 >= oldMin * 3
+        }
+        guard previewWins else { return }
+        displayFaviconData = data
+        displayedFaviconPixelMin = newMin
+        displayUsesHostServiceFavicon = false
+    }
+
+    /// Largest min(width,height) among bitmap reps so multi-resolution ICOs don't under-report (P3).
+    private func pixelMinDimension(for imageData: Data) -> Int? {
+        guard let img = NSImage(data: imageData) else { return nil }
+        let bitmapReps = img.representations.compactMap { $0 as? NSBitmapImageRep }
+        var best = 0
+        for rep in bitmapReps {
+            let w = rep.pixelsWide
+            let h = rep.pixelsHigh
+            guard w > 0, h > 0 else { continue }
+            best = max(best, min(w, h))
+        }
+        if best > 0 {
+            return best
+        }
+        let s = img.size
+        guard s.width > 0, s.height > 0 else { return nil }
+        return Int(min(s.width, s.height))
     }
 
     var host: String {
@@ -209,5 +272,12 @@ final class PickerViewModel: ObservableObject {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(cleanedURL.absoluteString, forType: .string)
+    }
+}
+
+/// Risk chips follow the same URL the picker will open when the user confirms (cleaned vs raw per settings).
+enum PickerURLRisk {
+    static func flags(for url: URL, cleanedURL: URL, cleanURLsBeforeOpening: Bool) -> [RiskFlag] {
+        URLRiskAssessor.assess(cleanURLsBeforeOpening ? cleanedURL : url)
     }
 }

@@ -184,7 +184,7 @@ struct PreviewView: View {
 
     @ViewBuilder
     private var linkIcon: some View {
-        FaviconView(data: model.resolvedFaviconData, fallbackSize: 9)
+        FaviconView(data: model.displayFaviconData, fallbackSize: 9)
     }
 }
 

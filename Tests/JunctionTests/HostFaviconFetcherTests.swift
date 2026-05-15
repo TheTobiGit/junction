@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import JunctionApp
 
@@ -36,5 +37,45 @@ final class HostFaviconFetcherTests: XCTestCase {
         XCTAssertNil(HostFaviconFetcher.remoteIconHost(for: "-example.com"))
         XCTAssertNil(HostFaviconFetcher.remoteIconHost(for: "example-.com"))
         XCTAssertNil(HostFaviconFetcher.remoteIconHost(for: "example.123"))
+    }
+
+    func test_faviconFetcherUsesMemoryCache() async {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let cache = PreviewCache(rootDirectory: tmp)
+        let png = Self.samplePNGData()
+        await cache.storeFavicon(png, for: "example.com")
+
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            HostFaviconFetcher.fetch(host: "example.com", cache: cache) { data in
+                XCTAssertEqual(data, png)
+                cont.resume()
+            }
+        }
+    }
+
+    func test_faviconFetcherUsesDiskCacheAcrossInstances() async {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let cache1 = PreviewCache(rootDirectory: tmp)
+        let png = Self.samplePNGData()
+        await cache1.storeFavicon(png, for: "example.com")
+
+        let cache2 = PreviewCache(rootDirectory: tmp)
+        let fetched = await cache2.favicon(for: "example.com")
+        XCTAssertEqual(fetched, png)
+    }
+
+    private static func samplePNGData() -> Data {
+        let img = NSImage(size: NSSize(width: 16, height: 16))
+        img.lockFocus()
+        NSColor.blue.setFill()
+        NSBezierPath(rect: NSRect(x: 0, y: 0, width: 16, height: 16)).fill()
+        img.unlockFocus()
+        guard let tiff = img.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let png = rep.representation(using: .png, properties: [:])
+        else {
+            fatalError("fixture PNG")
+        }
+        return png
     }
 }
