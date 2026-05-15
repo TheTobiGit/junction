@@ -72,6 +72,7 @@ final class ClipboardHUDController {
 struct ClipboardHUDView: View {
     let url: URL
     let onDismiss: () -> Void
+    @ObservedObject private var appSettings = SettingsStore.shared
 
     private var cleaned: URL {
         URLTransformers.default.run(url)
@@ -127,8 +128,12 @@ struct ClipboardHUDView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .background(
-            VisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
+            JunctionChromeBackground(
+                theme: appSettings.settings.chromeTheme,
+                accent: appSettings.settings.accentPreset.swiftUIColor
+            )
         )
+        .tint(appSettings.settings.accentPreset.swiftUIColor)
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)

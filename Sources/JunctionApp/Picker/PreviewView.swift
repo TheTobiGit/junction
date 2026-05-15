@@ -4,6 +4,7 @@ import AppKit
 
 struct PreviewView: View {
     @ObservedObject var model: PickerViewModel
+    @ObservedObject private var appSettings = SettingsStore.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -11,7 +12,12 @@ struct PreviewView: View {
             Divider().opacity(0.12)
             bottomChrome
         }
-        .background(VisualEffectView(material: .hudWindow, blendingMode: .behindWindow))
+        .background(
+            JunctionChromeBackground(
+                theme: appSettings.settings.chromeTheme,
+                accent: appSettings.settings.accentPreset.swiftUIColor
+            )
+        )
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
