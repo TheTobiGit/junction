@@ -96,6 +96,7 @@ struct OnboardingView: View {
             footer
         }
         .frame(width: 640, height: 520)
+        .tint(settings.settings.accentPreset.swiftUIColor)
         .background(
             VisualEffectView(material: .underWindowBackground, blendingMode: .behindWindow)
         )
