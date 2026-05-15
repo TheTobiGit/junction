@@ -266,14 +266,26 @@ struct PickerView: View {
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                HStack(spacing: Self.tileSpacing) {
-                    ForEach(Array(list.enumerated()), id: \.element.id) { idx, option in
-                        tile(idx: idx, option: option)
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: Self.tileSpacing) {
+                            ForEach(Array(list.enumerated()), id: \.element.id) { idx, option in
+                                tile(idx: idx, option: option)
+                                    .id(option.id)
+                            }
+                        }
+                        .padding(.horizontal, Self.listHorizontalPadding)
+                        .padding(.vertical, 10)
+                        .frame(minWidth: width, alignment: .center)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .onChange(of: model.selectedIndex) { newIndex in
+                        guard list.indices.contains(newIndex) else { return }
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            proxy.scrollTo(list[newIndex].id, anchor: .center)
+                        }
                     }
                 }
-                .padding(.horizontal, Self.listHorizontalPadding)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
         }
     }
