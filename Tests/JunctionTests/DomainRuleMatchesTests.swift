@@ -255,4 +255,27 @@ final class DomainRuleMatchesTests: XCTestCase {
             context: emptyContext
         ))
     }
+
+    // MARK: - first-match-wins ordering (contract drag-to-reorder relies on)
+
+    /// Two rules that both match the same URL must resolve to the **first**
+    /// rule in the list. Reordering the array therefore changes routing —
+    /// which is exactly what the Rules tab's drag handles depend on.
+    func test_firstMatchingRuleWins_inOrder() {
+        let specific = DomainRule(host: .equals("api.github.com"), action: .block)
+        let broad    = DomainRule(host: .suffix("github.com"), action: .ask)
+        let u = url("https://api.github.com/v3/users")
+
+        let specificFirst = [specific, broad]
+        let firstHit = specificFirst.first {
+            $0.matches(url: u, host: "api.github.com", context: emptyContext)
+        }
+        XCTAssertEqual(firstHit?.action, .block)
+
+        let broadFirst = [broad, specific]
+        let secondHit = broadFirst.first {
+            $0.matches(url: u, host: "api.github.com", context: emptyContext)
+        }
+        XCTAssertEqual(secondHit?.action, .ask)
+    }
 }

@@ -95,6 +95,17 @@ final class RulesStore {
         }
     }
 
+    /// Reorders rules in place. Rule ordering is semantically meaningful —
+    /// `match(url:context:)` returns the **first** matching rule, so moving
+    /// a more-specific rule above a broader one changes routing behavior.
+    /// Signature matches SwiftUI's `ForEach.onMove(perform:)` so the Rules
+    /// tab can wire this up directly.
+    func moveRule(from source: IndexSet, to destination: Int) {
+        update { f in
+            f.rules.move(fromOffsets: source, toOffset: destination)
+        }
+    }
+
     func setFallback(_ action: RuleAction) {
         update { f in f.fallback = action }
     }
