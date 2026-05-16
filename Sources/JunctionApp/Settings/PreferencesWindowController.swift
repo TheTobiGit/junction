@@ -872,12 +872,12 @@ struct PreferencesView: View {
             .controlSize(.mini)
             .labelsHidden()
             .help(rule.enabled ? "Disable rule (kept in list, won't match)" : "Enable rule")
-            .accessibilityLabel("Enable rule for \(rule.host.displayValue)")
+            .accessibilityLabel("Enable rule for \(rule.displayValue)")
 
             // Rest of the row dims when disabled so the rule reads as "kept
             // but inert" instead of looking identical to an active one.
             HStack(spacing: 12) {
-                Text(rule.host.kindLabel.uppercased())
+                Text(rule.kindLabel.uppercased())
                     .font(.system(size: 9, weight: .bold, design: .rounded))
                     .tracking(0.6)
                     .padding(.horizontal, 7).padding(.vertical, 3)
@@ -885,11 +885,12 @@ struct PreferencesView: View {
                     .foregroundColor(.secondary)
                     .frame(width: 58, alignment: .center)
 
-                Text(rule.host.displayValue)
+                Text(rule.displayValue)
                     .font(.system(size: 12, design: .monospaced))
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .strikethrough(!rule.enabled, color: .secondary)
+                    .help(rule.displayValue)
 
                 Spacer()
 
@@ -1334,16 +1335,27 @@ private struct AddRuleSheet: View {
     @State private var schemeValue: String = ""
 
     enum HostKind: String, CaseIterable, Identifiable {
-        case equals, suffix, regex
+        case equals, suffix, regex, urlEquals
         var id: String { rawValue }
-        var label: String { rawValue.capitalized }
-        var placeholder: String {
+        var label: String {
             switch self {
-            case .equals: return "api.github.com"
-            case .suffix: return "github.com"
-            case .regex:  return "^.*\\.slack\\.com$"
+            case .equals:    return "Equals"
+            case .suffix:    return "Suffix"
+            case .regex:     return "Regex"
+            case .urlEquals: return "URL"
             }
         }
+        var placeholder: String {
+            switch self {
+            case .equals:    return "api.github.com"
+            case .suffix:    return "github.com"
+            case .regex:     return "^.*\\.slack\\.com$"
+            case .urlEquals: return "https://github.com/orgs/acme/people"
+            }
+        }
+        /// True when the input is a full URL string rather than a host
+        /// pattern. Drives validation and the eventual `urlEquals` field.
+        var isExactURL: Bool { self == .urlEquals }
     }
 
     enum ActionKind: String, CaseIterable, Identifiable {
@@ -1386,13 +1398,24 @@ private struct AddRuleSheet: View {
     /// Add button and the visible error text.
     private var validationError: String? {
         if trimmedHost.isEmpty {
-            return "Host can't be empty"
+            return hostKind == .urlEquals ? "URL can't be empty" : "Host can't be empty"
         }
         if hostKind == .regex {
             // The matcher uses `NSRegularExpression`; reject anything that
             // would silently `try?` away to a never-matching rule.
             if (try? NSRegularExpression(pattern: trimmedHost)) == nil {
                 return "Invalid regular expression"
+            }
+        }
+        if hostKind == .urlEquals {
+            // Require something parseable as an absolute URL with a scheme
+            // and host — otherwise the rule could never match anything the
+            // matcher actually sees coming through the pipeline.
+            guard let parsed = URL(string: trimmedHost),
+                  let scheme = parsed.scheme, !scheme.isEmpty,
+                  parsed.host?.isEmpty == false
+            else {
+                return "Enter a full URL including scheme (https://…)"
             }
         }
         if actionKind.needsTarget, selectedTarget == nil {
@@ -1477,9 +1500,10 @@ private struct AddRuleSheet: View {
 
     private var hostKindHelp: String {
         switch hostKind {
-        case .equals: return "Matches one specific host exactly (api.github.com)."
-        case .suffix: return "Matches that host and all of its subdomains (github.com, www.github.com, gist.github.com)."
-        case .regex:  return "NSRegularExpression syntax, case-insensitive. Anchor with ^ and $ to be safe."
+        case .equals:    return "Matches one specific host exactly (api.github.com)."
+        case .suffix:    return "Matches that host and all of its subdomains (github.com, www.github.com, gist.github.com)."
+        case .regex:     return "NSRegularExpression syntax, case-insensitive. Anchor with ^ and $ to be safe."
+        case .urlEquals: return "Matches only this exact URL (scheme + host + path + query). Junction strips trackers before matching, so paste the canonical form — e.g. without utm_* params."
         }
     }
 
@@ -1584,14 +1608,6 @@ private struct AddRuleSheet: View {
     private func submit() {
         guard validationError == nil else { return }
 
-        let host: HostMatch = {
-            switch hostKind {
-            case .equals: return .equals(trimmedHost)
-            case .suffix: return .suffix(trimmedHost)
-            case .regex:  return .regex(trimmedHost)
-            }
-        }()
-
         let action: RuleAction = {
             switch actionKind {
             case .open:      return .open(selectedTarget!)
@@ -1602,7 +1618,30 @@ private struct AddRuleSheet: View {
             }
         }()
 
-        RulesStore.shared.addRule(host: host, action: action)
+        let rule: DomainRule
+        if hostKind == .urlEquals {
+            // We also seed `host` with the URL's host so the (legacy) host
+            // surface in display code and `dedupKey` has something sensible
+            // — even though the matcher short-circuits on `urlEquals`. Use
+            // the typed form as-is for the `urlEquals` value; matching does
+            // its own canonicalization, so we don't want to rewrite what
+            // the user typed in the file on disk.
+            let parsed = URL(string: trimmedHost)
+            let host: HostMatch = .equals(parsed?.host ?? trimmedHost)
+            rule = DomainRule(host: host, action: action, urlEquals: trimmedHost)
+        } else {
+            let host: HostMatch = {
+                switch hostKind {
+                case .equals:    return .equals(trimmedHost)
+                case .suffix:    return .suffix(trimmedHost)
+                case .regex:     return .regex(trimmedHost)
+                case .urlEquals: return .equals(trimmedHost)  // unreachable
+                }
+            }()
+            rule = DomainRule(host: host, action: action)
+        }
+
+        RulesStore.shared.addRule(rule)
         dismiss()
     }
 }
