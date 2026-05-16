@@ -6,6 +6,11 @@ import Darwin
 /// favicon immediately, without waiting for a full HTML preview parse.
 enum HostFaviconFetcher {
     private static let maxBytes = 200_000
+    /// In-memory negative cache: host → expiry. Avoids re-hitting the network
+    /// for hosts we've recently confirmed have no usable icon.
+    private static let negativeCacheTTL: TimeInterval = 6 * 60 * 60
+    private static let negativeCacheLock = NSLock()
+    private static var negativeCacheExpiry: [String: Date] = [:]
     private static let blockedDomainSuffixes = [
         ".corp",
         ".example",
@@ -41,6 +46,20 @@ enum HostFaviconFetcher {
             return
         }
 
+        if isNegativelyCached(remoteHost) {
+            await MainActor.run { completion(nil) }
+            return
+        }
+
+        // Privacy: try the site's own /favicon.ico first so we don't leak the
+        // host to a third-party icon service unless we have to.
+        if let direct = URL(string: "https://\(remoteHost)/favicon.ico"),
+           let data = await downloadFavicon(from: direct, timeout: timeout) {
+            await cache.storeFavicon(data, for: remoteHost)
+            await MainActor.run { completion(data) }
+            return
+        }
+
         guard let url = URL(string: "https://icons.duckduckgo.com/ip3/\(remoteHost).ico") else {
             await MainActor.run { completion(nil) }
             return
@@ -49,8 +68,31 @@ enum HostFaviconFetcher {
         let data = await downloadFavicon(from: url, timeout: timeout)
         if let data {
             await cache.storeFavicon(data, for: remoteHost)
+        } else {
+            recordNegative(remoteHost)
         }
         await MainActor.run { completion(data) }
+    }
+
+    private static func isNegativelyCached(_ host: String) -> Bool {
+        negativeCacheLock.lock()
+        defer { negativeCacheLock.unlock() }
+        guard let expiry = negativeCacheExpiry[host] else { return false }
+        if expiry > Date() { return true }
+        negativeCacheExpiry.removeValue(forKey: host)
+        return false
+    }
+
+    private static func recordNegative(_ host: String) {
+        negativeCacheLock.lock()
+        defer { negativeCacheLock.unlock() }
+        negativeCacheExpiry[host] = Date().addingTimeInterval(negativeCacheTTL)
+    }
+
+    static func resetNegativeCacheForTests() {
+        negativeCacheLock.lock()
+        defer { negativeCacheLock.unlock() }
+        negativeCacheExpiry.removeAll()
     }
 
     private static func downloadFavicon(from url: URL, timeout: TimeInterval) async -> Data? {
@@ -58,13 +100,23 @@ enum HostFaviconFetcher {
             let config = URLSessionConfiguration.ephemeral
             config.timeoutIntervalForRequest = timeout
             config.timeoutIntervalForResource = timeout
-            let session = URLSession(configuration: config)
+            // SSRF guard: validate every redirect target. A site could redirect
+            // /favicon.ico to a private IP or non-http(s) scheme; we cancel the
+            // chain rather than fetch from there.
+            let delegate = SafeRedirectDelegate()
+            let session = URLSession(
+                configuration: config,
+                delegate: delegate,
+                delegateQueue: nil
+            )
             let task = session.dataTask(with: url) { data, response, _ in
                 defer { session.finishTasksAndInvalidate() }
                 guard let data,
                       let http = response as? HTTPURLResponse,
                       (200...299).contains(http.statusCode),
                       data.count <= maxBytes,
+                      let finalURL = http.url,
+                      URLSafety.isPubliclyRoutable(finalURL),
                       NSImage(data: data) != nil
                 else {
                     cont.resume(returning: nil)
@@ -73,6 +125,23 @@ enum HostFaviconFetcher {
                 cont.resume(returning: data)
             }
             task.resume()
+        }
+    }
+
+    /// URLSession delegate that blocks redirects to non-public destinations.
+    private final class SafeRedirectDelegate: NSObject, URLSessionTaskDelegate {
+        func urlSession(
+            _ session: URLSession,
+            task: URLSessionTask,
+            willPerformHTTPRedirection response: HTTPURLResponse,
+            newRequest request: URLRequest,
+            completionHandler: @escaping (URLRequest?) -> Void
+        ) {
+            guard let url = request.url, URLSafety.isPubliclyRoutable(url) else {
+                completionHandler(nil)
+                return
+            }
+            completionHandler(request)
         }
     }
 

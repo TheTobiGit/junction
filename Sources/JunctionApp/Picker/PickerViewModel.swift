@@ -1,12 +1,18 @@
 import SwiftUI
 import AppKit
+import JunctionCore
 
 final class PickerViewModel: ObservableObject {
     let url: URL
     let cleanedURL: URL
+    let cleaningTrace: URLTransformResult
     let options: [LaunchOption]
     let context: RouteContext
     let riskFlags: [RiskFlag]
+    /// Rule matching the cleaned URL at the time the picker was presented.
+    /// Cached so the per-rule `cleanOverride` is consulted without re-running
+    /// the matcher on every SwiftUI render.
+    let matchedRule: DomainRule?
     /// Stable favicon: host service icon fills first; page preview replaces it when sharper **or** when still showing the generic host placeholder (same-size page icons beat DuckDuckGo).
     @Published private(set) var displayFaviconData: Data? = nil
     @Published var selectedIndex: Int = 0
@@ -37,14 +43,27 @@ final class PickerViewModel: ObservableObject {
         onOpenPreferences: (() -> Void)? = nil
     ) {
         self.url = url
-        self.cleanedURL = URLTransformers.default.run(url)
+        let trace = URLTransformers.default.runTraced(url)
+        self.cleanedURL = trace.final
+        self.cleaningTrace = trace
         self.options = options
         self.context = context
-        // Warn about what will actually open (matches ``PickerPanelController.openOnce``).
+        // Resolve the matching rule once at init — the URL doesn't change for
+        // the picker's lifetime, so we can avoid re-running the rule matcher
+        // on every SwiftUI re-render. The global cleaning toggle is still
+        // read live so user changes mid-presentation take effect.
+        self.matchedRule = RulesStore.shared.match(url: trace.final, context: context).rule
+        // Risk flags follow the URL that's about to open, including the
+        // per-rule `cleanOverride`. Otherwise a rule that forces "Always
+        // clean" for a host would still warn against the raw URL's trackers.
+        let cleaningEnabled = DomainRule.resolveCleanFlag(
+            rule: matchedRule,
+            globalEnabled: SettingsStore.shared.settings.cleanURLsBeforeOpening
+        )
         self.riskFlags = PickerURLRisk.flags(
             for: url,
             cleanedURL: cleanedURL,
-            cleanURLsBeforeOpening: SettingsStore.shared.settings.cleanURLsBeforeOpening
+            cleanURLsBeforeOpening: cleaningEnabled
         )
         self.pickHandler = onPick
         self.pickMultiHandler = onPickMulti
@@ -177,6 +196,67 @@ final class PickerViewModel: ObservableObject {
         cleanedURL.absoluteString != url.absoluteString
     }
 
+    /// Effective "should we clean before opening" decision for this URL.
+    /// Mirrors ``AppDelegate.routeAfterExpansion`` and ``PickerPanelController.openOnce``
+    /// so the chip, displayed URL, and the actual open all agree.
+    private var effectiveCleaningEnabled: Bool {
+        DomainRule.resolveCleanFlag(
+            rule: matchedRule,
+            globalEnabled: SettingsStore.shared.settings.cleanURLsBeforeOpening
+        )
+    }
+
+    /// True when the resolved settings cause the open to use the cleaned URL.
+    /// The picker uses this to decide whether to show the "cleaned" chip and
+    /// the cleaned URL string.
+    var willOpenCleaned: Bool {
+        Self.willOpenCleaned(didClean: didClean, cleaningEnabled: effectiveCleaningEnabled)
+    }
+
+    /// URL the picker should display: matches `urlToOpen` in
+    /// ``AppDelegate.routeAfterExpansion``.
+    var displayURLString: String {
+        Self.displayURL(
+            raw: url,
+            cleaned: cleanedURL,
+            cleaningEnabled: effectiveCleaningEnabled
+        ).absoluteString
+    }
+
+    /// URL to load in the in-picker preview WebView. Mirrors what would
+    /// actually open if the user confirms, so the rendered page matches.
+    var previewURL: URL {
+        Self.displayURL(
+            raw: url,
+            cleaned: cleanedURL,
+            cleaningEnabled: effectiveCleaningEnabled
+        )
+    }
+
+    /// Pure helper exposed for unit tests; mirrors what the picker actually
+    /// shows without requiring a full ``PickerViewModel`` instance.
+    static func willOpenCleaned(didClean: Bool, cleaningEnabled: Bool) -> Bool {
+        didClean && cleaningEnabled
+    }
+
+    /// Pure helper exposed for unit tests.
+    static func displayURL(raw: URL, cleaned: URL, cleaningEnabled: Bool) -> URL {
+        let didClean = raw.absoluteString != cleaned.absoluteString
+        return willOpenCleaned(didClean: didClean, cleaningEnabled: cleaningEnabled) ? cleaned : raw
+    }
+
+    /// Human-readable, multi-line summary of the cleaning steps that fired.
+    /// Used as the URL row's tooltip so users can see exactly what changed.
+    /// Suppressed when the user has cleaning disabled — we never lie about
+    /// what's about to open.
+    var cleaningSummary: String? {
+        guard willOpenCleaned, !cleaningTrace.steps.isEmpty else { return nil }
+        let lines = cleaningTrace.steps.map { step -> String in
+            "• " + URLPipelineStepLabel.label(for: step.identifier)
+        }
+        return (["Cleaned this link:"] + lines).joined(separator: "\n")
+    }
+
     var sourceApp: URLSource? { context.source }
     var focusName: String? { context.focus.modeName }
 
@@ -272,6 +352,26 @@ final class PickerViewModel: ObservableObject {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(cleanedURL.absoluteString, forType: .string)
+    }
+
+    /// Copies the cleaned URL plus the page title (if known) as Markdown:
+    /// `[Title](https://…)`. Falls back to the host when no title is loaded.
+    func copyAsMarkdown() {
+        let title = preview?.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let label: String
+        if let title, !title.isEmpty {
+            label = title
+        } else {
+            label = displayHost
+        }
+        let escaped = label
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "[", with: "\\[")
+            .replacingOccurrences(of: "]", with: "\\]")
+        let markdown = "[\(escaped)](\(cleanedURL.absoluteString))"
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(markdown, forType: .string)
     }
 }
 

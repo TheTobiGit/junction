@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import JunctionCore
 
 final class ClipboardHUDController {
     private var panel: NSPanel?
@@ -74,13 +75,12 @@ struct ClipboardHUDView: View {
     let onDismiss: () -> Void
     @ObservedObject private var appSettings = SettingsStore.shared
 
-    private var cleaned: URL {
-        URLTransformers.default.run(url)
+    private var trace: URLTransformResult {
+        URLTransformers.default.runTraced(url)
     }
 
-    private var didClean: Bool {
-        cleaned.absoluteString != url.absoluteString
-    }
+    private var cleaned: URL { trace.final }
+    private var didClean: Bool { trace.didChange }
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -98,9 +98,14 @@ struct ClipboardHUDView: View {
                     .truncationMode(.middle)
                     .foregroundColor(.primary)
                 if didClean {
-                    Text("cleaned")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(.accentColor)
+                    HStack(spacing: 4) {
+                        Image(systemName: "wand.and.stars")
+                            .font(.system(size: 8, weight: .semibold))
+                        Text(traceLabel)
+                            .font(.system(size: 9, weight: .medium))
+                    }
+                    .foregroundColor(.accentColor)
+                    .help(traceTooltip)
                 }
             }
 
@@ -116,14 +121,14 @@ struct ClipboardHUDView: View {
             .help("Copy cleaned")
 
             Button {
-                NSWorkspace.shared.open(cleaned)
+                routeThroughJunction()
                 onDismiss()
             } label: {
                 Image(systemName: "arrow.up.forward.app.fill")
                     .foregroundColor(.accentColor)
             }
             .buttonStyle(.borderless)
-            .help("Route now")
+            .help("Route through Junction")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
@@ -141,9 +146,38 @@ struct ClipboardHUDView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
+    private var traceLabel: String {
+        let count = trace.steps.count
+        if count <= 1 { return "cleaned" }
+        return "cleaned · \(count) steps"
+    }
+
+    private var traceTooltip: String {
+        let lines = trace.steps.map { step -> String in
+            "• " + URLPipelineStepLabel.label(for: step.identifier)
+        }
+        return (["Cleaned this link:"] + lines).joined(separator: "\n")
+    }
+
     private func copyCleaned() {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(cleaned.absoluteString, forType: .string)
+    }
+
+    /// Force the URL through Junction's pipeline (rules + risk + etc.) instead
+    /// of handing it to whatever the OS default browser is. junction:// is a
+    /// registered URL scheme handled by ``AppDelegate.handleJunctionScheme``.
+    private func routeThroughJunction() {
+        guard var comps = URLComponents(string: "junction://open") else {
+            NSWorkspace.shared.open(cleaned)
+            return
+        }
+        comps.queryItems = [URLQueryItem(name: "url", value: cleaned.absoluteString)]
+        if let agentURL = comps.url {
+            NSWorkspace.shared.open(agentURL)
+        } else {
+            NSWorkspace.shared.open(cleaned)
+        }
     }
 }

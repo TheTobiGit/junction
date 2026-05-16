@@ -6,18 +6,26 @@ enum HostMatch: Hashable {
     case regex(String)
 
     func matches(_ host: String) -> Bool {
-        let target = host.lowercased()
+        let target = IDNA.toUnicode(host: HostMatch.canonicalize(host))
         switch self {
         case .equals(let s):
-            return target == s.lowercased()
+            return target == IDNA.toUnicode(host: HostMatch.canonicalize(s))
         case .suffix(let s):
-            let needle = s.lowercased()
+            let needle = IDNA.toUnicode(host: HostMatch.canonicalize(s))
             return target == needle || target.hasSuffix("." + needle)
         case .regex(let pattern):
             guard let re = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return false }
             let range = NSRange(target.startIndex..<target.endIndex, in: target)
             return re.firstMatch(in: target, options: [], range: range) != nil
         }
+    }
+
+    /// Lowercase + strip trailing DNS dots so an FQDN form ("example.com.")
+    /// matches rules keyed on the canonical "example.com".
+    private static func canonicalize(_ host: String) -> String {
+        var lowered = host.lowercased()
+        while lowered.hasSuffix(".") { lowered.removeLast() }
+        return lowered
     }
 
     var displayValue: String {
@@ -220,9 +228,14 @@ struct DomainRule: Codable, Identifiable, Hashable {
     var path: URLPathMatch? = nil
     var queryContains: String? = nil
     var alsoCopyCleaned: Bool = false
+    /// Per-rule override of `cleanURLsBeforeOpening`. `nil` means "use the
+    /// global setting"; `true`/`false` force on/off for matched URLs. Useful
+    /// for "never clean my internal `myinternal.example.com`" or "always
+    /// clean even when global cleaning is off for this host".
+    var cleanOverride: Bool? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, host, action, enabled, when, schemes, path, queryContains, alsoCopyCleaned
+        case id, host, action, enabled, when, schemes, path, queryContains, alsoCopyCleaned, cleanOverride
     }
 
     init(
@@ -234,7 +247,8 @@ struct DomainRule: Codable, Identifiable, Hashable {
         schemes: [String]? = nil,
         path: URLPathMatch? = nil,
         queryContains: String? = nil,
-        alsoCopyCleaned: Bool = false
+        alsoCopyCleaned: Bool = false,
+        cleanOverride: Bool? = nil
     ) {
         self.id = id
         self.host = host
@@ -245,6 +259,7 @@ struct DomainRule: Codable, Identifiable, Hashable {
         self.path = path
         self.queryContains = queryContains
         self.alsoCopyCleaned = alsoCopyCleaned
+        self.cleanOverride = cleanOverride
     }
 
     init(from decoder: Decoder) throws {
@@ -258,6 +273,7 @@ struct DomainRule: Codable, Identifiable, Hashable {
         self.path = try? c.decodeIfPresent(URLPathMatch.self, forKey: .path)
         self.queryContains = try? c.decodeIfPresent(String.self, forKey: .queryContains)
         self.alsoCopyCleaned = (try? c.decode(Bool.self, forKey: .alsoCopyCleaned)) ?? false
+        self.cleanOverride = try? c.decodeIfPresent(Bool.self, forKey: .cleanOverride)
     }
 
     func matches(url: URL, host resolvedHost: String?, context: RouteContext) -> Bool {
@@ -293,6 +309,15 @@ struct DomainRule: Codable, Identifiable, Hashable {
         }
 
         return true
+    }
+
+    /// Resolves "should we open the cleaned URL" for this rule, given the
+    /// global ``JunctionSettings.cleanURLsBeforeOpening`` setting. The
+    /// per-rule override (if set) wins; otherwise we fall back to the global
+    /// preference. Surfaced statically because the picker, the agent's
+    /// `routeAgent`, and `routeAfterExpansion` all need the same resolution.
+    static func resolveCleanFlag(rule: DomainRule?, globalEnabled: Bool) -> Bool {
+        rule?.cleanOverride ?? globalEnabled
     }
 }
 
