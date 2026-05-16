@@ -11,6 +11,12 @@ final class FirefoxProfileDiscoveryTests: XCTestCase {
         XCTAssertFalse(FirefoxProfileDiscovery.supports(bundleID: "com.apple.Safari"))
     }
 
+    func test_configRelativePath() {
+        XCTAssertEqual(FirefoxProfileDiscovery.configRelativePath(forBundleID: "app.zen-browser.zen"), "zen")
+        XCTAssertEqual(FirefoxProfileDiscovery.configRelativePath(forBundleID: "org.mozilla.firefox"), "Firefox")
+        XCTAssertNil(FirefoxProfileDiscovery.configRelativePath(forBundleID: "com.google.Chrome"))
+    }
+
     func test_parseProfilesIni_zenLayout() {
         let ini = """
         [Install6ED35B3CA1B5D3AF]
