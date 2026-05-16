@@ -233,9 +233,16 @@ struct DomainRule: Codable, Identifiable, Hashable {
     /// for "never clean my internal `myinternal.example.com`" or "always
     /// clean even when global cleaning is off for this host".
     var cleanOverride: Bool? = nil
+    /// When set, the rule matches **only** the exact URL specified (after
+    /// minimal canonicalization: lowercase scheme/host, strip default port,
+    /// strip URL fragment, treat `/` and empty path as equivalent). When
+    /// `urlEquals` is set, `host` / `path` / `queryContains` / `schemes` are
+    /// all ignored — exact matches by definition specify the full URL.
+    /// `enabled` and `when` are still honored.
+    var urlEquals: String? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, host, action, enabled, when, schemes, path, queryContains, alsoCopyCleaned, cleanOverride
+        case id, host, action, enabled, when, schemes, path, queryContains, alsoCopyCleaned, cleanOverride, urlEquals
     }
 
     init(
@@ -248,7 +255,8 @@ struct DomainRule: Codable, Identifiable, Hashable {
         path: URLPathMatch? = nil,
         queryContains: String? = nil,
         alsoCopyCleaned: Bool = false,
-        cleanOverride: Bool? = nil
+        cleanOverride: Bool? = nil,
+        urlEquals: String? = nil
     ) {
         self.id = id
         self.host = host
@@ -260,6 +268,7 @@ struct DomainRule: Codable, Identifiable, Hashable {
         self.queryContains = queryContains
         self.alsoCopyCleaned = alsoCopyCleaned
         self.cleanOverride = cleanOverride
+        self.urlEquals = urlEquals
     }
 
     init(from decoder: Decoder) throws {
@@ -274,10 +283,23 @@ struct DomainRule: Codable, Identifiable, Hashable {
         self.queryContains = try? c.decodeIfPresent(String.self, forKey: .queryContains)
         self.alsoCopyCleaned = (try? c.decode(Bool.self, forKey: .alsoCopyCleaned)) ?? false
         self.cleanOverride = try? c.decodeIfPresent(Bool.self, forKey: .cleanOverride)
+        self.urlEquals = try? c.decodeIfPresent(String.self, forKey: .urlEquals)
     }
 
     func matches(url: URL, host resolvedHost: String?, context: RouteContext) -> Bool {
         guard enabled else { return false }
+
+        // Exact URL match short-circuits the host/path/query/scheme filter
+        // chain — the user picked "this one URL specifically" and that
+        // intent should not be diluted by per-component checks. `when`
+        // still applies so source-app / focus filtering works for these.
+        if let target = urlEquals {
+            guard DomainRule.urlsMatchExactly(url, target: target) else { return false }
+            if let condition = when, !condition.matches(context: context) {
+                return false
+            }
+            return true
+        }
 
         let scheme = url.scheme?.lowercased() ?? ""
         if let schemes, !schemes.isEmpty {
@@ -318,6 +340,61 @@ struct DomainRule: Codable, Identifiable, Hashable {
     /// `routeAgent`, and `routeAfterExpansion` all need the same resolution.
     static func resolveCleanFlag(rule: DomainRule?, globalEnabled: Bool) -> Bool {
         rule?.cleanOverride ?? globalEnabled
+    }
+
+    /// True when `url` matches `target` under the canonicalization rules
+    /// documented on `urlEquals`. Exposed `static` so the matcher and the
+    /// add-rule sheet's "Did you mean…?" hint can share one implementation.
+    static func urlsMatchExactly(_ url: URL, target: String) -> Bool {
+        guard let lhs = canonicalURLString(url),
+              let targetURL = URL(string: target),
+              let rhs = canonicalURLString(targetURL)
+        else { return false }
+        return lhs == rhs
+    }
+
+    /// Minimal RFC-aware canonicalization: lowercase scheme + host (both are
+    /// case-insensitive per RFC 3986), strip default ports (`:80` for http,
+    /// `:443` for https), strip the URL fragment (client-side only), and
+    /// treat `/` and `""` as the same path. Path and query stay
+    /// case-sensitive — servers differ on whether they're case-folding, so
+    /// we play it strict.
+    static func canonicalURLString(_ url: URL) -> String? {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        components.scheme = components.scheme?.lowercased()
+        components.host = components.host?.lowercased()
+        components.fragment = nil
+        if let scheme = components.scheme {
+            if scheme == "http",  components.port == 80  { components.port = nil }
+            if scheme == "https", components.port == 443 { components.port = nil }
+        }
+        if components.path == "/" { components.path = "" }
+        return components.url?.absoluteString
+    }
+
+    /// Human-readable kind label for both Rules UI and CLI/agent summaries.
+    /// `urlEquals` rules report as `url` so the Settings tab and `junction
+    /// rules list` both show the right discriminator at a glance.
+    var kindLabel: String {
+        urlEquals != nil ? "url" : host.kindLabel
+    }
+
+    /// Human-readable value the row should show. For exact-URL rules this
+    /// is the full URL; otherwise it's the host pattern.
+    var displayValue: String {
+        urlEquals ?? host.displayValue
+    }
+
+    /// Stable key for deduplicating rules when adding. Two exact-URL rules
+    /// with the same target replace each other; two host rules with the
+    /// same `kind:host` replace each other; the two kinds never collide.
+    var dedupKey: String {
+        if let urlEquals {
+            return "url:\(urlEquals.lowercased())"
+        }
+        return "\(host.kindLabel):\(host.displayValue.lowercased())"
     }
 }
 

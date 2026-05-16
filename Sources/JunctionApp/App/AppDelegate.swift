@@ -212,8 +212,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .listRules:
             let rules = RulesStore.shared.rules.rules.map { rule -> AgentRuleSummary in
                 AgentRuleSummary(
-                    hostKind: rule.host.kindLabel,
-                    hostValue: rule.host.displayValue,
+                    hostKind: rule.kindLabel,
+                    hostValue: rule.displayValue,
                     action: agentActionLabel(rule.action),
                     cleanOverride: rule.cleanOverride
                 )
@@ -439,7 +439,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let match = RulesStore.shared.match(url: normalized, context: context)
-        let ruleLabel = match.rule.map { "\($0.host.kindLabel):\($0.host.displayValue)" }
+        let ruleLabel = match.rule.map { "\($0.kindLabel):\($0.displayValue)" }
 
         if match.rule?.alsoCopyCleaned == true {
             copyCleaned(normalized)
