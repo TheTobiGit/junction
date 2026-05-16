@@ -6,6 +6,40 @@ struct DomainRedirect: Codable, Identifiable, Hashable {
     var toHost: String
     var enabled: Bool = true
     var label: String? = nil
+    /// Optional template applied to the rewritten URL's path/query.
+    /// Supported placeholders: `{path}`, `{pathNoSlash}`, `{query}`, `{fragment}`.
+    /// When nil, only the host swaps and path/query/fragment are preserved verbatim.
+    var pathTemplate: String? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case id, fromHost, toHost, enabled, label, pathTemplate
+    }
+
+    init(
+        id: UUID = UUID(),
+        fromHost: String,
+        toHost: String,
+        enabled: Bool = true,
+        label: String? = nil,
+        pathTemplate: String? = nil
+    ) {
+        self.id = id
+        self.fromHost = fromHost
+        self.toHost = toHost
+        self.enabled = enabled
+        self.label = label
+        self.pathTemplate = pathTemplate
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = (try? c.decode(UUID.self, forKey: .id)) ?? UUID()
+        self.fromHost = try c.decode(String.self, forKey: .fromHost)
+        self.toHost = try c.decode(String.self, forKey: .toHost)
+        self.enabled = (try? c.decode(Bool.self, forKey: .enabled)) ?? true
+        self.label = try? c.decodeIfPresent(String.self, forKey: .label)
+        self.pathTemplate = try? c.decodeIfPresent(String.self, forKey: .pathTemplate)
+    }
 
     func apply(to url: URL) -> URL? {
         guard var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
@@ -14,6 +48,30 @@ struct DomainRedirect: Codable, Identifiable, Hashable {
         let bare = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
         guard bare == needle || bare.hasSuffix("." + needle) else { return nil }
         comps.host = toHost
+
+        if let template = pathTemplate, !template.isEmpty {
+            let originalPath = url.path.isEmpty ? "/" : url.path
+            let originalQuery = url.query ?? ""
+            let originalFragment = url.fragment ?? ""
+
+            var rendered = template
+            rendered = rendered.replacingOccurrences(of: "{path}", with: originalPath)
+            rendered = rendered.replacingOccurrences(of: "{pathNoSlash}", with: String(originalPath.drop(while: { $0 == "/" })))
+            rendered = rendered.replacingOccurrences(of: "{query}", with: originalQuery)
+            rendered = rendered.replacingOccurrences(of: "{fragment}", with: originalFragment)
+
+            // Preserve the original scheme so http://-only dev/local rewrite
+            // rules don't get silently upgraded to https. Templates that
+            // include `?...` get parsed by URL(string:) directly; we don't try
+            // to round-trip through URLComponents because the template can
+            // contain query/fragment markers that components doesn't know how
+            // to interpret in a path field.
+            let scheme = url.scheme ?? "https"
+            if let recovered = URL(string: "\(scheme)://\(toHost)" + rendered) {
+                return recovered
+            }
+        }
+
         return comps.url
     }
 }

@@ -40,18 +40,29 @@ final class ClipboardWatcher {
         lastChangeCount = pb.changeCount
 
         guard let raw = pb.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty,
-              let url = parseURL(from: raw),
-              url != lastURL
+              !raw.isEmpty
         else { return }
-        lastURL = url
-        hud.present(url: url)
+
+        if let single = parseSingleURL(from: raw), single != lastURL {
+            lastURL = single
+            hud.present(url: single)
+            return
+        }
+
+        // Multi-URL paste support: when the clipboard holds a list (newlines,
+        // commas, or just whitespace-separated), surface the first link and
+        // remember it so we don't keep re-prompting on identical content.
+        let urls = URLExtractor.extract(from: raw)
+        guard let first = urls.first, first != lastURL else { return }
+        lastURL = first
+        hud.present(url: first)
     }
 
-    private func parseURL(from raw: String) -> URL? {
+    private func parseSingleURL(from raw: String) -> URL? {
         guard raw.count < 2048 else { return nil }
-        if raw.hasPrefix("http://") || raw.hasPrefix("https://") {
-            return URL(string: raw)
+        if raw.hasPrefix("http://") || raw.hasPrefix("https://"),
+           let url = URL(string: raw) {
+            return url
         }
         return nil
     }

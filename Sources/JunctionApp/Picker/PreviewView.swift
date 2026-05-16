@@ -35,7 +35,7 @@ struct PreviewView: View {
     private var webArea: some View {
         ZStack(alignment: .top) {
             WebContainer(
-                url: model.cleanedURL,
+                url: model.previewURL,
                 title: $model.previewTitle,
                 isLoading: $model.previewLoading,
                 progress: $model.previewProgress
@@ -103,25 +103,38 @@ struct PreviewView: View {
     }
 
     private var titleStrip: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             linkIcon
-                .frame(width: 22, height: 22)
-                .clipShape(RoundedRectangle(cornerRadius: 5))
+                .frame(width: 26, height: 26)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
 
-            Text(model.previewTitle ?? model.preview?.title ?? model.displayHost)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.primary)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 8) {
+                    Text(model.previewTitle ?? model.preview?.title ?? model.displayHost)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
 
-            Text("·")
-                .foregroundColor(.secondary.opacity(0.6))
+                    Text("·")
+                        .foregroundColor(.secondary.opacity(0.6))
 
-            Text(model.cleanedURL.absoluteString)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
+                    Text(model.displayURLString)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                }
+
+                if let description = model.preview?.description, !description.isEmpty {
+                    Text(description)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
 
             Spacer(minLength: 10)
         }
