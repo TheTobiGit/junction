@@ -800,7 +800,7 @@ struct PreferencesView: View {
     private var rulesTab: some View {
         VStack(alignment: .leading, spacing: 14) {
             sectionBlurb(
-                "Rules are evaluated top to bottom. First match wins.",
+                "Rules are evaluated top to bottom — first match wins. Drag to reorder, toggle to disable without losing the rule.",
                 trailing: { EmptyView() }
             )
 
@@ -818,21 +818,39 @@ struct PreferencesView: View {
                 message: "Use the Remember toggle in the picker to save a rule, import a recipe, or edit the rules file directly."
             )
         } else {
-            Card {
-                VStack(spacing: 0) {
-                    ForEach(Array(rulesFile.rules.enumerated()), id: \.element.id) { idx, rule in
+            // List (vs. our usual Card+VStack+ForEach) so `.onMove` works on
+            // macOS — matches the Targets tab. Background and separators are
+            // cleared so the Card's surface shows through unchanged.
+            Card(padding: 0) {
+                List {
+                    ForEach(rulesFile.rules) { rule in
                         ruleRow(rule)
-                        if idx < rulesFile.rules.count - 1 {
-                            cardDivider
-                        }
+                            .listRowInsets(EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                    }
+                    .onMove { source, destination in
+                        RulesStore.shared.moveRule(from: source, to: destination)
                     }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
+                .frame(minHeight: 200, maxHeight: 520)
             }
         }
     }
 
     private func ruleRow(_ rule: DomainRule) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
+            // Drag affordance — `.onMove` on the enclosing List provides the
+            // actual gesture; this glyph just tells the user it's draggable.
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.secondary.opacity(0.7))
+                .help("Drag to reorder (first match wins)")
+                .accessibilityHidden(true)
+
             Toggle(
                 "",
                 isOn: Binding(
