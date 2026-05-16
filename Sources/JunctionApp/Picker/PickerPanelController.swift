@@ -31,11 +31,31 @@ final class PickerPanelController {
         isDismissed = false
 
         let openOnce: (LaunchOption, Bool) -> Void = { option, incognito in
-            let cleaned = SettingsStore.shared.settings.cleanURLsBeforeOpening
-            let urlToOpen = cleaned ? URLTransformers.default.run(url) : url
+            // Resolve the cleaning flag the same way ``AppDelegate.routeAfterExpansion``
+            // does so picker-confirmed opens behave identically to rule-driven
+            // opens. Look up the matching rule for the cleaned URL — that's
+            // what we'd be opening when cleaning is on, so it's the right key.
+            let trace = URLTransformers.default.runTraced(url)
+            let match = RulesStore.shared.match(url: trace.final, context: context)
+            let shouldClean = DomainRule.resolveCleanFlag(
+                rule: match.rule,
+                globalEnabled: SettingsStore.shared.settings.cleanURLsBeforeOpening
+            )
+            let urlToOpen = shouldClean ? trace.final : url
             URLOpener.open(urlToOpen, with: option, incognito: incognito) { success in
                 if success {
                     LastURLStore.shared.recordRouted(urlToOpen)
+                    // Picker-confirmed opens are the most common interactive
+                    // path; without this entry, the Activity tab would only
+                    // see rule-driven and CLI opens.
+                    RoutingHistory.shared.record(
+                        originalURL: url,
+                        result: trace,
+                        outcome: incognito ? .openedIncognito : .opened,
+                        targetBundleID: option.browser.bundleID,
+                        ruleLabel: "picker",
+                        openedURL: urlToOpen
+                    )
                 }
             }
         }

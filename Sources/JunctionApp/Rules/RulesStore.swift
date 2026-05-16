@@ -70,11 +70,14 @@ final class RulesStore {
         }
     }
 
-    func addRule(host: HostMatch, action: RuleAction) {
+    func addRule(host: HostMatch, action: RuleAction, cleanOverride: Bool? = nil) {
         update { f in
             let key = "\(host.kindLabel):\(host.displayValue.lowercased())"
             f.rules.removeAll { "\($0.host.kindLabel):\($0.host.displayValue.lowercased())" == key }
-            f.rules.insert(DomainRule(host: host, action: action), at: 0)
+            f.rules.insert(
+                DomainRule(host: host, action: action, cleanOverride: cleanOverride),
+                at: 0
+            )
         }
     }
 
@@ -91,6 +94,16 @@ final class RulesStore {
 
     func remove(ruleID: UUID) {
         update { f in f.rules.removeAll { $0.id == ruleID } }
+    }
+
+    /// Mutates a single rule in place, identified by its `id`. Used by the
+    /// Rules UI to flip per-rule fields (like `cleanOverride`) without
+    /// regenerating UUIDs or losing position.
+    func updateRule(id: UUID, _ mutation: (inout DomainRule) -> Void) {
+        update { f in
+            guard let idx = f.rules.firstIndex(where: { $0.id == id }) else { return }
+            mutation(&f.rules[idx])
+        }
     }
 
     func setFallback(_ action: RuleAction) {
@@ -197,7 +210,14 @@ final class RulesStore {
 
     static func normalizedHost(for url: URL) -> String? {
         guard var host = url.host?.lowercased() else { return nil }
+        // DNS allows fully-qualified names with a trailing dot
+        // ("example.com."); resolvers strip it. We must too, otherwise rules
+        // keyed on `example.com` silently miss URLs that arrive with the dot.
+        while host.hasSuffix(".") { host.removeLast() }
         if host.hasPrefix("www.") { host.removeFirst(4) }
-        return host
+        // Fold xn-- labels to their Unicode form so a rule keyed on either side
+        // matches both. Rules are stored as the user typed them; matching
+        // canonicalizes both URL host and rule host to the same Unicode form.
+        return IDNA.toUnicode(host: host)
     }
 }

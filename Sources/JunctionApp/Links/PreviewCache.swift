@@ -13,7 +13,11 @@ actor PreviewCache {
 
     private let faviconTTL: TimeInterval = 7 * 24 * 60 * 60
     private let previewTTL: TimeInterval = 60 * 60
-    private let maxDiskBytes = 10 * 1024 * 1024
+    /// Per-pool disk budgets. Favicons are tiny (16-32KB each) but reused
+    /// across many sites, so they get the larger pool. Previews are HTML
+    /// payload digests so they churn faster but each entry is cheap.
+    private let maxFaviconBytes = 8 * 1024 * 1024
+    private let maxPreviewBytes = 4 * 1024 * 1024
 
     /// On-disk favicon: 8-byte big-endian UNIX seconds + raw image bytes (no JSON/base64 overhead).
     private static let faviconHeaderLength = MemoryLayout<UInt64>.size
@@ -21,7 +25,28 @@ actor PreviewCache {
     struct CachedPreviewPayload: Codable, Equatable {
         let title: String?
         let siteName: String?
+        let description: String?
         let faviconData: Data?
+
+        init(title: String?, siteName: String?, description: String?, faviconData: Data?) {
+            self.title = title
+            self.siteName = siteName
+            self.description = description
+            self.faviconData = faviconData
+        }
+
+        init(from decoder: Decoder) throws {
+            // Older on-disk payloads have no `description`; default to nil.
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self.title = try? c.decodeIfPresent(String.self, forKey: .title)
+            self.siteName = try? c.decodeIfPresent(String.self, forKey: .siteName)
+            self.description = try? c.decodeIfPresent(String.self, forKey: .description)
+            self.faviconData = try? c.decodeIfPresent(Data.self, forKey: .faviconData)
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case title, siteName, description, faviconData
+        }
     }
 
     private struct DiskEnvelope: Codable {
@@ -80,7 +105,7 @@ actor PreviewCache {
     }
 
     func previewPayload(for url: URL) async -> CachedPreviewPayload? {
-        let key = url.absoluteString
+        let key = Self.previewCacheKey(for: url)
         let nsKey = key as NSString
         if let blob = previewMemory.object(forKey: nsKey) {
             if let envelope = try? JSONDecoder().decode(DiskEnvelope.self, from: blob as Data) {
@@ -106,7 +131,7 @@ actor PreviewCache {
 
     func storePreview(_ payload: CachedPreviewPayload, for url: URL) async {
         let sanitized = Self.sanitizedPreview(payload)
-        let key = url.absoluteString
+        let key = Self.previewCacheKey(for: url)
         let nsKey = key as NSString
         guard let encodedPayload = try? JSONEncoder().encode(sanitized) else { return }
         let storedAt = Date()
@@ -191,7 +216,8 @@ actor PreviewCache {
     }
 
     private func trimDiskIfNeeded() {
-        Self.trimDirectories([faviconDir, previewDir], maxBytes: maxDiskBytes)
+        Self.trimDirectories([faviconDir], maxBytes: maxFaviconBytes)
+        Self.trimDirectories([previewDir], maxBytes: maxPreviewBytes)
     }
 
     nonisolated private static func hexDigest(for key: String) -> String {
@@ -205,6 +231,29 @@ actor PreviewCache {
 
     nonisolated private static func previewFilename(for key: String) -> String {
         hexDigest(for: key) + ".cache"
+    }
+
+    /// Canonicalizes URL keys so trailing-slash, default-port, host-case, IDN
+    /// punycode/Unicode, and fragment variants share a single cache slot.
+    nonisolated static func previewCacheKey(for url: URL) -> String {
+        guard var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url.absoluteString
+        }
+        if let host = comps.host?.lowercased() {
+            comps.host = IDNA.toUnicode(host: host)
+        }
+        comps.fragment = nil
+        if let scheme = comps.scheme?.lowercased(),
+           let port = comps.port,
+           (scheme == "https" && port == 443) || (scheme == "http" && port == 80) {
+            comps.port = nil
+        }
+        var path = comps.path
+        // "" and "/" are the same page; collapse so caches share.
+        if path.isEmpty { path = "/" }
+        if path.count > 1 && path.hasSuffix("/") { path.removeLast() }
+        comps.path = path
+        return comps.url?.absoluteString ?? url.absoluteString
     }
 
     nonisolated private static func encodeFaviconHeader(storedAt: Date = Date()) -> Data {
@@ -233,7 +282,12 @@ actor PreviewCache {
 
     nonisolated private static func sanitizedPreview(_ payload: CachedPreviewPayload) -> CachedPreviewPayload {
         let fav = payload.faviconData.flatMap { validImageData($0) }
-        return CachedPreviewPayload(title: payload.title, siteName: payload.siteName, faviconData: fav)
+        return CachedPreviewPayload(
+            title: payload.title,
+            siteName: payload.siteName,
+            description: payload.description,
+            faviconData: fav
+        )
     }
 
     nonisolated private static func trimDirectories(_ dirs: [URL], maxBytes: Int) {

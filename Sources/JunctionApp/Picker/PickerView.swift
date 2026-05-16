@@ -133,8 +133,13 @@ struct PickerView: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                             .textSelection(.enabled)
+
+                        if model.willOpenCleaned {
+                            cleanedChip
+                        }
                     }
                     .frame(maxWidth: textCap)
+                    .help(model.cleaningSummary ?? displayURL)
                     Spacer(minLength: 0)
                 }
                 .frame(width: geo.size.width, height: geo.size.height)
@@ -175,7 +180,7 @@ struct PickerView: View {
     }
 
     private var displayURL: String {
-        model.didClean ? model.cleanedURL.absoluteString : model.url.absoluteString
+        model.displayURLString
     }
 
     private func sourcePill(_ source: URLSource) -> some View {
@@ -225,18 +230,31 @@ struct PickerView: View {
     }
 
     private func riskChip(_ flags: [RiskFlag]) -> some View {
-        let highest = flags.max(by: { $0.level.rawValue < $1.level.rawValue }) ?? flags[0]
-        let tint = riskTint(highest.level)
-        return HStack(spacing: 5) {
-            Image(systemName: riskIcon(highest.level))
-                .font(.system(size: 11, weight: .semibold))
-            Text(flags.count == 1 ? highest.title : "\(flags.count) risk flags")
-                .font(.system(size: 12, weight: .medium))
+        RiskChip(flags: flags)
+    }
+
+    /// Inline "cleaned" pill next to the URL row that hosts the cleaning trace
+    /// in its tooltip; gives users a visible nudge that the URL was modified.
+    private var cleanedChip: some View {
+        let count = model.cleaningTrace.steps.count
+        return HStack(spacing: 4) {
+            Image(systemName: "wand.and.stars")
+                .font(.system(size: 9, weight: .semibold))
+            Text("cleaned")
+                .font(.system(size: 10, weight: .semibold))
+            if count > 1 {
+                Text("\(count)")
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .foregroundColor(.accentColor)
+                    .padding(.horizontal, 4).padding(.vertical, 0)
+                    .background(Capsule().fill(Color.accentColor.opacity(0.28)))
+            }
         }
-        .foregroundColor(tint)
-        .padding(.horizontal, 9).padding(.vertical, 4)
-        .background(Capsule().fill(tint.opacity(0.18)))
-        .help(flags.map { "\($0.title): \($0.detail)" }.joined(separator: "\n"))
+        .foregroundColor(.accentColor)
+        .padding(.horizontal, 7).padding(.vertical, 2)
+        .background(Capsule().fill(Color.accentColor.opacity(0.18)))
+        .overlay(Capsule().strokeBorder(Color.accentColor.opacity(0.3), lineWidth: 0.5))
+        .help(model.cleaningSummary ?? "URL was cleaned before opening.")
     }
 
     private func riskTint(_ level: RiskLevel) -> Color {
@@ -596,6 +614,11 @@ private final class KeyCatcherView: NSView {
                 }
                 if cmd && shift,
                    event.charactersIgnoringModifiers?.lowercased() == "c" {
+                    model.copyAsMarkdown()
+                    return nil
+                }
+                if cmd && !shift,
+                   event.charactersIgnoringModifiers?.lowercased() == "c" {
                     model.copyCleanedURL()
                     return nil
                 }
@@ -638,6 +661,11 @@ private final class KeyCatcherView: NSView {
                 )
                 return nil
             default: break
+            }
+            if modifiers == [.command, .shift],
+               event.charactersIgnoringModifiers?.lowercased() == "c" {
+                model.copyAsMarkdown()
+                return nil
             }
             if modifiers == .command,
                event.charactersIgnoringModifiers?.lowercased() == "c" {
