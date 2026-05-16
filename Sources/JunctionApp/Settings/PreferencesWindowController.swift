@@ -31,8 +31,8 @@ final class PreferencesWindowController {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = true
-        window.setContentSize(NSSize(width: 780, height: 560))
-        window.minSize = NSSize(width: 720, height: 500)
+        window.setContentSize(NSSize(width: 820, height: 600))
+        window.minSize = NSSize(width: 760, height: 540)
         window.center()
         window.isReleasedWhenClosed = false
         self.window = window
@@ -74,15 +74,26 @@ private enum PrefsSection: String, CaseIterable, Identifiable {
         }
     }
 
-    var subtitle: String {
+    /// Sentence-long blurb shown directly under the title in the detail
+    /// header. Replaces both the old short `subtitle` and the per-tab
+    /// "sectionBlurb" row — keeping the description in one place means
+    /// every tab has the same hierarchy.
+    var blurb: String {
         switch self {
-        case .general:    return "Link handling"
-        case .rewrites:   return "Host rewrites"
-        case .targets:    return "Browsers and profiles"
-        case .rules:      return "Routing rules"
-        case .appSchemes: return "Open in desktop app instead"
-        case .hotkeys:    return "Global shortcuts"
-        case .activity:   return "What Junction did with recent links"
+        case .general:
+            return "Routing behavior, link cleaning, and appearance for the whole app."
+        case .rewrites:
+            return "Replace a URL's host before it gets routed. Disabled rows are skipped."
+        case .targets:
+            return "Browsers and profiles Junction can open. Toggle to hide from the picker, drag to reorder."
+        case .rules:
+            return "Rules are evaluated top to bottom — first match wins. Drag to reorder, toggle to disable."
+        case .appSchemes:
+            return "Hand matched URLs to a desktop app instead of the browser. Useful for Slack, Linear, Figma, Notion, Zoom."
+        case .hotkeys:
+            return "Global keyboard shortcuts that work from any app."
+        case .activity:
+            return "Recent links Junction has routed on this Mac. Stored locally only."
         }
     }
 
@@ -115,14 +126,14 @@ struct PreferencesView: View {
     @State private var options: [LaunchOption] = []
     @State private var rulesFile: RulesFile = RulesStore.shared.rules
     @State private var selection: PrefsSection = .general
+    @State private var showingAddRuleSheet: Bool = false
+    @State private var hoveredSection: PrefsSection? = nil
     @ObservedObject private var settings = SettingsStore.shared
 
     var body: some View {
         HStack(spacing: 0) {
             sidebar
-                .frame(width: 196)
-
-            Divider().opacity(0.18)
+                .frame(width: 224)
 
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -131,7 +142,7 @@ struct PreferencesView: View {
             VisualEffectView(material: .underWindowBackground, blendingMode: .behindWindow)
         )
         .tint(settings.settings.accentPreset.swiftUIColor)
-        .frame(minWidth: 720, minHeight: 500)
+        .frame(minWidth: 760, minHeight: 540)
         .onAppear(perform: reload)
         .onReceive(NotificationCenter.default.publisher(for: .junctionRulesChanged)) { _ in
             reload()
@@ -144,108 +155,166 @@ struct PreferencesView: View {
         }
     }
 
+    // MARK: - Sidebar
+
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.accentColor.opacity(0.9), Color.accentColor.opacity(0.55)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 26, height: 26)
-                    .overlay(
-                        Image(systemName: "arrow.triangle.branch")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(.white)
-                    )
-                    .shadow(color: Color.accentColor.opacity(0.35), radius: 5, x: 0, y: 2)
-                Text("Junction")
-                    .font(.system(size: 13, weight: .semibold))
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 30)
-            .padding(.bottom, 22)
+            brandHeader
 
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(PrefsSection.allCases) { section in
                     sidebarRow(section)
                 }
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 10)
 
             Spacer()
 
-            HStack(spacing: 4) {
-                Text("v")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.secondary.opacity(0.6))
-                Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev")
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .foregroundColor(.secondary.opacity(0.7))
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 14)
+            sidebarFooter
         }
         .frame(maxHeight: .infinity)
         .background(
             VisualEffectView(material: .sidebar, blendingMode: .behindWindow)
         )
+        // Crisper trailing hairline than the system `Divider()`, which
+        // can look chunky against the sidebar material in dark mode.
+        .overlay(alignment: .trailing) {
+            Rectangle()
+                .fill(Color.primary.opacity(0.10))
+                .frame(width: 0.5)
+        }
+    }
+
+    private var brandHeader: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.accentColor.opacity(0.95), Color.accentColor.opacity(0.55)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 30, height: 30)
+                    .shadow(color: Color.accentColor.opacity(0.35), radius: 5, x: 0, y: 2)
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.5)
+                    .frame(width: 30, height: 30)
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Junction")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Preferences")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 30)
+        .padding(.bottom, 22)
     }
 
     private func sidebarRow(_ section: PrefsSection) -> some View {
         let isSelected = selection == section
+        let isHovered = hoveredSection == section && !isSelected
         return Button(action: { selection = section }) {
             HStack(spacing: 10) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(
-                            isSelected
-                            ? LinearGradient(
-                                colors: [section.tint.opacity(0.95), section.tint.opacity(0.65)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                            : LinearGradient(
-                                colors: [Color.secondary.opacity(0.16), Color.secondary.opacity(0.08)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .frame(width: 20, height: 20)
-                    Image(systemName: section.symbol)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(isSelected ? .white : .secondary)
-                }
-
+                sidebarIcon(for: section, selected: isSelected)
                 Text(section.title)
                     .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
                     .foregroundColor(isSelected ? .primary : .secondary)
-
-                Spacer()
+                Spacer(minLength: 0)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(isSelected ? Color.primary.opacity(0.08) : Color.clear)
+                    .fill(
+                        isSelected
+                        ? section.tint.opacity(0.13)
+                        : (isHovered ? Color.primary.opacity(0.05) : Color.clear)
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? section.tint.opacity(0.20) : Color.clear,
+                        lineWidth: 0.5
+                    )
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onHover { hovering in
+            if hovering {
+                hoveredSection = section
+            } else if hoveredSection == section {
+                hoveredSection = nil
+            }
+        }
     }
+
+    private func sidebarIcon(for section: PrefsSection, selected: Bool) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(
+                    selected
+                    ? LinearGradient(
+                        colors: [section.tint.opacity(0.95), section.tint.opacity(0.65)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    : LinearGradient(
+                        colors: [Color.secondary.opacity(0.18), Color.secondary.opacity(0.08)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(width: 22, height: 22)
+            if selected {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.5)
+                    .frame(width: 22, height: 22)
+            }
+            Image(systemName: section.symbol)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(selected ? .white : .secondary)
+        }
+    }
+
+    private var sidebarFooter: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(Color.green.opacity(0.7))
+                .frame(width: 5, height: 5)
+                .overlay(Circle().stroke(Color.green.opacity(0.25), lineWidth: 2).frame(width: 9, height: 9))
+            Text("Junction")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.secondary.opacity(0.85))
+            Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev")
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundColor(.secondary.opacity(0.6))
+            Spacer()
+        }
+        .padding(.horizontal, 18)
+        .padding(.bottom, 16)
+    }
+
+    // MARK: - Detail
 
     private var detail: some View {
         VStack(alignment: .leading, spacing: 0) {
             detailHeader
 
-            Divider().opacity(0.12)
-
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 22) {
                     switch selection {
                     case .general:    generalTab
                     case .rewrites:   rewritesTab
@@ -256,35 +325,213 @@ struct PreferencesView: View {
                     case .activity:   activityTab
                     }
                 }
-                .padding(.horizontal, 28)
-                .padding(.top, 20)
-                .padding(.bottom, 28)
+                .padding(.horizontal, 32)
+                .padding(.top, 4)
+                .padding(.bottom, 32)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         }
     }
 
     private var detailHeader: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(selection.title)
-                .font(.system(size: 20, weight: .semibold))
-            Text(selection.subtitle)
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
+        HStack(alignment: .top, spacing: 14) {
+            sectionIconTile(for: selection, size: 38, cornerRadius: 10)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(selection.title)
+                    .font(.system(size: 22, weight: .bold))
+                Text(selection.blurb)
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            headerAction
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 28)
+        .padding(.horizontal, 32)
         .padding(.top, 26)
         .padding(.bottom, 18)
+    }
+
+    private func sectionIconTile(for section: PrefsSection, size: CGFloat, cornerRadius: CGFloat) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [section.tint.opacity(0.95), section.tint.opacity(0.62)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: size, height: size)
+                .shadow(color: section.tint.opacity(0.32), radius: 7, x: 0, y: 2)
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.22), lineWidth: 0.5)
+                .frame(width: size, height: size)
+            Image(systemName: section.symbol)
+                .font(.system(size: size * 0.42, weight: .semibold))
+                .foregroundColor(.white)
+        }
+    }
+
+    /// Per-tab right-aligned header action. Most tabs surface their "primary
+    /// add" affordance here so it's visible without scrolling; tabs without
+    /// one render an EmptyView so the layout collapses.
+    @ViewBuilder
+    private var headerAction: some View {
+        switch selection {
+        case .rewrites:
+            primaryButton("Add rewrite", symbol: "plus") {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    settings.settings.redirects.append(
+                        DomainRedirect(
+                            fromHost: "example.com",
+                            toHost: "example.net",
+                            enabled: true,
+                            label: nil
+                        )
+                    )
+                }
+            }
+        case .rules:
+            primaryButton("Add rule", symbol: "plus") {
+                showingAddRuleSheet = true
+            }
+        case .targets:
+            countBadge("\(visibleCount) of \(options.count) visible")
+        default:
+            EmptyView()
+        }
     }
 
     // MARK: - General
 
     private var generalTab: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            appearanceCard
+        VStack(alignment: .leading, spacing: 22) {
+            appearanceSection
+            routingSection
+            diagnosticsSection
+        }
+    }
+
+    private var appearanceSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("Appearance")
             Card {
-                VStack(alignment: .leading, spacing: 0) {
+                VStack(spacing: 0) {
+                    surfaceRow
+                    cardDivider
+                    accentRow
+                }
+            }
+        }
+    }
+
+    private var surfaceRow: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                iconTile(symbol: "rectangle.on.rectangle.angled", tint: .accentColor, size: 32)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Surface")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Glass blurs the desktop behind the picker and clipboard HUD. Solid uses an opaque, textured surface.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+
+            Picker("Surface style", selection: $settings.settings.chromeTheme) {
+                ForEach(ChromeTheme.allCases) { theme in
+                    Text(theme.title).tag(theme)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+        }
+        .padding(16)
+    }
+
+    private var accentRow: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                iconTile(symbol: "paintpalette.fill", tint: .pink, size: 32)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Accent color")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Tints buttons, progress bars, and selection across the app.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                Text(settings.settings.accentPreset.title)
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(Capsule().fill(Color.primary.opacity(0.06)))
+            }
+
+            HStack(spacing: 10) {
+                ForEach(AccentPreset.allCases) { preset in
+                    accentSwatch(preset)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(16)
+    }
+
+    private func accentSwatch(_ preset: AccentPreset) -> some View {
+        let isSelected = settings.settings.accentPreset == preset
+        return Button {
+            settings.settings.accentPreset = preset
+        } label: {
+            ZStack {
+                if preset == .system {
+                    Circle()
+                        .fill(Color.primary.opacity(0.08))
+                        .frame(width: 28, height: 28)
+                    Image(systemName: "apple.logo")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.primary)
+                } else {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [preset.swiftUIColor, preset.swiftUIColor.opacity(0.78)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 28, height: 28)
+                        .shadow(color: preset.swiftUIColor.opacity(0.35), radius: 4, x: 0, y: 1)
+                }
+                Circle()
+                    .strokeBorder(Color.white.opacity(preset == .system ? 0 : 0.25), lineWidth: 0.5)
+                    .frame(width: 28, height: 28)
+                Circle()
+                    .strokeBorder(
+                        Color.primary.opacity(isSelected ? 0.85 : 0.12),
+                        lineWidth: isSelected ? 2 : 1
+                    )
+                    .frame(width: isSelected ? 32 : 29, height: isSelected ? 32 : 29)
+            }
+            .frame(width: 34, height: 34)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(preset.title))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .help(preset.title)
+    }
+
+    private var routingSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("Routing")
+            Card {
+                VStack(spacing: 0) {
                     toggleRow(
                         title: "Clean URLs",
                         subtitle: "Strip utm_*, fbclid, gclid, and similar trackers before opening.",
@@ -318,177 +565,20 @@ struct PreferencesView: View {
                     )
                 }
             }
+        }
+    }
 
+    private var diagnosticsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("Diagnostics")
             URLInspectorCard()
         }
-    }
-
-    private var appearanceCard: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .center, spacing: 12) {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.accentColor.opacity(0.35), Color.accentColor.opacity(0.14)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 30, height: 30)
-                        .overlay(
-                            Image(systemName: "paintpalette.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.accentColor)
-                        )
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Appearance")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text("Glass blurs the desktop behind the picker and clipboard HUD. Solid uses an opaque, textured surface.")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Surface")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.secondary)
-                    Picker("Surface style", selection: $settings.settings.chromeTheme) {
-                        ForEach(ChromeTheme.allCases) { theme in
-                            Text(theme.title).tag(theme)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Accent")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.secondary)
-                    LazyVGrid(
-                        columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4),
-                        spacing: 8
-                    ) {
-                        ForEach(AccentPreset.allCases) { preset in
-                            accentSwatch(preset)
-                        }
-                    }
-                }
-            }
-            .padding(10)
-        }
-    }
-
-    private func accentSwatch(_ preset: AccentPreset) -> some View {
-        let isSelected = settings.settings.accentPreset == preset
-        return Button {
-            settings.settings.accentPreset = preset
-        } label: {
-            ZStack {
-                if preset == .system {
-                    Circle()
-                        .fill(Color.primary.opacity(0.08))
-                        .frame(width: 30, height: 30)
-                    Image(systemName: "apple.logo")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.primary)
-                } else {
-                    Circle()
-                        .fill(preset.swiftUIColor)
-                        .frame(width: 30, height: 30)
-                }
-                Circle()
-                    .strokeBorder(
-                        Color.primary.opacity(isSelected ? 0.85 : 0.15),
-                        lineWidth: isSelected ? 2.25 : 1
-                    )
-                    .frame(width: isSelected ? 34 : 31, height: isSelected ? 34 : 31)
-            }
-            .frame(width: 36, height: 36)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(preset.title))
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-
-    private func toggleRow(
-        title: String,
-        subtitle: String,
-        symbol: String,
-        tint: Color,
-        isOn: Binding<Bool>
-    ) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [tint.opacity(0.22), tint.opacity(0.10)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .frame(width: 30, height: 30)
-                .overlay(
-                    Image(systemName: symbol)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(tint)
-                )
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                Text(subtitle)
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 16)
-
-            Toggle("", isOn: isOn)
-                .toggleStyle(.switch)
-                .labelsHidden()
-                .controlSize(.small)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-    }
-
-    private var cardDivider: some View {
-        Divider().opacity(0.10).padding(.leading, 56)
     }
 
     // MARK: - Rewrites
 
     private var rewritesTab: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionBlurb(
-                "Rewrites replace a URL's host before routing. Disabled rows are skipped.",
-                trailing: {
-                    Button {
-                        withAnimation(.easeOut(duration: 0.18)) {
-                            settings.settings.redirects.append(
-                                DomainRedirect(
-                                    fromHost: "example.com",
-                                    toHost: "example.net",
-                                    enabled: true,
-                                    label: nil
-                                )
-                            )
-                        }
-                    } label: {
-                        Label("Add", systemImage: "plus")
-                            .font(.system(size: 12, weight: .semibold))
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                }
-            )
-
             if settings.settings.redirects.isEmpty {
                 emptyState(
                     icon: "arrow.triangle.2.circlepath",
@@ -511,64 +601,38 @@ struct PreferencesView: View {
     }
 
     private func redirectRow(redirect: Binding<DomainRedirect>) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Toggle("", isOn: redirect.enabled)
                     .toggleStyle(.switch)
                     .labelsHidden()
                     .controlSize(.small)
 
-                TextField("from-host", text: redirect.fromHost)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12, design: .monospaced))
-                    .padding(.horizontal, 8).padding(.vertical, 5)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color.primary.opacity(0.06))
-                    )
-                    .frame(maxWidth: .infinity)
+                hostField(text: redirect.fromHost, placeholder: "from-host")
 
                 Image(systemName: "arrow.right")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.secondary.opacity(0.6))
+                    .foregroundColor(.secondary.opacity(0.55))
 
-                TextField("to-host", text: redirect.toHost)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12, design: .monospaced))
-                    .padding(.horizontal, 8).padding(.vertical, 5)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color.primary.opacity(0.06))
-                    )
-                    .frame(maxWidth: .infinity)
+                hostField(text: redirect.toHost, placeholder: "to-host")
 
                 if let label = redirect.wrappedValue.label {
                     Text(label)
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: 10, weight: .semibold))
                         .lineLimit(1)
                         .padding(.horizontal, 7).padding(.vertical, 3)
-                        .background(
-                            Capsule().fill(Color.secondary.opacity(0.14))
-                        )
+                        .background(Capsule().fill(Color.secondary.opacity(0.14)))
                         .foregroundColor(.secondary)
                         .fixedSize()
                 }
 
-                Button {
+                deleteIconButton(help: "Remove rewrite") {
                     withAnimation(.easeOut(duration: 0.18)) {
                         if let idx = settings.settings.redirects.firstIndex(where: { $0.id == redirect.wrappedValue.id }) {
                             settings.settings.redirects.remove(at: idx)
                         }
                     }
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .frame(width: 22, height: 22)
-                        .background(Circle().fill(Color.primary.opacity(0.06)))
                 }
-                .buttonStyle(.plain)
-                .help("Remove rewrite")
             }
 
             HStack(spacing: 8) {
@@ -590,6 +654,10 @@ struct PreferencesView: View {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .fill(Color.primary.opacity(0.04))
                 )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.05), lineWidth: 0.5)
+                )
                 Text("{path} {pathNoSlash} {query} {fragment}")
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundColor(.secondary.opacity(0.6))
@@ -597,25 +665,43 @@ struct PreferencesView: View {
             }
             .padding(.leading, 30)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+    }
+
+    private func hostField(text: Binding<String>, placeholder: String) -> some View {
+        TextField(placeholder, text: text)
+            .textFieldStyle(.plain)
+            .font(.system(size: 12, design: .monospaced))
+            .padding(.horizontal, 9).padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.primary.opacity(0.05))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
+            )
+            .frame(maxWidth: .infinity)
+    }
+
+    private func deleteIconButton(help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "trash")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.secondary)
+                .frame(width: 24, height: 24)
+                .background(Circle().fill(Color.primary.opacity(0.06)))
+                .overlay(Circle().strokeBorder(Color.primary.opacity(0.05), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 
     // MARK: - Targets
 
     private var targetsTab: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionBlurb(
-                "Detected browsers and profiles. Toggle to hide from the picker, drag to reorder.",
-                trailing: {
-                    Text("\(visibleCount) of \(options.count)")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Capsule().fill(Color.secondary.opacity(0.14)))
-                }
-            )
-
             HStack(spacing: 6) {
                 pillButton("Show all", symbol: "eye") { setAllHidden(false) }
                     .disabled(visibleCount == options.count)
@@ -626,7 +712,7 @@ struct PreferencesView: View {
                 Spacer()
             }
 
-            Card(padding: 0) {
+            Card {
                 List {
                     Section {
                         if visibleTargets.isEmpty {
@@ -646,7 +732,7 @@ struct PreferencesView: View {
                             .onMove(perform: moveVisible)
                         }
                     } header: {
-                        sectionHeader("Visible", count: visibleTargets.count)
+                        listSectionHeader("Visible", count: visibleTargets.count)
                     }
 
                     if !hiddenTargets.isEmpty {
@@ -659,7 +745,7 @@ struct PreferencesView: View {
                             }
                             .onMove(perform: moveHidden)
                         } header: {
-                            sectionHeader("Hidden", count: hiddenTargets.count)
+                            listSectionHeader("Hidden", count: hiddenTargets.count)
                         }
                     }
                 }
@@ -681,7 +767,7 @@ struct PreferencesView: View {
         return options.filter { hidden.contains($0.target.storageKey) }
     }
 
-    private func sectionHeader(_ title: String, count: Int) -> some View {
+    private func listSectionHeader(_ title: String, count: Int) -> some View {
         HStack(spacing: 6) {
             Text(title.uppercased())
                 .font(.system(size: 10, weight: .bold))
@@ -761,12 +847,12 @@ struct PreferencesView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.primary.opacity(isHidden ? 0.025 : 0.045))
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(Color.primary.opacity(isHidden ? 0.025 : 0.05))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.05), lineWidth: 0.5)
         )
     }
 
@@ -799,13 +885,11 @@ struct PreferencesView: View {
 
     private var rulesTab: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionBlurb(
-                "Rules are evaluated top to bottom. First match wins.",
-                trailing: { EmptyView() }
-            )
-
             rulesList
             fallbackRow
+        }
+        .sheet(isPresented: $showingAddRuleSheet) {
+            AddRuleSheet(options: options)
         }
     }
 
@@ -818,58 +902,90 @@ struct PreferencesView: View {
                 message: "Use the Remember toggle in the picker to save a rule, import a recipe, or edit the rules file directly."
             )
         } else {
+            // List (vs. our usual Card+VStack+ForEach) so `.onMove` works on
+            // macOS — matches the Targets tab. Background and separators are
+            // cleared so the Card's surface shows through unchanged.
             Card {
-                VStack(spacing: 0) {
-                    ForEach(Array(rulesFile.rules.enumerated()), id: \.element.id) { idx, rule in
+                List {
+                    ForEach(rulesFile.rules) { rule in
                         ruleRow(rule)
-                        if idx < rulesFile.rules.count - 1 {
-                            cardDivider
-                        }
+                            .listRowInsets(EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                    }
+                    .onMove { source, destination in
+                        RulesStore.shared.moveRule(from: source, to: destination)
                     }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
+                .frame(minHeight: 200, maxHeight: 520)
             }
         }
     }
 
     private func ruleRow(_ rule: DomainRule) -> some View {
-        HStack(spacing: 12) {
-            Text(rule.host.kindLabel.uppercased())
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .tracking(0.6)
-                .padding(.horizontal, 7).padding(.vertical, 3)
-                .background(Capsule().fill(Color.secondary.opacity(0.14)))
-                .foregroundColor(.secondary)
-                .frame(width: 58, alignment: .center)
+        HStack(spacing: 10) {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.secondary.opacity(0.65))
+                .help("Drag to reorder (first match wins)")
+                .accessibilityHidden(true)
 
-            Text(rule.host.displayValue)
-                .font(.system(size: 12, design: .monospaced))
-                .lineLimit(1)
-                .truncationMode(.middle)
-
-            Spacer()
-
-            actionLabel(rule.action)
-                .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.primary.opacity(0.05))
+            Toggle(
+                "",
+                isOn: Binding(
+                    get: { rule.enabled },
+                    set: { newValue in
+                        RulesStore.shared.updateRule(id: rule.id) { $0.enabled = newValue }
+                    }
                 )
+            )
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .labelsHidden()
+            .help(rule.enabled ? "Disable rule (kept in list, won't match)" : "Enable rule")
+            .accessibilityLabel("Enable rule for \(rule.displayValue)")
 
-            cleanOverrideMenu(for: rule)
-
-            Button {
-                withAnimation(.easeOut(duration: 0.18)) {
-                    RulesStore.shared.remove(ruleID: rule.id)
-                }
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 11, weight: .medium))
+            HStack(spacing: 12) {
+                Text(rule.kindLabel.uppercased())
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .tracking(0.6)
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(Capsule().fill(Color.secondary.opacity(0.14)))
                     .foregroundColor(.secondary)
-                    .frame(width: 22, height: 22)
-                    .background(Circle().fill(Color.primary.opacity(0.06)))
+                    .frame(width: 58, alignment: .center)
+
+                Text(rule.displayValue)
+                    .font(.system(size: 12, design: .monospaced))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .strikethrough(!rule.enabled, color: .secondary)
+                    .help(rule.displayValue)
+
+                Spacer()
+
+                actionLabel(rule.action)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(Color.primary.opacity(0.05))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.04), lineWidth: 0.5)
+                    )
+
+                cleanOverrideMenu(for: rule)
+
+                deleteIconButton(help: "Remove rule") {
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        RulesStore.shared.remove(ruleID: rule.id)
+                    }
+                }
             }
-            .buttonStyle(.plain)
-            .help("Remove rule")
+            .opacity(rule.enabled ? 1.0 : 0.45)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -1004,11 +1120,6 @@ struct PreferencesView: View {
 
     private var appSchemesTab: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionBlurb(
-                "Matched URLs are handed to the native app when the app is installed. Useful for Slack, Linear, Figma, Notion, Zoom.",
-                trailing: { EmptyView() }
-            )
-
             Card {
                 VStack(spacing: 0) {
                     ForEach(Array(settings.settings.appSchemes.enumerated()), id: \.element.id) { idx, rewrite in
@@ -1024,7 +1135,7 @@ struct PreferencesView: View {
 
     private func appSchemeRow(_ rewrite: AppSchemeRewrite) -> some View {
         let installed = NSWorkspace.shared.urlForApplication(withBundleIdentifier: rewrite.bundleID) != nil
-        return HStack(spacing: 12) {
+        return HStack(spacing: 14) {
             Toggle("", isOn: Binding(
                 get: { rewrite.enabled },
                 set: { settings.setAppSchemeEnabled(id: rewrite.id, enabled: $0) }
@@ -1034,10 +1145,14 @@ struct PreferencesView: View {
             .controlSize(.small)
             .disabled(!installed)
 
+            iconTile(symbol: "app.fill", tint: installed ? .pink : .secondary, size: 30)
+                .opacity(installed ? 1.0 : 0.55)
+
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(rewrite.name)
                         .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(installed ? .primary : .secondary)
                     if !installed {
                         Text("Not installed")
                             .font(.system(size: 9, weight: .semibold))
@@ -1056,45 +1171,83 @@ struct PreferencesView: View {
             Text(rewrite.bundleID)
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundColor(.secondary.opacity(0.7))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: 160, alignment: .trailing)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
     }
 
     // MARK: - Hotkeys
 
     private var hotkeysTab: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            sectionBlurb(
-                "Global shortcuts work from any app. Click to record, Escape to clear.",
-                trailing: { EmptyView() }
-            )
-
-            HotkeyRowView(
-                title: "Open clipboard link in picker",
-                detail: "Trigger the picker for the URL on your clipboard (or the last routed URL if clipboard doesn't have one).",
-                binding: Binding(
-                    get: { settings.settings.hotkeys.summonPicker },
-                    set: { settings.setHotkey($0, for: \.summonPicker) }
-                )
-            )
-            HotkeyRowView(
-                title: "Reroute last link",
-                detail: "Show the picker for the most recently opened URL, so you can switch browsers.",
-                binding: Binding(
-                    get: { settings.settings.hotkeys.rerouteLast },
-                    set: { settings.setHotkey($0, for: \.rerouteLast) }
-                )
-            )
-            HotkeyRowView(
-                title: "Paste & open",
-                detail: "Open the clipboard URL using your rules, skipping the picker.",
-                binding: Binding(
-                    get: { settings.settings.hotkeys.pasteAndOpen },
-                    set: { settings.setHotkey($0, for: \.pasteAndOpen) }
-                )
-            )
+        VStack(alignment: .leading, spacing: 10) {
+            Card {
+                VStack(spacing: 0) {
+                    hotkeyEntry(
+                        title: "Open clipboard link in picker",
+                        detail: "Trigger the picker for the URL on your clipboard (or the last routed URL if clipboard doesn't have one).",
+                        symbol: "doc.on.clipboard",
+                        tint: .pink,
+                        binding: Binding(
+                            get: { settings.settings.hotkeys.summonPicker },
+                            set: { settings.setHotkey($0, for: \.summonPicker) }
+                        )
+                    )
+                    cardDivider
+                    hotkeyEntry(
+                        title: "Reroute last link",
+                        detail: "Show the picker for the most recently opened URL, so you can switch browsers.",
+                        symbol: "arrow.uturn.backward.circle.fill",
+                        tint: .blue,
+                        binding: Binding(
+                            get: { settings.settings.hotkeys.rerouteLast },
+                            set: { settings.setHotkey($0, for: \.rerouteLast) }
+                        )
+                    )
+                    cardDivider
+                    hotkeyEntry(
+                        title: "Paste & open",
+                        detail: "Open the clipboard URL using your rules, skipping the picker.",
+                        symbol: "bolt.fill",
+                        tint: .orange,
+                        binding: Binding(
+                            get: { settings.settings.hotkeys.pasteAndOpen },
+                            set: { settings.setHotkey($0, for: \.pasteAndOpen) }
+                        )
+                    )
+                }
+            }
         }
+    }
+
+    private func hotkeyEntry(
+        title: String,
+        detail: String,
+        symbol: String,
+        tint: Color,
+        binding: Binding<HotkeyBinding>
+    ) -> some View {
+        HStack(alignment: .center, spacing: 14) {
+            iconTile(symbol: symbol, tint: tint, size: 32)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(detail)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 12)
+
+            HotkeyRecorderView(binding: binding)
+                .frame(width: 150, height: 28)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
     }
 
     private var activityTab: some View {
@@ -1103,24 +1256,27 @@ struct PreferencesView: View {
 
     private var fallbackRow: some View {
         HStack(spacing: 12) {
-            Image(systemName: "arrow.down.right.circle.fill")
-                .font(.system(size: 16))
-                .foregroundColor(.accentColor)
+            iconTile(symbol: "arrow.down.right.circle.fill", tint: .accentColor, size: 30)
+
             VStack(alignment: .leading, spacing: 1) {
                 Text("Fallback")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                 Text("Used when no rule matches")
-                    .font(.system(size: 10))
+                    .font(.system(size: 11))
                     .foregroundColor(.secondary)
             }
 
             Spacer()
 
             actionLabel(rulesFile.fallback)
-                .padding(.horizontal, 8).padding(.vertical, 4)
+                .padding(.horizontal, 9).padding(.vertical, 5)
                 .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(Color.primary.opacity(0.06))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.05), lineWidth: 0.5)
                 )
 
             Menu {
@@ -1140,49 +1296,114 @@ struct PreferencesView: View {
                 }
                 .padding(.horizontal, 10).padding(.vertical, 5)
                 .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(Color.primary.opacity(0.07))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
                 )
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
         }
-        .padding(.horizontal, 14).padding(.vertical, 12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [Color.accentColor.opacity(0.12), Color.accentColor.opacity(0.04)],
+                        colors: [Color.accentColor.opacity(0.14), Color.accentColor.opacity(0.04)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color.accentColor.opacity(0.22), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.accentColor.opacity(0.22), lineWidth: 0.5)
         )
     }
 
-    // MARK: - Shared UI helpers
+    // MARK: - Shared UI primitives
 
-    private func sectionBlurb<Trailing: View>(
-        _ text: String,
-        @ViewBuilder trailing: () -> Trailing
-    ) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            Text(text)
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 12)
-            trailing()
+    private func iconTile(symbol: String, tint: Color, size: CGFloat) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [tint.opacity(0.28), tint.opacity(0.12)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(width: size, height: size)
+            RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
+                .strokeBorder(tint.opacity(0.20), lineWidth: 0.5)
+                .frame(width: size, height: size)
+            Image(systemName: symbol)
+                .font(.system(size: size * 0.45, weight: .semibold))
+                .foregroundColor(tint)
         }
+    }
+
+    private func toggleRow(
+        title: String,
+        subtitle: String,
+        symbol: String,
+        tint: Color,
+        isOn: Binding<Bool>
+    ) -> some View {
+        HStack(alignment: .center, spacing: 14) {
+            iconTile(symbol: symbol, tint: tint, size: 32)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(subtitle)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 16)
+
+            Toggle("", isOn: isOn)
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+    }
+
+    private var cardDivider: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.06))
+            .frame(height: 0.5)
+            .padding(.leading, 62)
+    }
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 10, weight: .bold))
+            .tracking(0.8)
+            .foregroundColor(.secondary)
+            .padding(.leading, 4)
+    }
+
+    private func primaryButton(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: symbol)
+                    .font(.system(size: 10, weight: .bold))
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+            }
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.small)
     }
 
     private func pillButton(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
@@ -1195,52 +1416,67 @@ struct PreferencesView: View {
             }
             .padding(.horizontal, 10).padding(.vertical, 5)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.primary.opacity(0.07))
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.primary.opacity(0.06))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5)
             )
             .foregroundColor(.primary)
         }
         .buttonStyle(.plain)
     }
 
+    private func countBadge(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .foregroundColor(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(Color.primary.opacity(0.06)))
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5))
+    }
+
     private func emptyState(icon: String, title: String, message: String) -> some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             ZStack {
                 Circle()
                     .fill(
                         LinearGradient(
-                            colors: [Color.secondary.opacity(0.16), Color.secondary.opacity(0.06)],
+                            colors: [Color.secondary.opacity(0.18), Color.secondary.opacity(0.06)],
                             startPoint: .top,
                             endPoint: .bottom
                         )
                     )
-                    .frame(width: 48, height: 48)
+                    .frame(width: 54, height: 54)
+                Circle()
+                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
+                    .frame(width: 54, height: 54)
                 Image(systemName: icon)
-                    .font(.system(size: 18, weight: .medium))
+                    .font(.system(size: 20, weight: .medium))
                     .foregroundColor(.secondary)
             }
-            Text(title)
-                .font(.system(size: 13, weight: .semibold))
-            Text(message)
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(spacing: 4) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                Text(message)
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 32)
-        .padding(.horizontal, 28)
+        .padding(.vertical, 36)
+        .padding(.horizontal, 32)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color.primary.opacity(0.025))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.05), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.06), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
         )
     }
 
@@ -1250,20 +1486,369 @@ struct PreferencesView: View {
     }
 }
 
+/// Layered card surface used by every preferences tab. Subtle inner fill +
+/// a faint top-edge highlight that sits over a solid hairline border gives
+/// the same "lifted off the chrome" feel as macOS Settings rows without
+/// requiring `.regularMaterial` (which can look heavy on top of
+/// `.underWindowBackground`).
 private struct Card<Content: View>: View {
-    var padding: CGFloat = 4
+    var padding: CGFloat = 0
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         content()
             .padding(padding)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.primary.opacity(0.04))
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.primary.opacity(0.045))
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.10),
+                                    Color.white.opacity(0.0),
+                                ],
+                                startPoint: .top,
+                                endPoint: .center
+                            ),
+                            lineWidth: 0.5
+                        )
+                }
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
             )
+    }
+}
+
+// MARK: - Add rule sheet
+
+/// Minimal v1: host kind + value, action of open / incognito / ask / block /
+/// app-scheme. Advanced fields (`path`, `queryContains`, `schemes`, `when`,
+/// `alsoCopyCleaned`) land in a follow-up — model and matcher already
+/// support them, this sheet just doesn't surface them yet so the flow stays
+/// fast for the common case.
+private struct AddRuleSheet: View {
+    let options: [LaunchOption]
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var hostKind: HostKind = .suffix
+    @State private var hostValue: String = ""
+    @State private var actionKind: ActionKind = .open
+    @State private var selectedTarget: LaunchTarget? = nil
+    @State private var schemeValue: String = ""
+
+    enum HostKind: String, CaseIterable, Identifiable {
+        case equals, suffix, regex, urlEquals
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .equals:    return "Equals"
+            case .suffix:    return "Suffix"
+            case .regex:     return "Regex"
+            case .urlEquals: return "URL"
+            }
+        }
+        var placeholder: String {
+            switch self {
+            case .equals:    return "api.github.com"
+            case .suffix:    return "github.com"
+            case .regex:     return "^.*\\.slack\\.com$"
+            case .urlEquals: return "https://github.com/orgs/acme/people"
+            }
+        }
+        /// True when the input is a full URL string rather than a host
+        /// pattern. Drives validation and the eventual `urlEquals` field.
+        var isExactURL: Bool { self == .urlEquals }
+    }
+
+    enum ActionKind: String, CaseIterable, Identifiable {
+        case open, incognito, ask, block, appScheme
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .open:      return "Open in"
+            case .incognito: return "Open privately in"
+            case .ask:       return "Always ask"
+            case .block:     return "Block"
+            case .appScheme: return "Open via app scheme"
+            }
+        }
+        var needsTarget: Bool { self == .open || self == .incognito }
+    }
+
+    /// Targets the user can pick. For incognito-bound actions we filter down
+    /// to browsers we know support private mode — otherwise the rule would
+    /// silently fall back to the picker at routing time.
+    private var pickableTargets: [LaunchOption] {
+        switch actionKind {
+        case .incognito:
+            return options.filter { URLOpener.supportsIncognito(bundleID: $0.browser.bundleID) }
+        default:
+            return options
+        }
+    }
+
+    private var trimmedHost: String {
+        hostValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedScheme: String {
+        schemeValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Returns nil when the form is submittable; otherwise a short message
+    /// the footer can show inline. Drives both the disabled state of the
+    /// Add button and the visible error text.
+    private var validationError: String? {
+        if trimmedHost.isEmpty {
+            return hostKind == .urlEquals ? "URL can't be empty" : "Host can't be empty"
+        }
+        if hostKind == .regex {
+            // The matcher uses `NSRegularExpression`; reject anything that
+            // would silently `try?` away to a never-matching rule.
+            if (try? NSRegularExpression(pattern: trimmedHost)) == nil {
+                return "Invalid regular expression"
+            }
+        }
+        if hostKind == .urlEquals {
+            // Require something parseable as an absolute URL with a scheme
+            // and host — otherwise the rule could never match anything the
+            // matcher actually sees coming through the pipeline.
+            guard let parsed = URL(string: trimmedHost),
+                  let scheme = parsed.scheme, !scheme.isEmpty,
+                  parsed.host?.isEmpty == false
+            else {
+                return "Enter a full URL including scheme (https://…)"
+            }
+        }
+        if actionKind.needsTarget, selectedTarget == nil {
+            return "Pick a target browser"
+        }
+        if actionKind == .appScheme, trimmedScheme.isEmpty {
+            return "Scheme can't be empty (e.g. slack, zoommtg)"
+        }
+        return nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            header
+
+            matchSection
+            actionSection
+
+            // Surface specific problems (bad regex, missing target, missing
+            // scheme) once the user has actually typed a host. The "empty
+            // host" case is communicated by the disabled Add button alone —
+            // showing a red banner on initial render would feel accusatory.
+            if !trimmedHost.isEmpty, let validationError {
+                Label(validationError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.orange)
+            }
+
+            footer
+        }
+        .padding(20)
+        .frame(minWidth: 440)
+        .onAppear(perform: seedDefaultTarget)
+        .onChange(of: actionKind) { _ in seedDefaultTarget() }
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "plus.rectangle.on.folder")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(.accentColor)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Add rule")
+                    .font(.system(size: 15, weight: .semibold))
+                Text("New rules are inserted at the top of the list.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+        }
+    }
+
+    // MARK: - Match section
+
+    private var matchSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionTitle("Match")
+            Card {
+                VStack(alignment: .leading, spacing: 10) {
+                    Picker("Match by", selection: $hostKind) {
+                        ForEach(HostKind.allCases) { kind in
+                            Text(kind.label).tag(kind)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+
+                    TextField(hostKind.placeholder, text: $hostValue)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                        .disableAutocorrection(true)
+
+                    Text(hostKindHelp)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(12)
+            }
+        }
+    }
+
+    private var hostKindHelp: String {
+        switch hostKind {
+        case .equals:    return "Matches one specific host exactly (api.github.com)."
+        case .suffix:    return "Matches that host and all of its subdomains (github.com, www.github.com, gist.github.com)."
+        case .regex:     return "NSRegularExpression syntax, case-insensitive. Anchor with ^ and $ to be safe."
+        case .urlEquals: return "Matches only this exact URL (scheme + host + path + query). Junction strips trackers before matching, so paste the canonical form — e.g. without utm_* params."
+        }
+    }
+
+    // MARK: - Action section
+
+    private var actionSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionTitle("Action")
+            Card {
+                VStack(alignment: .leading, spacing: 10) {
+                    Picker("Action", selection: $actionKind) {
+                        ForEach(ActionKind.allCases) { kind in
+                            Text(kind.label).tag(kind)
+                        }
+                    }
+                    .labelsHidden()
+
+                    if actionKind.needsTarget {
+                        targetPicker
+                    } else if actionKind == .appScheme {
+                        schemeField
+                    }
+                }
+                .padding(12)
+            }
+        }
+    }
+
+    private var targetPicker: some View {
+        let targets = pickableTargets
+        return Group {
+            if targets.isEmpty {
+                Text("No browsers found that support this action.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            } else {
+                Picker("Target", selection: Binding(
+                    get: { selectedTarget },
+                    set: { selectedTarget = $0 }
+                )) {
+                    Text("Select a browser…").tag(LaunchTarget?.none)
+                    ForEach(targets) { option in
+                        Text(option.displayName).tag(LaunchTarget?.some(option.target))
+                    }
+                }
+                .labelsHidden()
+            }
+        }
+    }
+
+    private var schemeField: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            TextField("slack", text: $schemeValue)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 12, design: .monospaced))
+                .disableAutocorrection(true)
+            Text("Junction will hand matching URLs to the app registered for this URL scheme.")
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+        }
+    }
+
+    // MARK: - Footer
+
+    private var footer: some View {
+        HStack {
+            Spacer()
+            Button("Cancel") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+            Button("Add rule") { submit() }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(validationError != nil)
+        }
+    }
+
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.system(size: 10, weight: .bold))
+            .tracking(0.8)
+            .foregroundColor(.secondary)
+    }
+
+    // MARK: - Behavior
+
+    /// Preselects the first valid target whenever the action kind flips so
+    /// the user doesn't have to open a picker just to satisfy validation.
+    /// Clears the selection when the new action filter removes the previous
+    /// pick (e.g. switching to Incognito-only and the old target was Safari).
+    private func seedDefaultTarget() {
+        guard actionKind.needsTarget else {
+            selectedTarget = nil
+            return
+        }
+        let pool = pickableTargets
+        if let current = selectedTarget, pool.contains(where: { $0.target == current }) {
+            return
+        }
+        selectedTarget = pool.first?.target
+    }
+
+    private func submit() {
+        guard validationError == nil else { return }
+
+        let action: RuleAction = {
+            switch actionKind {
+            case .open:      return .open(selectedTarget!)
+            case .incognito: return .openIncognito(selectedTarget!)
+            case .ask:       return .ask
+            case .block:     return .block
+            case .appScheme: return .appScheme(trimmedScheme)
+            }
+        }()
+
+        let rule: DomainRule
+        if hostKind == .urlEquals {
+            // We also seed `host` with the URL's host so the (legacy) host
+            // surface in display code and `dedupKey` has something sensible
+            // — even though the matcher short-circuits on `urlEquals`. Use
+            // the typed form as-is for the `urlEquals` value; matching does
+            // its own canonicalization, so we don't want to rewrite what
+            // the user typed in the file on disk.
+            let parsed = URL(string: trimmedHost)
+            let host: HostMatch = .equals(parsed?.host ?? trimmedHost)
+            rule = DomainRule(host: host, action: action, urlEquals: trimmedHost)
+        } else {
+            let host: HostMatch = {
+                switch hostKind {
+                case .equals:    return .equals(trimmedHost)
+                case .suffix:    return .suffix(trimmedHost)
+                case .regex:     return .regex(trimmedHost)
+                case .urlEquals: return .equals(trimmedHost)  // unreachable
+                }
+            }()
+            rule = DomainRule(host: host, action: action)
+        }
+
+        RulesStore.shared.addRule(rule)
+        dismiss()
     }
 }

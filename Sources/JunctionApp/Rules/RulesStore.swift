@@ -33,17 +33,6 @@ final class RulesStore {
         startWatching()
     }
 
-    func match(host: String, context: RouteContext) -> RuleAction {
-        for rule in file.rules where rule.enabled {
-            guard rule.schemes == nil else { continue }
-            guard rule.path == nil, rule.queryContains == nil else { continue }
-            if !rule.host.matches(host) { continue }
-            if let condition = rule.when, !condition.matches(context: context) { continue }
-            return rule.action
-        }
-        return file.fallback
-    }
-
     struct RuleMatch {
         let action: RuleAction
         let rule: DomainRule?
@@ -71,13 +60,20 @@ final class RulesStore {
     }
 
     func addRule(host: HostMatch, action: RuleAction, cleanOverride: Bool? = nil) {
+        addRule(DomainRule(host: host, action: action, cleanOverride: cleanOverride))
+    }
+
+    /// Inserts a fully-constructed rule at the top of the list. Replaces any
+    /// existing rule with the same `dedupKey` so the new shape wins (URL
+    /// rules dedupe against URL rules, host rules against host rules — they
+    /// never collide on one another). Used by the Add-Rule sheet, which
+    /// constructs rules with optional fields the simpler overload doesn't
+    /// take (currently just `urlEquals`; later `path`/`when`/etc.).
+    func addRule(_ rule: DomainRule) {
         update { f in
-            let key = "\(host.kindLabel):\(host.displayValue.lowercased())"
-            f.rules.removeAll { "\($0.host.kindLabel):\($0.host.displayValue.lowercased())" == key }
-            f.rules.insert(
-                DomainRule(host: host, action: action, cleanOverride: cleanOverride),
-                at: 0
-            )
+            let key = rule.dedupKey
+            f.rules.removeAll { $0.dedupKey == key }
+            f.rules.insert(rule, at: 0)
         }
     }
 
@@ -103,6 +99,17 @@ final class RulesStore {
         update { f in
             guard let idx = f.rules.firstIndex(where: { $0.id == id }) else { return }
             mutation(&f.rules[idx])
+        }
+    }
+
+    /// Reorders rules in place. Rule ordering is semantically meaningful —
+    /// `match(url:context:)` returns the **first** matching rule, so moving
+    /// a more-specific rule above a broader one changes routing behavior.
+    /// Signature matches SwiftUI's `ForEach.onMove(perform:)` so the Rules
+    /// tab can wire this up directly.
+    func moveRule(from source: IndexSet, to destination: Int) {
+        update { f in
+            f.rules.move(fromOffsets: source, toOffset: destination)
         }
     }
 
