@@ -20,12 +20,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         menuBar = MenuBarController(
-            openPreferences: { [weak self] in self?.showPreferences() }
+            openPreferences: { [weak self] focus in self?.showPreferences(focus: focus) },
+            routeURL: { [weak self] url in self?.route(url) }
         )
         _ = FrontmostTracker.shared
         ClipboardWatcher.shared.updateEnabledState()
         startAgentServer()
         configureHotkeys()
+        observeWorkspaceForAppSchemeCache()
         flushPendingURLs()
         maybeShowOnboarding()
     }
@@ -74,14 +76,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             if let key = explicitTargetKey,
                let option = LaunchOptionDiscovery.options().first(where: { $0.target.storageKey == key }) {
-                let shouldClean = clean ?? SettingsStore.shared.settings.cleanURLsBeforeOpening
-                let finalURL = shouldClean ? URLTransformers.default.run(target) : target
+                let trace = URLTransformers.default.runTraced(target)
+                // junction://open?clean=… is an explicit user request and
+                // wins. Without it, fall through to the matching rule's
+                // `cleanOverride` so a "Never clean" pin on the host applies
+                // even when an explicit target was passed.
+                let shouldClean: Bool
+                if let explicit = clean {
+                    shouldClean = explicit
+                } else {
+                    let context = RouteContext(
+                        source: FrontmostTracker.shared.lastNonJunction,
+                        focus: FocusTracker.current()
+                    )
+                    let match = RulesStore.shared.match(url: trace.final, context: context)
+                    shouldClean = DomainRule.resolveCleanFlag(
+                        rule: match.rule,
+                        globalEnabled: SettingsStore.shared.settings.cleanURLsBeforeOpening
+                    )
+                }
+                let finalURL = shouldClean ? trace.final : target
                 if incognito, !supportsPrivate(option) {
                     showPicker(for: target)
                     return
                 }
                 URLOpener.open(finalURL, with: option, incognito: incognito) { success in
-                    if success { LastURLStore.shared.recordRouted(finalURL) }
+                    if success {
+                        LastURLStore.shared.recordRouted(finalURL)
+                        RoutingHistory.shared.record(
+                            originalURL: target,
+                            result: trace,
+                            outcome: incognito ? .openedIncognito : .opened,
+                            targetBundleID: option.browser.bundleID,
+                            ruleLabel: "junction-scheme",
+                            openedURL: finalURL
+                        )
+                    }
                 }
                 return
             }
@@ -112,6 +142,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { _ in
             GlobalHotkeyManager.shared.reload(from: SettingsStore.shared.settings.hotkeys)
         }
+    }
+
+    /// Drop the cached `bundleID → installed?` map whenever the workspace
+    /// notices a new app being launched or a volume mounting; otherwise users
+    /// who install Slack/Linear/Figma mid-session keep getting "open in browser"
+    /// until they restart Junction.
+    private func observeWorkspaceForAppSchemeCache() {
+        let center = NSWorkspace.shared.notificationCenter
+        let token: (Notification) -> Void = { _ in
+            AppSchemeRewriter.refreshCache()
+        }
+        center.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main, using: token)
+        center.addObserver(forName: NSWorkspace.didMountNotification, object: nil, queue: .main, using: token)
     }
 
     private func handleHotkey(_ action: HotkeyAction) {
@@ -171,7 +214,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 AgentRuleSummary(
                     hostKind: rule.host.kindLabel,
                     hostValue: rule.host.displayValue,
-                    action: agentActionLabel(rule.action)
+                    action: agentActionLabel(rule.action),
+                    cleanOverride: rule.cleanOverride
                 )
             }
             return .rules(rules)
@@ -180,7 +224,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 AgentTargetSummary(key: $0.target.storageKey, displayName: $0.displayName)
             }
             return .targets(targets)
-        case .addRule(let kind, let value, let targetKey):
+        case .addRule(let kind, let value, let targetKey, let cleanOverride):
             let hostMatch: HostMatch
             switch kind {
             case "equals": hostMatch = .equals(value)
@@ -211,11 +255,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 action = .ask
             }
-            RulesStore.shared.addRule(host: hostMatch, action: action)
+            RulesStore.shared.addRule(host: hostMatch, action: action, cleanOverride: cleanOverride)
             return .ok(message: "added rule for \(value)")
         case .removeRule(let value):
             let removed = RulesStore.shared.removeRule(hostValue: value)
             return removed ? .ok(message: "removed rule for \(value)") : .error("no rule matched \(value)")
+        case .inspect(let raw):
+            guard let url = URL(string: raw) else { return .error("invalid URL: \(raw)") }
+            let trace = URLTransformers.default.runTraced(url)
+            let flags = URLRiskAssessor.assess(trace.final)
+            let result = AgentInspectResult(
+                original: trace.original.absoluteString,
+                cleaned: trace.final.absoluteString,
+                steps: trace.steps.map {
+                    AgentInspectStep(identifier: $0.identifier, after: $0.after.absoluteString)
+                },
+                flags: flags.map {
+                    AgentInspectFlag(level: $0.level.label, title: $0.title, detail: $0.detail)
+                },
+                strippedTrackerParams: URLDiff.strippedTrackerParams(in: trace)
+            )
+            return .inspectResult(result)
+        case .listHistory(let limit):
+            let cap = min(max(limit, 1), RoutingHistory.maxEntries)
+            let entries = Array(RoutingHistory.shared.entries.prefix(cap))
+            return .history(entries.map { entry in
+                AgentHistoryEntry(
+                    timestamp: entry.timestamp,
+                    originalURL: entry.originalURL,
+                    cleanedURL: entry.cleanedURL,
+                    outcome: entry.outcome.rawValue,
+                    targetBundleID: entry.targetBundleID,
+                    ruleLabel: entry.ruleLabel,
+                    cleaningSteps: entry.cleaningSteps
+                )
+            })
         }
     }
 
@@ -236,13 +310,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        let shouldClean = clean ?? SettingsStore.shared.settings.cleanURLsBeforeOpening
-        let finalURL = shouldClean ? URLTransformers.default.run(url) : url
+        guard isAcceptableScheme(url) else { return }
+
+        let trace = URLTransformers.default.runTraced(url)
+
+        // Resolve the cleaning flag: an explicit CLI/junction:// `clean=…`
+        // wins (user said so), then any matching rule's `cleanOverride`,
+        // then the global setting. Looking up the rule even on the explicit-
+        // target path lets `cleanOverride` apply when CLI args don't already
+        // pin it.
+        let context = RouteContext(
+            source: FrontmostTracker.shared.lastNonJunction,
+            focus: FocusTracker.current()
+        )
+        let match = RulesStore.shared.match(url: trace.final, context: context)
+        let shouldClean: Bool
+        if let explicit = clean {
+            shouldClean = explicit
+        } else {
+            shouldClean = DomainRule.resolveCleanFlag(
+                rule: match.rule,
+                globalEnabled: SettingsStore.shared.settings.cleanURLsBeforeOpening
+            )
+        }
+        let finalURL = shouldClean ? trace.final : url
 
         if let key = targetKey,
            let option = LaunchOptionDiscovery.options().first(where: { $0.target.storageKey == key }) {
             URLOpener.open(finalURL, with: option) { success in
-                if success { LastURLStore.shared.recordRouted(finalURL) }
+                if success {
+                    LastURLStore.shared.recordRouted(finalURL)
+                    RoutingHistory.shared.record(
+                        originalURL: url,
+                        result: trace,
+                        outcome: .opened,
+                        targetBundleID: option.browser.bundleID,
+                        ruleLabel: "agent",
+                        openedURL: finalURL
+                    )
+                }
             }
             return
         }
@@ -253,6 +359,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func route(_ url: URL) {
         guard menuBar != nil else {
             pendingURLs.append(url)
+            return
+        }
+
+        // Scheme allow-list. http/https are routable by default; anything else
+        // must be opted in by an existing per-host rule (covered downstream),
+        // or it gets handed to the system as a last resort. javascript:/data:/
+        // file: are dropped outright.
+        guard isAcceptableScheme(url) else {
             return
         }
 
@@ -270,9 +384,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        // Pre-normalize for *detection only*: wrapper params (l.facebook.com/?u=…),
+        // AMP suffixes, and tracker query items shouldn't hide a shortener
+        // host. We never pass `prenormalized` downstream when the user has
+        // cleaning disabled — `resolved` always carries the unmodified URL so
+        // `urlToOpen = cleaned ? normalized : resolved` actually honors the
+        // toggle. (Shortener expansion is the one exception: there `resolved`
+        // is the post-redirect target, which is the new "raw" URL.)
+        let prenormalized = URLTransformers.default.run(url)
+
         if SettingsStore.shared.settings.expandShortenedURLs,
-           ShortenerExpander.isShortened(url) {
-            ShortenerExpander.expand(url) { [weak self] expanded in
+           ShortenerExpander.isShortened(prenormalized) {
+            ShortenerExpander.expand(prenormalized) { [weak self] expanded in
                 DispatchQueue.main.async {
                     self?.routeAfterExpansion(
                         original: url,
@@ -287,43 +410,95 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         routeAfterExpansion(original: url, resolved: url, context: contextAtReceive)
     }
 
+    private func isAcceptableScheme(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased() else { return false }
+        return URLSafety.routableSchemes.contains(scheme)
+    }
+
     private func routeAfterExpansion(original: URL, resolved: URL, context: RouteContext) {
+        // Re-run the pipeline post-expansion: shorteners can resolve to URLs
+        // that themselves carry trackers, AMP suffixes, or wrapper params.
+        let trace = URLTransformers.default.runTraced(resolved)
+        let normalized = trace.final
+
+        guard isAcceptableScheme(normalized) else { return }
 
         if let rewritten = AppSchemeRewriter.rewrite(
-            resolved,
+            normalized,
             using: SettingsStore.shared.settings.appSchemes
         ) {
             NSWorkspace.shared.open(rewritten)
-            LastURLStore.shared.recordRouted(resolved)
+            LastURLStore.shared.recordRouted(normalized)
+            RoutingHistory.shared.record(
+                originalURL: original,
+                result: trace,
+                outcome: .opened_appScheme,
+                ruleLabel: "app-scheme-rewrite"
+            )
             return
         }
 
-        let match = RulesStore.shared.match(url: resolved, context: context)
+        let match = RulesStore.shared.match(url: normalized, context: context)
+        let ruleLabel = match.rule.map { "\($0.host.kindLabel):\($0.host.displayValue)" }
 
         if match.rule?.alsoCopyCleaned == true {
-            copyCleaned(resolved)
+            copyCleaned(normalized)
         }
 
+        // Honor `cleanURLsBeforeOpening` plus the per-rule override: the rule's
+        // `cleanOverride` (if set) wins over the global toggle, so users can
+        // pin "never clean for myinternal.example.com" or "always clean even
+        // when the global setting is off".
+        let globalCleaning = SettingsStore.shared.settings.cleanURLsBeforeOpening
+        let cleaned = DomainRule.resolveCleanFlag(rule: match.rule, globalEnabled: globalCleaning)
+        let urlToOpen = cleaned ? normalized : resolved
+
+        // Picker keeps the resolved-but-not-yet-cleaned URL so it can show the
+        // "cleaned" diff and let the user copy either form.
         switch match.action {
         case .block:
-            showBlockedNotice(resolved)
+            showBlockedNotice(normalized)
+            RoutingHistory.shared.record(
+                originalURL: original,
+                result: trace,
+                outcome: .blocked,
+                ruleLabel: ruleLabel
+            )
             return
         case .appScheme(let scheme):
-            let deepLink = buildSchemeURL(scheme: scheme, from: resolved)
+            // Build the deep link from the URL we'd actually open: when the
+            // user (or rule) opted out of cleaning, the native app should
+            // receive the original URL — templates that interpolate `{query}`
+            // shouldn't smuggle the stripped form past the toggle.
+            let deepLink = buildSchemeURL(scheme: scheme, from: urlToOpen)
             if let deepLink {
                 NSWorkspace.shared.open(deepLink)
-                LastURLStore.shared.recordRouted(resolved)
+                LastURLStore.shared.recordRouted(urlToOpen)
+                RoutingHistory.shared.record(
+                    originalURL: original,
+                    result: trace,
+                    outcome: .opened_appScheme,
+                    ruleLabel: ruleLabel,
+                    openedURL: urlToOpen
+                )
             } else {
                 showPicker(for: resolved, context: context)
+                RoutingHistory.shared.record(
+                    originalURL: original,
+                    result: trace,
+                    outcome: .picker,
+                    ruleLabel: ruleLabel
+                )
             }
             return
         case .open(let target):
             guard let option = resolve(target: target) else {
                 showPicker(for: resolved, context: context)
+                RoutingHistory.shared.record(
+                    originalURL: original, result: trace, outcome: .picker, ruleLabel: ruleLabel
+                )
                 return
             }
-            let cleaned = SettingsStore.shared.settings.cleanURLsBeforeOpening
-            let urlToOpen = cleaned ? URLTransformers.default.run(resolved) : resolved
             URLOpener.open(urlToOpen, with: option) { success in
                 if success {
                     LastURLStore.shared.recordRouted(urlToOpen)
@@ -332,24 +507,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         option: option,
                         alternatives: LaunchOptionDiscovery.options()
                     )
+                    RoutingHistory.shared.record(
+                        originalURL: original,
+                        result: trace,
+                        outcome: .opened,
+                        targetBundleID: option.browser.bundleID,
+                        ruleLabel: ruleLabel,
+                        openedURL: urlToOpen
+                    )
                 }
             }
         case .openIncognito(let target):
             guard let option = resolve(target: target) else {
                 showPicker(for: resolved, context: context)
+                RoutingHistory.shared.record(
+                    originalURL: original, result: trace, outcome: .picker, ruleLabel: ruleLabel
+                )
                 return
             }
             guard supportsPrivate(option) else {
                 showPicker(for: resolved, context: context)
+                RoutingHistory.shared.record(
+                    originalURL: original, result: trace, outcome: .picker, ruleLabel: ruleLabel
+                )
                 return
             }
-            let cleaned = SettingsStore.shared.settings.cleanURLsBeforeOpening
-            let urlToOpen = cleaned ? URLTransformers.default.run(resolved) : resolved
             URLOpener.open(urlToOpen, with: option, incognito: true) { success in
-                if success { LastURLStore.shared.recordRouted(urlToOpen) }
+                if success {
+                    LastURLStore.shared.recordRouted(urlToOpen)
+                    RoutingHistory.shared.record(
+                        originalURL: original,
+                        result: trace,
+                        outcome: .openedIncognito,
+                        targetBundleID: option.browser.bundleID,
+                        ruleLabel: ruleLabel,
+                        openedURL: urlToOpen
+                    )
+                }
             }
         case .ask:
             showPicker(for: resolved, context: context)
+            RoutingHistory.shared.record(
+                originalURL: original,
+                result: trace,
+                outcome: .picker,
+                ruleLabel: ruleLabel
+            )
         }
     }
 
@@ -410,10 +613,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         })
     }
 
-    private func showPreferences() {
+    private func showPreferences(focus: PreferencesFocusTarget? = nil) {
         let controller = prefs ?? PreferencesWindowController()
         prefs = controller
-        controller.show()
+        controller.show(focus: focus)
     }
 
     private func showOnboarding() {

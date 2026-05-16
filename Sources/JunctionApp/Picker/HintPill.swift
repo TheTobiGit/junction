@@ -27,7 +27,7 @@ enum PickerShortcutHelp {
         "↵ open · ⌘↵ open + remember · ⌥↵ open private",
         "← → or 1-9 switch",
         "⇧␣ multi-select · ⇧click multi-open",
-        "⌘C copy cleaned URL",
+        "⌘C copy cleaned URL · ⌘⇧C copy as Markdown",
         "⌥P toggle private",
         "⎋ close",
     ].joined(separator: " • ")
@@ -36,7 +36,7 @@ enum PickerShortcutHelp {
         "␣ back · ⎋ back",
         "↵ open · ⌘↵ open + remember · ⌥↵ open private",
         "⌘← ⌘→ or ⌘1-9 switch",
-        "⌘⇧C copy cleaned URL",
+        "⌘C copy cleaned URL · ⌘⇧C copy as Markdown",
         "⌥P toggle private",
     ].joined(separator: " • ")
 }

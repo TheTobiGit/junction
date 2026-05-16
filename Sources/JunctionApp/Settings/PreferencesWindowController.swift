@@ -1,13 +1,25 @@
 import AppKit
 import SwiftUI
 
+extension Notification.Name {
+    /// Posted when an external trigger (Recent submenu, etc.) wants the
+    /// Preferences window to switch to a specific tab on next presentation.
+    static let junctionPreferencesFocusSection = Notification.Name("junctionPreferencesFocusSection")
+}
+
+/// Identifier matched by ``PreferencesView`` to set its initial selection.
+enum PreferencesFocusTarget: String {
+    case general, rewrites, targets, rules, appSchemes, hotkeys, activity
+}
+
 final class PreferencesWindowController {
     private var window: NSWindow?
 
-    func show() {
+    func show(focus: PreferencesFocusTarget? = nil) {
         if let window {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            postFocusIfNeeded(focus)
             return
         }
 
@@ -26,11 +38,27 @@ final class PreferencesWindowController {
         self.window = window
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        postFocusIfNeeded(focus)
+    }
+
+    /// Posts the focus notification on the next runloop tick. The view's
+    /// `.onReceive` subscriber is only attached after `body` runs, so a
+    /// synchronous post during ``show(focus:)`` would arrive before there's
+    /// anyone listening.
+    private func postFocusIfNeeded(_ focus: PreferencesFocusTarget?) {
+        guard let focus else { return }
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: .junctionPreferencesFocusSection,
+                object: nil,
+                userInfo: ["section": focus.rawValue]
+            )
+        }
     }
 }
 
 private enum PrefsSection: String, CaseIterable, Identifiable {
-    case general, rewrites, targets, rules, appSchemes, hotkeys
+    case general, rewrites, targets, rules, appSchemes, hotkeys, activity
 
     var id: String { rawValue }
 
@@ -42,6 +70,7 @@ private enum PrefsSection: String, CaseIterable, Identifiable {
         case .rules:      return "Rules"
         case .appSchemes: return "Native Apps"
         case .hotkeys:    return "Hotkeys"
+        case .activity:   return "Activity"
         }
     }
 
@@ -53,6 +82,7 @@ private enum PrefsSection: String, CaseIterable, Identifiable {
         case .rules:      return "Routing rules"
         case .appSchemes: return "Open in desktop app instead"
         case .hotkeys:    return "Global shortcuts"
+        case .activity:   return "What Junction did with recent links"
         }
     }
 
@@ -64,6 +94,7 @@ private enum PrefsSection: String, CaseIterable, Identifiable {
         case .rules:      return "list.bullet.rectangle.fill"
         case .appSchemes: return "app.badge"
         case .hotkeys:    return "command.square.fill"
+        case .activity:   return "clock.arrow.circlepath"
         }
     }
 
@@ -75,6 +106,7 @@ private enum PrefsSection: String, CaseIterable, Identifiable {
         case .rules:      return .purple
         case .appSchemes: return .pink
         case .hotkeys:    return .blue
+        case .activity:   return .green
         }
     }
 }
@@ -103,6 +135,12 @@ struct PreferencesView: View {
         .onAppear(perform: reload)
         .onReceive(NotificationCenter.default.publisher(for: .junctionRulesChanged)) { _ in
             reload()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .junctionPreferencesFocusSection)) { note in
+            guard let raw = note.userInfo?["section"] as? String,
+                  let target = PrefsSection(rawValue: raw)
+            else { return }
+            selection = target
         }
     }
 
@@ -215,6 +253,7 @@ struct PreferencesView: View {
                     case .rules:      rulesTab
                     case .appSchemes: appSchemesTab
                     case .hotkeys:    hotkeysTab
+                    case .activity:   activityTab
                     }
                 }
                 .padding(.horizontal, 28)
@@ -269,8 +308,18 @@ struct PreferencesView: View {
                         tint: .pink,
                         isOn: $settings.settings.clipboardWatcherEnabled
                     )
+                    cardDivider
+                    toggleRow(
+                        title: "Record activity",
+                        subtitle: "Keep a local log of recent links so you can re-route or audit them. Stored on this Mac only.",
+                        symbol: "clock.arrow.circlepath",
+                        tint: .green,
+                        isOn: $settings.settings.historyEnabled
+                    )
                 }
             }
+
+            URLInspectorCard()
         }
     }
 
@@ -462,63 +511,91 @@ struct PreferencesView: View {
     }
 
     private func redirectRow(redirect: Binding<DomainRedirect>) -> some View {
-        HStack(spacing: 10) {
-            Toggle("", isOn: redirect.enabled)
-                .toggleStyle(.switch)
-                .labelsHidden()
-                .controlSize(.small)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Toggle("", isOn: redirect.enabled)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    .controlSize(.small)
 
-            TextField("from-host", text: redirect.fromHost)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12, design: .monospaced))
-                .padding(.horizontal, 8).padding(.vertical, 5)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.primary.opacity(0.06))
-                )
-                .frame(maxWidth: .infinity)
-
-            Image(systemName: "arrow.right")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(.secondary.opacity(0.6))
-
-            TextField("to-host", text: redirect.toHost)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12, design: .monospaced))
-                .padding(.horizontal, 8).padding(.vertical, 5)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.primary.opacity(0.06))
-                )
-                .frame(maxWidth: .infinity)
-
-            if let label = redirect.wrappedValue.label {
-                Text(label)
-                    .font(.system(size: 10, weight: .medium))
-                    .lineLimit(1)
-                    .padding(.horizontal, 7).padding(.vertical, 3)
+                TextField("from-host", text: redirect.fromHost)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, design: .monospaced))
+                    .padding(.horizontal, 8).padding(.vertical, 5)
                     .background(
-                        Capsule().fill(Color.secondary.opacity(0.14))
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.primary.opacity(0.06))
                     )
-                    .foregroundColor(.secondary)
-                    .fixedSize()
+                    .frame(maxWidth: .infinity)
+
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.secondary.opacity(0.6))
+
+                TextField("to-host", text: redirect.toHost)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, design: .monospaced))
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.primary.opacity(0.06))
+                    )
+                    .frame(maxWidth: .infinity)
+
+                if let label = redirect.wrappedValue.label {
+                    Text(label)
+                        .font(.system(size: 10, weight: .medium))
+                        .lineLimit(1)
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(
+                            Capsule().fill(Color.secondary.opacity(0.14))
+                        )
+                        .foregroundColor(.secondary)
+                        .fixedSize()
+                }
+
+                Button {
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        if let idx = settings.settings.redirects.firstIndex(where: { $0.id == redirect.wrappedValue.id }) {
+                            settings.settings.redirects.remove(at: idx)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .frame(width: 22, height: 22)
+                        .background(Circle().fill(Color.primary.opacity(0.06)))
+                }
+                .buttonStyle(.plain)
+                .help("Remove rewrite")
             }
 
-            Button {
-                withAnimation(.easeOut(duration: 0.18)) {
-                    if let idx = settings.settings.redirects.firstIndex(where: { $0.id == redirect.wrappedValue.id }) {
-                        settings.settings.redirects.remove(at: idx)
-                    }
-                }
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .frame(width: 22, height: 22)
-                    .background(Circle().fill(Color.primary.opacity(0.06)))
+            HStack(spacing: 8) {
+                Image(systemName: "curlybraces")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.secondary.opacity(0.7))
+                    .frame(width: 22)
+                TextField(
+                    "path template (optional, e.g. /article{path})",
+                    text: Binding(
+                        get: { redirect.wrappedValue.pathTemplate ?? "" },
+                        set: { redirect.wrappedValue.pathTemplate = $0.isEmpty ? nil : $0 }
+                    )
+                )
+                .textFieldStyle(.plain)
+                .font(.system(size: 11, design: .monospaced))
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.primary.opacity(0.04))
+                )
+                Text("{path} {pathNoSlash} {query} {fragment}")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.6))
+                    .lineLimit(1)
             }
-            .buttonStyle(.plain)
-            .help("Remove rewrite")
+            .padding(.leading, 30)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -778,6 +855,8 @@ struct PreferencesView: View {
                         .fill(Color.primary.opacity(0.05))
                 )
 
+            cleanOverrideMenu(for: rule)
+
             Button {
                 withAnimation(.easeOut(duration: 0.18)) {
                     RulesStore.shared.remove(ruleID: rule.id)
@@ -794,6 +873,72 @@ struct PreferencesView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
+    }
+
+    /// Three-state menu: inherit the global Clean URLs setting, force on, or force off.
+    private func cleanOverrideMenu(for rule: DomainRule) -> some View {
+        let current = rule.cleanOverride
+        return Menu {
+            Button {
+                updateCleanOverride(ruleID: rule.id, to: nil)
+            } label: {
+                Label(
+                    "Use global setting",
+                    systemImage: current == nil ? "checkmark" : ""
+                )
+            }
+            Button {
+                updateCleanOverride(ruleID: rule.id, to: true)
+            } label: {
+                Label(
+                    "Always clean",
+                    systemImage: current == true ? "checkmark" : ""
+                )
+            }
+            Button {
+                updateCleanOverride(ruleID: rule.id, to: false)
+            } label: {
+                Label(
+                    "Never clean",
+                    systemImage: current == false ? "checkmark" : ""
+                )
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 10, weight: .semibold))
+                Text(cleanOverrideLabel(current))
+                    .font(.system(size: 10, weight: .medium))
+            }
+            .foregroundColor(cleanOverrideTint(current))
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background(Capsule().fill(cleanOverrideTint(current).opacity(0.15)))
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Cleaning behavior for this rule")
+    }
+
+    private func cleanOverrideLabel(_ value: Bool?) -> String {
+        switch value {
+        case .none:        return "Inherit"
+        case .some(true):  return "Always clean"
+        case .some(false): return "Never clean"
+        }
+    }
+
+    private func cleanOverrideTint(_ value: Bool?) -> Color {
+        switch value {
+        case .none:        return .secondary
+        case .some(true):  return .accentColor
+        case .some(false): return .orange
+        }
+    }
+
+    private func updateCleanOverride(ruleID: UUID, to value: Bool?) {
+        RulesStore.shared.updateRule(id: ruleID) { rule in
+            rule.cleanOverride = value
+        }
     }
 
     private func actionLabel(_ action: RuleAction) -> some View {
@@ -950,6 +1095,10 @@ struct PreferencesView: View {
                 )
             )
         }
+    }
+
+    private var activityTab: some View {
+        ActivityTab()
     }
 
     private var fallbackRow: some View {

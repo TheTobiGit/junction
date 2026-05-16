@@ -27,6 +27,10 @@ enum JunctionCLI {
                 try handleTargets()
             case "ping":
                 try handlePing()
+            case "inspect":
+                try handleInspect(rest)
+            case "history":
+                try handleHistory(rest)
             case "help", "--help", "-h":
                 printUsage()
             default:
@@ -96,7 +100,13 @@ enum JunctionCLI {
                 return
             }
             for rule in list {
-                print("\(rule.hostKind.padded(8)) \(rule.hostValue.padded(32))  →  \(rule.action)")
+                let suffix: String
+                switch rule.cleanOverride {
+                case .none:        suffix = ""
+                case .some(true):  suffix = "  [clean: always]"
+                case .some(false): suffix = "  [clean: never]"
+                }
+                print("\(rule.hostKind.padded(8)) \(rule.hostValue.padded(32))  →  \(rule.action)\(suffix)")
             }
         case "add":
             try handleRulesAdd(rest)
@@ -115,6 +125,7 @@ enum JunctionCLI {
         var block = false
         var incognitoTarget: String? = nil
         var scheme: String? = nil
+        var cleanOverride: Bool? = nil
 
         var i = 0
         while i < args.count {
@@ -136,6 +147,10 @@ enum JunctionCLI {
                 block = true; i += 1
             case "--ask":
                 ask = true; i += 1
+            case "--clean":
+                cleanOverride = true; i += 1
+            case "--no-clean":
+                cleanOverride = false; i += 1
             default:
                 if hostValue == nil { hostValue = a } else {
                     throw CLIError(message: "unexpected argument: \(a)")
@@ -145,7 +160,7 @@ enum JunctionCLI {
         }
 
         guard let value = hostValue else {
-            throw CLIError(message: "missing host (usage: junction rules add <host> [--suffix|--equals|--regex] [--in <target>|--ask|--block|--incognito <target>|--scheme <name>])")
+            throw CLIError(message: "missing host (usage: junction rules add <host> [--suffix|--equals|--regex] [--in <target>|--ask|--block|--incognito <target>|--scheme <name>] [--clean|--no-clean])")
         }
 
         let resolvedTarget: String?
@@ -165,7 +180,12 @@ enum JunctionCLI {
             resolvedTarget = target
         }
 
-        let response = try sendRequest(.addRule(hostKind: hostKind, hostValue: value, target: resolvedTarget))
+        let response = try sendRequest(.addRule(
+            hostKind: hostKind,
+            hostValue: value,
+            target: resolvedTarget,
+            cleanOverride: cleanOverride
+        ))
         switch response {
         case .ok(let m): if let m { print(m) }
         case .error(let m): throw CLIError(message: m)
@@ -201,6 +221,124 @@ enum JunctionCLI {
             throw CLIError(message: "no pong")
         }
         print("pong")
+    }
+
+    private static func handleInspect(_ args: [String]) throws {
+        var jsonOutput = false
+        var positional: [String] = []
+        for a in args {
+            switch a {
+            case "--json": jsonOutput = true
+            default: positional.append(a)
+            }
+        }
+        guard let raw = positional.first else {
+            throw CLIError(message: "missing URL (usage: junction inspect <url> [--json])")
+        }
+        var input = raw
+        if !input.contains("://"), input.contains(".") {
+            input = "https://" + input
+        }
+        let response = try sendRequest(.inspect(url: input))
+        switch response {
+        case .inspectResult(let result):
+            if jsonOutput {
+                printJSON(result)
+                return
+            }
+            print("Original:  \(result.original)")
+            print("Cleaned:   \(result.cleaned)")
+            if !result.steps.isEmpty {
+                print("")
+                print("Pipeline:")
+                for (idx, step) in result.steps.enumerated() {
+                    print("  \(idx + 1). \(URLPipelineStepLabel.label(for: step.identifier))")
+                    print("     → \(step.after)")
+                }
+            } else {
+                print("")
+                print("Pipeline: (no transformers fired)")
+            }
+            if !result.flags.isEmpty {
+                print("")
+                print("Risk flags:")
+                for flag in result.flags {
+                    print("  [\(flag.level)] \(flag.title)")
+                    print("    \(flag.detail)")
+                }
+            }
+            if !result.strippedTrackerParams.isEmpty {
+                print("")
+                print("Removed query parameters:")
+                print("  " + result.strippedTrackerParams.joined(separator: ", "))
+            }
+        case .error(let m):
+            throw CLIError(message: m)
+        default:
+            throw CLIError(message: "unexpected response")
+        }
+    }
+
+    private static func handleHistory(_ args: [String]) throws {
+        var limit = 20
+        var jsonOutput = false
+        var i = 0
+        while i < args.count {
+            let a = args[i]
+            switch a {
+            case "--limit", "-n":
+                guard i + 1 < args.count, let n = Int(args[i + 1]), n > 0 else {
+                    throw CLIError(message: "--limit requires a positive integer")
+                }
+                limit = n
+                i += 2
+            case "--json":
+                jsonOutput = true
+                i += 1
+            default:
+                throw CLIError(message: "unexpected argument: \(a)")
+            }
+        }
+        let response = try sendRequest(.listHistory(limit: limit))
+        switch response {
+        case .history(let entries):
+            if jsonOutput {
+                printJSON(entries)
+                return
+            }
+            if entries.isEmpty {
+                print("(no recent activity)")
+                return
+            }
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime]
+            for entry in entries {
+                let when = formatter.string(from: entry.timestamp)
+                let target = entry.targetBundleID ?? "—"
+                let cleaned = entry.originalURL == entry.cleanedURL ? "" : " *cleaned*"
+                print("\(when)  \(entry.outcome.padded(18))  \(target.padded(36))  \(entry.cleanedURL)\(cleaned)")
+            }
+        case .error(let m):
+            throw CLIError(message: m)
+        default:
+            throw CLIError(message: "unexpected response")
+        }
+    }
+
+    /// Pretty-prints an `Encodable` value as JSON to stdout, suitable for piping
+    /// to `jq`. ISO8601 dates so the output is interoperable with anything else.
+    private static func printJSON<T: Encodable>(_ value: T) {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        encoder.dateEncodingStrategy = .iso8601
+        do {
+            let data = try encoder.encode(value)
+            if let s = String(data: data, encoding: .utf8) {
+                print(s)
+            }
+        } catch {
+            FileHandle.standardError.write(Data("error encoding JSON: \(error)\n".utf8))
+        }
     }
 
     private static func sendRequest(_ request: AgentRequest) throws -> AgentResponse {
@@ -263,9 +401,12 @@ enum JunctionCLI {
           junction rules add <host> [--suffix|--equals|--regex]
                             (--in <target> | --ask | --block
                              | --incognito <target> | --scheme <name>)
+                            [--clean|--no-clean]
           junction rules remove <host>
           junction targets
           junction ping
+          junction inspect <url> [--json]
+          junction history [--limit N] [--json]
 
         examples:
           junction open https://github.com
@@ -275,8 +416,11 @@ enum JunctionCLI {
           junction rules add reddit.com --block
           junction rules add twitter.com --incognito app:com.apple.Safari
           junction rules add slack.com --scheme slack
+          junction rules add myinternal.example.com --in app:com.apple.Safari --no-clean
           junction rules remove github.com
           junction targets   # list known target keys
+          junction inspect "https://l.facebook.com/l.php?u=https%3A%2F%2Fexample.com%3Futm_source%3Demail"
+          junction history --limit 5
 
         """
         print(text)
