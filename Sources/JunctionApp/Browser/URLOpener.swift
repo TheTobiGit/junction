@@ -66,24 +66,39 @@ enum URLOpener {
             }
 
             // Firefox-family profile path (Firefox, Zen, …). Launch via
-            // `--new-instance -P "<profile-name>" --new-tab <url>`.
+            // `--new-instance --profile <abs-profile-path> --new-tab <url>`.
             //
-            // `--new-instance` is required: a running Firefox/Zen ignores `-P`
-            // and delivers the URL to whatever profile is currently
-            // foregrounded, breaking routing. With `--new-instance`, each
-            // profile gets its own process and the URL lands in the correct
-            // window. Trade-off: repeated clicks for the same profile may
-            // spawn a second process for it — acceptable for a router whose
-            // primary job is correct profile routing.
+            // `--profile <path>` is preferred over `-P <name>` because the
+            // path is stable (profiles.ini) and survives profile renames.
+            //
+            // `--new-instance` is required: a running Firefox/Zen ignores
+            // profile selection and delivers the URL to whatever profile is
+            // currently foregrounded, breaking routing. With
+            // `--new-instance`, each profile gets its own process and the URL
+            // lands in the correct window. Trade-off: repeated clicks for the
+            // same profile may spawn a second process — acceptable for a
+            // router whose primary job is correct profile routing.
             //
             // `--private-window` takes over when incognito is requested.
+            //
+            // Note on Zen Spaces (workspaces within a profile): Zen exposes
+            // no public API to switch the active workspace at launch — not a
+            // CLI flag, not a URL scheme, and not the `zen.workspaces.active`
+            // pref (Zen reconstructs the active workspace from tab focus
+            // recorded in `zen-sessions.jsonlz4`, which we don't write). For
+            // now Junction routes to the profile and lets Zen pick the
+            // workspace per its own session-restore logic.
             if isFirefoxBundleID(option.browser.bundleID) {
+                let absProfilePath = resolveFirefoxFamilyProfilePath(
+                    bundleID: option.browser.bundleID,
+                    relativePath: dirName
+                )
                 let profileFlag = incognito ? "--private-window" : "--new-tab"
                 let config = NSWorkspace.OpenConfiguration()
                 config.activates = true
                 config.arguments = [
                     "--new-instance",
-                    "-P", profile.displayName,
+                    "--profile", absProfilePath,
                     profileFlag, url.absoluteString
                 ]
                 config.createsNewApplicationInstance = true
@@ -454,5 +469,24 @@ enum URLOpener {
             return (dir, space)
         }
         return (raw, nil)
+    }
+
+    /// Maps a Firefox-family relative profile path (from `profiles.ini`) to
+    /// an absolute on-disk path under `~/Library/Application Support/<vendor>/`.
+    /// Single source of truth for the bundleID→config-dir mapping lives in
+    /// `FirefoxProfileDiscovery.vendors`.
+    private static func resolveFirefoxFamilyProfilePath(
+        bundleID: String,
+        relativePath: String
+    ) -> String {
+        let configDir = FirefoxProfileDiscovery.configRelativePath(forBundleID: bundleID) ?? "Firefox"
+        let fm = FileManager.default
+        guard let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return relativePath
+        }
+        return appSupport
+            .appendingPathComponent(configDir, isDirectory: true)
+            .appendingPathComponent(relativePath, isDirectory: true)
+            .path
     }
 }

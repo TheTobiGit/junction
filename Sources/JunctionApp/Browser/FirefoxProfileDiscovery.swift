@@ -28,6 +28,13 @@ enum FirefoxProfileDiscovery {
         vendors.contains { $0.bundleID == bundleID }
     }
 
+    /// The Application Support sub-directory used by the given Firefox-family
+    /// bundle ID, e.g. `"zen"` for Zen and `"Firefox"` for Firefox proper.
+    /// Returns nil for unsupported bundle IDs.
+    static func configRelativePath(forBundleID bundleID: String) -> String? {
+        vendors.first { $0.bundleID == bundleID }?.configRelativePath
+    }
+
     static func profiles(for bundleID: String) -> [ChromiumProfile] {
         guard let vendor = vendors.first(where: { $0.bundleID == bundleID }) else { return [] }
 
