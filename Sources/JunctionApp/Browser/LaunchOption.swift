@@ -54,6 +54,15 @@ enum LaunchOptionDiscovery {
                         result.append(LaunchOption(browser: browser, profile: profile))
                     }
                 }
+            } else if FirefoxProfileDiscovery.supports(bundleID: browser.bundleID) {
+                let profiles = FirefoxProfileDiscovery.profiles(for: browser.bundleID)
+                if profiles.isEmpty {
+                    result.append(LaunchOption(browser: browser, profile: nil))
+                } else {
+                    for profile in profiles {
+                        result.append(LaunchOption(browser: browser, profile: profile))
+                    }
+                }
             } else {
                 result.append(LaunchOption(browser: browser, profile: nil))
             }
