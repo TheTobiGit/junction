@@ -65,14 +65,45 @@ enum URLOpener {
                 return
             }
 
-            // Non-Chromium profile path (e.g. Firefox with a profile) — keep
-            // NSWorkspace so Firefox-specific behaviour is unchanged.
+            // Firefox-family profile path (Firefox, Zen, …). Launch via
+            // `--new-instance -P "<profile-name>" --new-tab <url>`.
+            //
+            // `--new-instance` is required: a running Firefox/Zen ignores `-P`
+            // and delivers the URL to whatever profile is currently
+            // foregrounded, breaking routing. With `--new-instance`, each
+            // profile gets its own process and the URL lands in the correct
+            // window. Trade-off: repeated clicks for the same profile may
+            // spawn a second process for it — acceptable for a router whose
+            // primary job is correct profile routing.
+            //
+            // `--private-window` takes over when incognito is requested.
+            if isFirefoxBundleID(option.browser.bundleID) {
+                let profileFlag = incognito ? "--private-window" : "--new-tab"
+                let config = NSWorkspace.OpenConfiguration()
+                config.activates = true
+                config.arguments = [
+                    "--new-instance",
+                    "-P", profile.displayName,
+                    profileFlag, url.absoluteString
+                ]
+                config.createsNewApplicationInstance = true
+                NSWorkspace.shared.openApplication(
+                    at: option.browser.url,
+                    configuration: config
+                ) { _, error in
+                    DispatchQueue.main.async { completion?(error == nil) }
+                }
+                return
+            }
+
+            // Unknown vendor with a profile — fall back to plain open. Drops
+            // the profile selection rather than passing a flag the browser
+            // doesn't understand.
             let config = NSWorkspace.OpenConfiguration()
             config.activates = true
-            config.arguments = ["--profile-directory=\(dirName)", url.absoluteString]
-            config.createsNewApplicationInstance = false
-            NSWorkspace.shared.openApplication(
-                at: option.browser.url,
+            NSWorkspace.shared.open(
+                [url],
+                withApplicationAt: option.browser.url,
                 configuration: config
             ) { _, error in
                 DispatchQueue.main.async { completion?(error == nil) }
@@ -189,7 +220,7 @@ enum URLOpener {
     private static func isFirefoxBundleID(_ bundleID: String) -> Bool {
         let firefoxes = [
             "org.mozilla.firefox", "org.mozilla.firefoxdeveloperedition",
-            "org.mozilla.nightly", "com.zen-browser.zen",
+            "org.mozilla.nightly", "app.zen-browser.zen",
         ]
         return firefoxes.contains(bundleID)
     }
