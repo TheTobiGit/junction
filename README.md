@@ -49,8 +49,9 @@ Requires Xcode 15+ on macOS 13+.
 ```
 git clone https://github.com/TheTobiGit/junction
 cd junction
+./scripts/setup.sh          # activates commit hooks — run once per clone
 ./build-app.sh release
 open build/Junction.app
 ```
 
-Contributors: run `./scripts/setup.sh` once after cloning to activate the Conventional Commits hook.
+> **Why `scripts/setup.sh`?** Junction enforces Conventional Commits via a tracked git hook (`.githooks/commit-msg`). The setup script points `core.hooksPath` at it. Skipping this step means your commits won't be validated locally and release-please may reject them.

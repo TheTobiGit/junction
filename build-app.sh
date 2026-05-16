@@ -4,6 +4,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Warn (don't fail) when commit hooks aren't activated. release-please
+# parses Conventional Commits and will reject non-conformant history.
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    hooks_path="$(git config --get core.hooksPath || true)"
+    if [[ "${hooks_path}" != ".githooks" ]]; then
+        printf '\033[33m⚠ Commit hooks not activated.\033[0m Run: \033[1m./scripts/setup.sh\033[0m\n' >&2
+    fi
+fi
+
 CONFIG="${1:-release}"
 APP_NAME="Junction"
 APP_BUNDLE="build/${APP_NAME}.app"
