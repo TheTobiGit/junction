@@ -115,6 +115,7 @@ struct PreferencesView: View {
     @State private var options: [LaunchOption] = []
     @State private var rulesFile: RulesFile = RulesStore.shared.rules
     @State private var selection: PrefsSection = .general
+    @State private var showingAddRuleSheet: Bool = false
     @ObservedObject private var settings = SettingsStore.shared
 
     var body: some View {
@@ -801,11 +802,18 @@ struct PreferencesView: View {
         VStack(alignment: .leading, spacing: 14) {
             sectionBlurb(
                 "Rules are evaluated top to bottom — first match wins. Drag to reorder, toggle to disable without losing the rule.",
-                trailing: { EmptyView() }
+                trailing: {
+                    pillButton("Add rule", symbol: "plus") {
+                        showingAddRuleSheet = true
+                    }
+                }
             )
 
             rulesList
             fallbackRow
+        }
+        .sheet(isPresented: $showingAddRuleSheet) {
+            AddRuleSheet(options: options)
         }
     }
 
@@ -1304,5 +1312,297 @@ private struct Card<Content: View>: View {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
             )
+    }
+}
+
+// MARK: - Add rule sheet
+
+/// Minimal v1: host kind + value, action of open / incognito / ask / block /
+/// app-scheme. Advanced fields (`path`, `queryContains`, `schemes`, `when`,
+/// `alsoCopyCleaned`) land in a follow-up — model and matcher already
+/// support them, this sheet just doesn't surface them yet so the flow stays
+/// fast for the common case.
+private struct AddRuleSheet: View {
+    let options: [LaunchOption]
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var hostKind: HostKind = .suffix
+    @State private var hostValue: String = ""
+    @State private var actionKind: ActionKind = .open
+    @State private var selectedTarget: LaunchTarget? = nil
+    @State private var schemeValue: String = ""
+
+    enum HostKind: String, CaseIterable, Identifiable {
+        case equals, suffix, regex
+        var id: String { rawValue }
+        var label: String { rawValue.capitalized }
+        var placeholder: String {
+            switch self {
+            case .equals: return "api.github.com"
+            case .suffix: return "github.com"
+            case .regex:  return "^.*\\.slack\\.com$"
+            }
+        }
+    }
+
+    enum ActionKind: String, CaseIterable, Identifiable {
+        case open, incognito, ask, block, appScheme
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .open:      return "Open in"
+            case .incognito: return "Open privately in"
+            case .ask:       return "Always ask"
+            case .block:     return "Block"
+            case .appScheme: return "Open via app scheme"
+            }
+        }
+        var needsTarget: Bool { self == .open || self == .incognito }
+    }
+
+    /// Targets the user can pick. For incognito-bound actions we filter down
+    /// to browsers we know support private mode — otherwise the rule would
+    /// silently fall back to the picker at routing time.
+    private var pickableTargets: [LaunchOption] {
+        switch actionKind {
+        case .incognito:
+            return options.filter { URLOpener.supportsIncognito(bundleID: $0.browser.bundleID) }
+        default:
+            return options
+        }
+    }
+
+    private var trimmedHost: String {
+        hostValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedScheme: String {
+        schemeValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Returns nil when the form is submittable; otherwise a short message
+    /// the footer can show inline. Drives both the disabled state of the
+    /// Add button and the visible error text.
+    private var validationError: String? {
+        if trimmedHost.isEmpty {
+            return "Host can't be empty"
+        }
+        if hostKind == .regex {
+            // The matcher uses `NSRegularExpression`; reject anything that
+            // would silently `try?` away to a never-matching rule.
+            if (try? NSRegularExpression(pattern: trimmedHost)) == nil {
+                return "Invalid regular expression"
+            }
+        }
+        if actionKind.needsTarget, selectedTarget == nil {
+            return "Pick a target browser"
+        }
+        if actionKind == .appScheme, trimmedScheme.isEmpty {
+            return "Scheme can't be empty (e.g. slack, zoommtg)"
+        }
+        return nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            header
+
+            matchSection
+            actionSection
+
+            // Surface specific problems (bad regex, missing target, missing
+            // scheme) once the user has actually typed a host. The "empty
+            // host" case is communicated by the disabled Add button alone —
+            // showing a red banner on initial render would feel accusatory.
+            if !trimmedHost.isEmpty, let validationError {
+                Label(validationError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.orange)
+            }
+
+            footer
+        }
+        .padding(20)
+        .frame(minWidth: 440)
+        .onAppear(perform: seedDefaultTarget)
+        .onChange(of: actionKind) { _ in seedDefaultTarget() }
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "plus.rectangle.on.folder")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(.accentColor)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Add rule")
+                    .font(.system(size: 15, weight: .semibold))
+                Text("New rules are inserted at the top of the list.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+        }
+    }
+
+    // MARK: - Match section
+
+    private var matchSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionTitle("Match")
+            Card {
+                VStack(alignment: .leading, spacing: 10) {
+                    Picker("Match by", selection: $hostKind) {
+                        ForEach(HostKind.allCases) { kind in
+                            Text(kind.label).tag(kind)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+
+                    TextField(hostKind.placeholder, text: $hostValue)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                        .disableAutocorrection(true)
+
+                    Text(hostKindHelp)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(12)
+            }
+        }
+    }
+
+    private var hostKindHelp: String {
+        switch hostKind {
+        case .equals: return "Matches one specific host exactly (api.github.com)."
+        case .suffix: return "Matches that host and all of its subdomains (github.com, www.github.com, gist.github.com)."
+        case .regex:  return "NSRegularExpression syntax, case-insensitive. Anchor with ^ and $ to be safe."
+        }
+    }
+
+    // MARK: - Action section
+
+    private var actionSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionTitle("Action")
+            Card {
+                VStack(alignment: .leading, spacing: 10) {
+                    Picker("Action", selection: $actionKind) {
+                        ForEach(ActionKind.allCases) { kind in
+                            Text(kind.label).tag(kind)
+                        }
+                    }
+                    .labelsHidden()
+
+                    if actionKind.needsTarget {
+                        targetPicker
+                    } else if actionKind == .appScheme {
+                        schemeField
+                    }
+                }
+                .padding(12)
+            }
+        }
+    }
+
+    private var targetPicker: some View {
+        let targets = pickableTargets
+        return Group {
+            if targets.isEmpty {
+                Text("No browsers found that support this action.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            } else {
+                Picker("Target", selection: Binding(
+                    get: { selectedTarget },
+                    set: { selectedTarget = $0 }
+                )) {
+                    Text("Select a browser…").tag(LaunchTarget?.none)
+                    ForEach(targets) { option in
+                        Text(option.displayName).tag(LaunchTarget?.some(option.target))
+                    }
+                }
+                .labelsHidden()
+            }
+        }
+    }
+
+    private var schemeField: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            TextField("slack", text: $schemeValue)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 12, design: .monospaced))
+                .disableAutocorrection(true)
+            Text("Junction will hand matching URLs to the app registered for this URL scheme.")
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+        }
+    }
+
+    // MARK: - Footer
+
+    private var footer: some View {
+        HStack {
+            Spacer()
+            Button("Cancel") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+            Button("Add rule") { submit() }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(validationError != nil)
+        }
+    }
+
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.system(size: 10, weight: .bold))
+            .tracking(0.8)
+            .foregroundColor(.secondary)
+    }
+
+    // MARK: - Behavior
+
+    /// Preselects the first valid target whenever the action kind flips so
+    /// the user doesn't have to open a picker just to satisfy validation.
+    /// Clears the selection when the new action filter removes the previous
+    /// pick (e.g. switching to Incognito-only and the old target was Safari).
+    private func seedDefaultTarget() {
+        guard actionKind.needsTarget else {
+            selectedTarget = nil
+            return
+        }
+        let pool = pickableTargets
+        if let current = selectedTarget, pool.contains(where: { $0.target == current }) {
+            return
+        }
+        selectedTarget = pool.first?.target
+    }
+
+    private func submit() {
+        guard validationError == nil else { return }
+
+        let host: HostMatch = {
+            switch hostKind {
+            case .equals: return .equals(trimmedHost)
+            case .suffix: return .suffix(trimmedHost)
+            case .regex:  return .regex(trimmedHost)
+            }
+        }()
+
+        let action: RuleAction = {
+            switch actionKind {
+            case .open:      return .open(selectedTarget!)
+            case .incognito: return .openIncognito(selectedTarget!)
+            case .ask:       return .ask
+            case .block:     return .block
+            case .appScheme: return .appScheme(trimmedScheme)
+            }
+        }()
+
+        RulesStore.shared.addRule(host: host, action: action)
+        dismiss()
     }
 }
