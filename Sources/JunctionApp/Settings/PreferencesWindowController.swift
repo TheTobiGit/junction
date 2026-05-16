@@ -833,43 +833,64 @@ struct PreferencesView: View {
 
     private func ruleRow(_ rule: DomainRule) -> some View {
         HStack(spacing: 12) {
-            Text(rule.host.kindLabel.uppercased())
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .tracking(0.6)
-                .padding(.horizontal, 7).padding(.vertical, 3)
-                .background(Capsule().fill(Color.secondary.opacity(0.14)))
-                .foregroundColor(.secondary)
-                .frame(width: 58, alignment: .center)
-
-            Text(rule.host.displayValue)
-                .font(.system(size: 12, design: .monospaced))
-                .lineLimit(1)
-                .truncationMode(.middle)
-
-            Spacer()
-
-            actionLabel(rule.action)
-                .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.primary.opacity(0.05))
+            Toggle(
+                "",
+                isOn: Binding(
+                    get: { rule.enabled },
+                    set: { newValue in
+                        RulesStore.shared.updateRule(id: rule.id) { $0.enabled = newValue }
+                    }
                 )
+            )
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .labelsHidden()
+            .help(rule.enabled ? "Disable rule (kept in list, won't match)" : "Enable rule")
+            .accessibilityLabel("Enable rule for \(rule.host.displayValue)")
 
-            cleanOverrideMenu(for: rule)
-
-            Button {
-                withAnimation(.easeOut(duration: 0.18)) {
-                    RulesStore.shared.remove(ruleID: rule.id)
-                }
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 11, weight: .medium))
+            // Rest of the row dims when disabled so the rule reads as "kept
+            // but inert" instead of looking identical to an active one.
+            HStack(spacing: 12) {
+                Text(rule.host.kindLabel.uppercased())
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .tracking(0.6)
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(Capsule().fill(Color.secondary.opacity(0.14)))
                     .foregroundColor(.secondary)
-                    .frame(width: 22, height: 22)
-                    .background(Circle().fill(Color.primary.opacity(0.06)))
+                    .frame(width: 58, alignment: .center)
+
+                Text(rule.host.displayValue)
+                    .font(.system(size: 12, design: .monospaced))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .strikethrough(!rule.enabled, color: .secondary)
+
+                Spacer()
+
+                actionLabel(rule.action)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.primary.opacity(0.05))
+                    )
+
+                cleanOverrideMenu(for: rule)
+
+                Button {
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        RulesStore.shared.remove(ruleID: rule.id)
+                    }
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .frame(width: 22, height: 22)
+                        .background(Circle().fill(Color.primary.opacity(0.06)))
+                }
+                .buttonStyle(.plain)
+                .help("Remove rule")
             }
-            .buttonStyle(.plain)
-            .help("Remove rule")
+            .opacity(rule.enabled ? 1.0 : 0.45)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
