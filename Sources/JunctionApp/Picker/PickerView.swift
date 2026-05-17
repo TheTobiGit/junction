@@ -119,8 +119,11 @@ struct PickerView: View {
                 if model.incognitoMode {
                     incognitoBadge
                 }
-                if !model.riskFlags.isEmpty {
-                    riskChip(model.riskFlags)
+                if !idnRiskFlags.isEmpty {
+                    RiskChip(flags: idnRiskFlags)
+                }
+                if !otherRiskFlags.isEmpty {
+                    riskChip(otherRiskFlags)
                 }
             }
             .fixedSize(horizontal: true, vertical: false)
@@ -236,6 +239,9 @@ struct PickerView: View {
         .foregroundColor(.purple)
         .background(Capsule().fill(Color.purple.opacity(0.18)))
     }
+
+    private var idnRiskFlags: [RiskFlag] { model.riskFlags.filter { $0.isIDNRelated } }
+    private var otherRiskFlags: [RiskFlag] { model.riskFlags.filter { !$0.isIDNRelated } }
 
     private func riskChip(_ flags: [RiskFlag]) -> some View {
         RiskChip(flags: flags)
