@@ -112,6 +112,7 @@ struct PreferencesView: View {
     @State private var showingAddRuleSheet: Bool = false
     @State private var hoveredRail: PrefsSection? = nil
     @State private var newTrackerEntry: String = ""
+    @State private var expandedTargetGroupIDs: Set<String> = []
     @ObservedObject private var settings = SettingsStore.shared
 
     var body: some View {
@@ -513,28 +514,28 @@ struct PreferencesView: View {
 
             List {
                 Section {
-                    ForEach(visibleTargets) { option in
-                        targetRow(option)
+                    ForEach(groupedVisibleRows, id: \.rowID) { row in
+                        targetGroupRow(row)
                             .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                             .overlay(alignment: .bottom) { hairline() }
                     }
-                    .onMove(perform: moveVisible)
+                    .onMove(perform: moveVisibleGrouped)
                 } header: {
                     subSectionLabel("Visible", count: visibleTargets.count)
                 }
 
                 if !hiddenTargets.isEmpty {
                     Section {
-                        ForEach(hiddenTargets) { option in
-                            targetRow(option)
+                        ForEach(groupedHiddenRows, id: \.rowID) { row in
+                            targetGroupRow(row)
                                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(Color.clear)
                                 .overlay(alignment: .bottom) { hairline() }
                         }
-                        .onMove(perform: moveHidden)
+                        .onMove(perform: moveHiddenGrouped)
                     } header: {
                         subSectionLabel("Hidden", count: hiddenTargets.count)
                     }
@@ -545,6 +546,135 @@ struct PreferencesView: View {
             .background(Color.clear)
             .frame(minHeight: 380)
         }
+    }
+
+    private struct TargetGroupRow: Identifiable {
+        enum Kind {
+            case single(LaunchOption)
+            case groupHeader(browser: Browser, count: Int, groupID: String)
+            case groupChild(LaunchOption, groupID: String)
+        }
+        let kind: Kind
+        var id: String { rowID }
+        var rowID: String {
+            switch kind {
+            case .single(let opt): return opt.id
+            case .groupHeader(_, _, let gid): return gid
+            case .groupChild(let opt, _): return "child:\(opt.id)"
+            }
+        }
+        var underlyingOption: LaunchOption? {
+            switch kind {
+            case .single(let opt): return opt
+            case .groupHeader: return nil
+            case .groupChild(let opt, _): return opt
+            }
+        }
+    }
+
+    private func buildGroupedRows(from flat: [LaunchOption]) -> [TargetGroupRow] {
+        let grouped = LaunchOptionGrouping.group(options: flat)
+        var rows: [TargetGroupRow] = []
+        for item in grouped {
+            switch item {
+            case .single(let opt):
+                rows.append(TargetGroupRow(kind: .single(opt)))
+            case .group(let browser, let opts):
+                let gid = "group:\(browser.bundleID)"
+                rows.append(TargetGroupRow(kind: .groupHeader(browser: browser, count: opts.count, groupID: gid)))
+                if expandedTargetGroupIDs.contains(gid) {
+                    for opt in opts {
+                        rows.append(TargetGroupRow(kind: .groupChild(opt, groupID: gid)))
+                    }
+                }
+            }
+        }
+        return rows
+    }
+
+    private var groupedVisibleRows: [TargetGroupRow] { buildGroupedRows(from: visibleTargets) }
+    private var groupedHiddenRows: [TargetGroupRow] { buildGroupedRows(from: hiddenTargets) }
+
+    @ViewBuilder
+    private func targetGroupRow(_ row: TargetGroupRow) -> some View {
+        switch row.kind {
+        case .single(let opt):
+            targetRow(opt)
+        case .groupHeader(let browser, let count, let groupID):
+            targetGroupHeaderRow(browser: browser, count: count, groupID: groupID)
+        case .groupChild(let opt, _):
+            targetRow(opt).padding(.leading, 20)
+        }
+    }
+
+    private func targetGroupHeaderRow(browser: Browser, count: Int, groupID: String) -> some View {
+        let isExpanded = expandedTargetGroupIDs.contains(groupID)
+        return HStack(spacing: 14) {
+            Image(nsImage: browser.icon)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 22, height: 22)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(browser.name)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text("\(count) profiles")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary.opacity(0.7))
+            }
+
+            Spacer()
+
+            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 22, height: 22)
+        }
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.easeOut(duration: 0.18)) {
+                if isExpanded {
+                    expandedTargetGroupIDs.remove(groupID)
+                } else {
+                    expandedTargetGroupIDs.insert(groupID)
+                }
+            }
+        }
+    }
+
+    private func moveVisibleGrouped(from source: IndexSet, to destination: Int) {
+        let rows = groupedVisibleRows
+        let underlyingMoved = source.compactMap { rows[$0].underlyingOption }
+        guard !underlyingMoved.isEmpty else { return }
+        var visible = visibleTargets
+        let sourceIndices = IndexSet(underlyingMoved.compactMap { moved in
+            visible.firstIndex(where: { $0.id == moved.id })
+        })
+        let destRow = rows[min(destination, rows.count - 1)]
+        let destOption = destRow.underlyingOption ?? underlyingMoved.first!
+        let destIdx = visible.firstIndex(where: { $0.id == destOption.id }) ?? visible.count
+        visible.move(fromOffsets: sourceIndices, toOffset: destIdx)
+        options = visible + hiddenTargets
+        settings.setTargetOrder(options.map { $0.target.storageKey })
+    }
+
+    private func moveHiddenGrouped(from source: IndexSet, to destination: Int) {
+        let rows = groupedHiddenRows
+        let underlyingMoved = source.compactMap { rows[$0].underlyingOption }
+        guard !underlyingMoved.isEmpty else { return }
+        var hidden = hiddenTargets
+        let sourceIndices = IndexSet(underlyingMoved.compactMap { moved in
+            hidden.firstIndex(where: { $0.id == moved.id })
+        })
+        let destRow = rows[min(destination, rows.count - 1)]
+        let destOption = destRow.underlyingOption ?? underlyingMoved.first!
+        let destIdx = hidden.firstIndex(where: { $0.id == destOption.id }) ?? hidden.count
+        hidden.move(fromOffsets: sourceIndices, toOffset: destIdx)
+        options = visibleTargets + hidden
+        settings.setTargetOrder(options.map { $0.target.storageKey })
     }
 
     private var visibleTargets: [LaunchOption] {
@@ -1125,6 +1255,11 @@ struct PreferencesView: View {
         options = LaunchOptionDiscovery.options()
         rulesFile = RulesStore.shared.rules
         shadowedRuleIDs = RuleConflictDetector.shadowed(rules: rulesFile.rules)
+        let grouped = LaunchOptionGrouping.group(options: options)
+        expandedTargetGroupIDs = LaunchOptionGrouping.defaultExpandedGroupIDs(
+            grouped: grouped,
+            pinnedTargetKey: settings.settings.pinnedTargetKey
+        )
     }
 }
 

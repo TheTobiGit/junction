@@ -30,6 +30,7 @@ final class PickerViewModel: ObservableObject {
     @Published var showQRSheet: Bool = false
     @Published private(set) var qrImage: CGImage? = nil
     var qrImageProvider: (String) -> CGImage? = QRCodeGenerator.generate(from:)
+    @Published var expandedGroupIDs: Set<String> = []
 
     private let pickHandler: (LaunchOption, Bool, Bool) -> Void
     private let pickMultiHandler: ([LaunchOption], Bool) -> Void
@@ -72,6 +73,11 @@ final class PickerViewModel: ObservableObject {
         self.pickMultiHandler = onPickMulti
         self.cancelHandler = onCancel
         self.openPreferencesHandler = onOpenPreferences
+        let grouped = LaunchOptionGrouping.group(options: options)
+        self.expandedGroupIDs = LaunchOptionGrouping.defaultExpandedGroupIDs(
+            grouped: grouped,
+            pinnedTargetKey: SettingsStore.shared.settings.pinnedTargetKey
+        )
         loadPreview()
         loadHostFavicon()
     }
@@ -265,6 +271,25 @@ final class PickerViewModel: ObservableObject {
 
     var filteredOptions: [LaunchOption] { options }
 
+    var groupedFilteredOptions: [GroupedLaunchOption] {
+        LaunchOptionGrouping.group(options: filteredOptions)
+    }
+
+    var visibleFlatOptions: [LaunchOption] {
+        LaunchOptionGrouping.visibleOptions(
+            grouped: groupedFilteredOptions,
+            expandedGroupIDs: expandedGroupIDs
+        )
+    }
+
+    func toggleGroupExpansion(_ groupID: String) {
+        if expandedGroupIDs.contains(groupID) {
+            expandedGroupIDs.remove(groupID)
+        } else {
+            expandedGroupIDs.insert(groupID)
+        }
+    }
+
     func selectedOption() -> LaunchOption? {
         let list = filteredOptions
         guard list.indices.contains(selectedIndex) else { return nil }
@@ -306,11 +331,13 @@ final class PickerViewModel: ObservableObject {
 
     func pickByNumber(_ number: Int, remember: Bool? = nil, incognito: Bool? = nil) {
         let idx = number - 1
-        let list = filteredOptions
-        guard list.indices.contains(idx) else { return }
-        selectedIndex = idx
+        let visible = visibleFlatOptions
+        guard visible.indices.contains(idx) else { return }
+        let option = visible[idx]
+        if let flatIdx = filteredOptions.firstIndex(where: { $0.id == option.id }) {
+            selectedIndex = flatIdx
+        }
         let shouldRemember = remember ?? rememberChoice
-        let option = list[idx]
         pickHandler(option, shouldRemember, resolvedIncognito(for: option, requested: incognito))
     }
 
