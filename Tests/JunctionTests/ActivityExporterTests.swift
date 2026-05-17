@@ -99,11 +99,37 @@ final class ActivityExporterTests: XCTestCase {
         XCTAssertTrue(csv.contains("\"line1\nline2\""))
     }
 
-    // VAL-M5-EXPORT-002: multi-value cleaningSteps joined with semicolon
+    // VAL-M5-EXPORT-002: multi-value cleaningSteps joined with semicolon and quoted per RFC 4180
     func test_csvCleaningStepsJoinedWithSemicolon_VAL_M5_EXPORT_002() {
         let entry = makeEntry(cleaningSteps: ["tracker-stripper", "amp-collapser"])
         let csv = ActivityExporter.csv(entries: [entry])
-        XCTAssertTrue(csv.contains("tracker-stripper;amp-collapser"))
+        XCTAssertTrue(csv.contains("\"tracker-stripper;amp-collapser\""))
+    }
+
+    // VAL-M5-EXPORT-002: multi-value cleaningSteps cell is quoted (redirect-transformer + tracker-stripper fixture)
+    func test_csvMultiValueCleaningStepsIsQuoted_VAL_M5_EXPORT_002() {
+        let entry = makeEntry(cleaningSteps: ["redirect-transformer", "tracker-stripper"])
+        let csv = ActivityExporter.csv(entries: [entry])
+        XCTAssertTrue(csv.contains("\"redirect-transformer;tracker-stripper\""))
+    }
+
+    // VAL-M5-EXPORT-003: empty filtered set — JSON is `[]` and CSV is header-only
+    func test_emptyFilteredSetExportsCorrectly_VAL_M5_EXPORT_003() throws {
+        let allEntries: [RoutingHistory.Entry] = [
+            makeEntry(cleanedURL: "https://github.com/a", targetBundleID: "com.brave.Browser"),
+            makeEntry(cleanedURL: "https://example.com/b", targetBundleID: "com.apple.Safari"),
+        ]
+        let filtered = ActivityFilter.filter(allEntries, criteria: .init(targetBundleID: "com.google.Chrome"))
+        XCTAssertTrue(filtered.isEmpty)
+
+        let jsonData = ActivityExporter.json(entries: filtered)
+        let jsonStr = try XCTUnwrap(String(data: jsonData, encoding: .utf8))
+        XCTAssertEqual(jsonStr.trimmingCharacters(in: .whitespacesAndNewlines), "[]")
+
+        let csv = ActivityExporter.csv(entries: filtered)
+        let lines = csv.components(separatedBy: "\r\n").filter { !$0.isEmpty }
+        XCTAssertEqual(lines.count, 1)
+        XCTAssertTrue(lines[0].hasPrefix("id,"))
     }
 
     // VAL-M5-EXPORT-002: sourceBundleID and targetStorageKey appear in data rows
