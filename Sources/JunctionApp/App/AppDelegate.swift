@@ -226,7 +226,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 AgentTargetSummary(key: $0.target.storageKey, displayName: $0.displayName)
             }
             return .targets(targets)
-        case .addRule(let kind, let value, let targetKey, let cleanOverride):
+        case .addRule(let kind, let value, let targetKey, let cleanOverride, let pathKind, let pathValue):
             let hostMatch: HostMatch
             switch kind {
             case "equals": hostMatch = .equals(value)
@@ -257,7 +257,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 action = .ask
             }
-            RulesStore.shared.addRule(host: hostMatch, action: action, cleanOverride: cleanOverride)
+            let pathMatch: URLPathMatch?
+            if let pk = pathKind, let pv = pathValue, !pv.isEmpty {
+                guard let built = URLPathMatch.from(kind: pk, value: pv) else {
+                    return .error("invalid path kind: \(pk) (use prefix, contains, regex, or glob)")
+                }
+                pathMatch = built
+            } else {
+                pathMatch = nil
+            }
+            var rule = DomainRule(host: hostMatch, action: action, cleanOverride: cleanOverride)
+            rule.path = pathMatch
+            RulesStore.shared.addRule(rule)
             return .ok(message: "added rule for \(value)")
         case .removeRule(let value):
             let removed = RulesStore.shared.removeRule(hostValue: value)
