@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 struct ActivityTab: View {
     @Environment(\.colorScheme) private var colorScheme
@@ -128,6 +129,26 @@ struct ActivityTab: View {
                     .font(.system(size: 11, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
 
+                Button {
+                    exportEntries()
+                } label: {
+                    Text("Export")
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .foregroundStyle(.primary)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(filteredEntries.isEmpty)
+                .help("Export filtered entries to JSON or CSV")
+
                 Button(role: .destructive) {
                     confirmingClear = true
                 } label: {
@@ -230,6 +251,24 @@ struct ActivityTab: View {
             return name
         }
         return id
+    }
+
+    private func exportEntries() {
+        let entries = filteredEntries
+        let panel = NSSavePanel()
+        panel.title = "Export Activity"
+        panel.nameFieldStringValue = "junction-activity"
+        panel.allowedContentTypes = [UTType.json, UTType.commaSeparatedText]
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            if url.pathExtension.lowercased() == "csv" {
+                let content = ActivityExporter.csv(entries: entries)
+                try? content.write(to: url, atomically: true, encoding: .utf8)
+            } else {
+                let data = ActivityExporter.json(entries: entries)
+                try? data.write(to: url, options: .atomic)
+            }
+        }
     }
 
     private var outcomePills: some View {
