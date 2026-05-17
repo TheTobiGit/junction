@@ -5,6 +5,23 @@ enum PreviewWebViewFactory {
     private static let dataStore: WKWebsiteDataStore = .nonPersistent()
     private static let blankURL = URL(string: "about:blank")!
 
+    static var readabilitySourceProvider: () -> String? = {
+        Bundle.main.url(forResource: "Readability", withExtension: "js")
+            .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+    }
+
+    private static let readerWrapperScript: String = """
+    (function() {
+        try {
+            var article = new Readability(document.cloneNode(true)).parse();
+            if (article && article.content) {
+                document.body.innerHTML = article.content;
+                if (article.title) { document.title = article.title; }
+            }
+        } catch(e) {}
+    })();
+    """
+
     private static let scrollbarCSS: String = """
     ::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -44,17 +61,25 @@ enum PreviewWebViewFactory {
         _ = dataStore
     }
 
-    static func makeWebView() -> WKWebView {
+    static func userScripts(readerEnabled: Bool) -> [WKUserScript] {
+        var scripts: [WKUserScript] = [
+            WKUserScript(source: scrollbarScript, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        ]
+        if readerEnabled, let source = readabilitySourceProvider() {
+            scripts.append(WKUserScript(source: source, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+            scripts.append(WKUserScript(source: readerWrapperScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        }
+        return scripts
+    }
+
+    static func makeWebView(readerEnabled: Bool = false) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = dataStore
         config.defaultWebpagePreferences.allowsContentJavaScript = true
 
-        let userScript = WKUserScript(
-            source: scrollbarScript,
-            injectionTime: .atDocumentStart,
-            forMainFrameOnly: false
-        )
-        config.userContentController.addUserScript(userScript)
+        for script in userScripts(readerEnabled: readerEnabled) {
+            config.userContentController.addUserScript(script)
+        }
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.customUserAgent = BrowserUserAgent.safariMacDesktop
