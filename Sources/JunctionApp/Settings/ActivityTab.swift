@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 
 struct ActivityTab: View {
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var history = RoutingHistory.shared
     @ObservedObject private var settings = SettingsStore.shared
     @State private var query: String = ""
@@ -17,113 +18,120 @@ struct ActivityTab: View {
         ))
     }
 
-    /// Counts each outcome present in the full history (not the filtered set)
-    /// so pill badges keep showing totals regardless of the active filter.
     private var outcomeCounts: [RoutingHistory.Outcome: Int] {
         ActivityFilter.outcomeCounts(history.entries)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            privacyRow
-
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
-                TextField("Filter recent links", text: $query)
-                    .textFieldStyle(.roundedBorder)
-                Toggle(isOn: $showCleanedOnly) {
-                    Text("Cleaned only").font(.system(size: 11))
-                }
-                .toggleStyle(.checkbox)
-
-                Spacer()
-
-                Text("\(filteredEntries.count) of \(history.entries.count)")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-
-                Button(role: .destructive) {
-                    confirmingClear = true
-                } label: {
-                    Label("Clear", systemImage: "trash")
-                }
-                .controlSize(.small)
-                .disabled(history.entries.isEmpty)
-                .confirmationDialog(
-                    "Clear all \(history.entries.count) entries?",
-                    isPresented: $confirmingClear,
-                    titleVisibility: .visible
-                ) {
-                    Button("Clear", role: .destructive) { history.clear() }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("This permanently removes Junction's local activity log. The file is rewritten on disk.")
-                }
-            }
-            .disabled(!settings.settings.historyEnabled && history.entries.isEmpty)
+        VStack(alignment: .leading, spacing: 32) {
+            recordRow
 
             if !history.entries.isEmpty {
-                outcomeFilterRow
+                filterBar
+                outcomePills
             }
 
-            if !settings.settings.historyEnabled && history.entries.isEmpty {
-                disabledState
-            } else if history.entries.isEmpty {
-                emptyState
-            } else {
-                List(filteredEntries) { entry in
-                    ActivityRow(entry: entry)
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 320)
+            content
+        }
+    }
+
+    // MARK: - Record toggle
+
+    private var recordRow: some View {
+        HStack(alignment: .center, spacing: 24) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Record activity")
+                    .font(.system(size: 13, weight: .medium))
+                Text("Stored on this Mac only, up to \(RoutingHistory.maxEntries) entries.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 24)
+            Toggle("", isOn: Binding(
+                get: { settings.settings.historyEnabled },
+                set: { settings.settings.historyEnabled = $0 }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+        }
+        .padding(.vertical, 4)
+    }
+
+    // MARK: - Filters
+
+    private var filterBar: some View {
+        HStack(alignment: .center, spacing: 12) {
+            HStack(spacing: 7) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                TextField("Filter", text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12))
+            }
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05))
+            )
+            .frame(maxWidth: 260)
+
+            Toggle(isOn: $showCleanedOnly) {
+                Text("Cleaned only").font(.system(size: 11, weight: .medium))
+            }
+            .toggleStyle(.checkbox)
+
+            Spacer()
+
+            Text("\(filteredEntries.count) of \(history.entries.count)")
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary)
+
+            Button(role: .destructive) {
+                confirmingClear = true
+            } label: {
+                Text("Clear")
+                    .font(.system(size: 11, weight: .semibold))
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .foregroundStyle(.primary)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(history.entries.isEmpty)
+            .confirmationDialog(
+                "Clear all \(history.entries.count) entries?",
+                isPresented: $confirmingClear,
+                titleVisibility: .visible
+            ) {
+                Button("Clear", role: .destructive) { history.clear() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This permanently removes Junction's local activity log.")
             }
         }
     }
 
-    private var outcomeFilterRow: some View {
-        HStack(spacing: 8) {
-            outcomePill(
-                .opened,
-                title: "Opened",
-                symbol: "arrow.up.forward.app.fill",
-                color: .accentColor
-            )
-            outcomePill(
-                .openedIncognito,
-                title: "Private",
-                symbol: "eyeglasses",
-                color: .indigo
-            )
-            outcomePill(
-                .opened_appScheme,
-                title: "Native app",
-                symbol: "app.connected.to.app.below.fill",
-                color: .pink
-            )
-            outcomePill(
-                .picker,
-                title: "Picker",
-                symbol: "questionmark.app.fill",
-                color: .orange
-            )
-            outcomePill(
-                .blocked,
-                title: "Blocked",
-                symbol: "shield.lefthalf.filled",
-                color: .red
-            )
+    private var outcomePills: some View {
+        HStack(spacing: 6) {
+            outcomePill(.opened,           title: "Opened",     color: .accentColor)
+            outcomePill(.openedIncognito,  title: "Private",    color: .indigo)
+            outcomePill(.opened_appScheme, title: "Native app", color: .pink)
+            outcomePill(.picker,           title: "Picker",     color: .orange)
+            outcomePill(.blocked,          title: "Blocked",    color: .red)
 
             if !selectedOutcomes.isEmpty {
                 Button("Reset") { selectedOutcomes.removeAll() }
                     .buttonStyle(.borderless)
                     .controlSize(.mini)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
-
             Spacer()
         }
     }
@@ -131,40 +139,33 @@ struct ActivityTab: View {
     private func outcomePill(
         _ outcome: RoutingHistory.Outcome,
         title: String,
-        symbol: String,
         color: Color
     ) -> some View {
         let count = outcomeCounts[outcome] ?? 0
         let isSelected = selectedOutcomes.contains(outcome)
         let isAvailable = count > 0
         return Button {
-            if isSelected {
-                selectedOutcomes.remove(outcome)
-            } else {
-                selectedOutcomes.insert(outcome)
-            }
+            if isSelected { selectedOutcomes.remove(outcome) }
+            else { selectedOutcomes.insert(outcome) }
         } label: {
             HStack(spacing: 5) {
-                Image(systemName: symbol).font(.system(size: 10, weight: .semibold))
+                Circle().fill(color).frame(width: 6, height: 6)
                 Text(title).font(.system(size: 11, weight: .medium))
                 if count > 0 {
                     Text("\(count)")
-                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                        .padding(.horizontal, 4).padding(.vertical, 1)
-                        .background(Capsule().fill(color.opacity(isSelected ? 0.45 : 0.2)))
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
                 }
             }
-            .foregroundColor(isSelected ? color : .secondary.opacity(isAvailable ? 1 : 0.5))
-            .padding(.horizontal, 8).padding(.vertical, 4)
+            .foregroundStyle(isSelected ? Color.primary : .secondary.opacity(isAvailable ? 1.0 : 0.5))
+            .padding(.horizontal, 10).padding(.vertical, 5)
             .background(
-                Capsule()
-                    .fill(isSelected ? color.opacity(0.15) : Color.primary.opacity(0.04))
-            )
-            .overlay(
-                Capsule().strokeBorder(
-                    isSelected ? color.opacity(0.45) : Color.clear,
-                    lineWidth: 0.5
-                )
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(
+                        isSelected
+                        ? Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.07)
+                        : Color.primary.opacity(0.03)
+                    )
             )
         }
         .buttonStyle(.plain)
@@ -172,164 +173,148 @@ struct ActivityTab: View {
         .help(isAvailable ? "Filter by \(title.lowercased())" : "No \(title.lowercased()) entries yet")
     }
 
-    private var privacyRow: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: "lock.shield.fill")
-                .font(.system(size: 14))
-                .foregroundColor(settings.settings.historyEnabled ? .accentColor : .secondary)
-                .frame(width: 22)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Record activity")
-                    .font(.system(size: 12, weight: .semibold))
-                Text("Stores up to \(RoutingHistory.maxEntries) recent links locally so you can re-route or audit them. Off by default for incognito-by-default users.")
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+    // MARK: - Content
+
+    @ViewBuilder
+    private var content: some View {
+        if !settings.settings.historyEnabled && history.entries.isEmpty {
+            emptyText("Recording is off.", detail: "Enable it above to start collecting recent links.")
+        } else if history.entries.isEmpty {
+            emptyText("No activity yet.", detail: "Open a link through Junction and it'll show up here.")
+        } else {
+            VStack(spacing: 0) {
+                ForEach(Array(filteredEntries.enumerated()), id: \.element.id) { idx, entry in
+                    ActivityRow(entry: entry, colorScheme: colorScheme)
+                    if idx < filteredEntries.count - 1 {
+                        Rectangle()
+                            .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.06))
+                            .frame(height: 0.5)
+                    }
+                }
             }
-            Spacer()
-            Toggle("", isOn: Binding(
-                get: { settings.settings.historyEnabled },
-                set: { settings.settings.historyEnabled = $0 }
-            ))
-            .labelsHidden()
-            .toggleStyle(.switch)
-            .controlSize(.small)
         }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.primary.opacity(0.05))
-        )
     }
 
-    private var disabledState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "lock.fill")
-                .font(.system(size: 28))
-                .foregroundColor(.secondary)
-            Text("Activity recording is off.")
-                .font(.system(size: 13))
-                .foregroundColor(.secondary)
-            Text("Enable it above to start collecting recent links.")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
+    private func emptyText(_ title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+            Text(detail)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 60)
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "tray")
-                .font(.system(size: 28))
-                .foregroundColor(.secondary)
-            Text("No recent activity yet.")
-                .font(.system(size: 13))
-                .foregroundColor(.secondary)
-            Text("Open a link through Junction and it'll show up here.")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 60)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 28)
     }
 }
 
 private struct ActivityRow: View {
     let entry: RoutingHistory.Entry
+    var colorScheme: ColorScheme = .light
+
+    @State private var showingPromoteSheet: Bool = false
+
+    private var linkColor: Color {
+        colorScheme == .dark
+        ? Color(red: 0.52, green: 0.82, blue: 1.0)
+        : Color(nsColor: .linkColor)
+    }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            outcomeIcon
-                .frame(width: 24, alignment: .center)
-                .padding(.top, 4)
+        HStack(alignment: .center, spacing: 14) {
+            Circle()
+                .fill(outcomeColor)
+                .frame(width: 7, height: 7)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
                     Text(entry.cleanedURL)
                         .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(linkColor)
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .textSelection(.enabled)
                     if entry.didClean {
-                        cleanedPill
+                        Text("cleaned")
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Color.accentColor)
                     }
                 }
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     Text(relativeTime)
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.secondary)
                     if let target = entry.targetBundleID {
-                        bullet
+                        Text("·").foregroundStyle(.secondary.opacity(0.5))
                         Text(prettyBundleID(target))
                             .font(.system(size: 10))
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
                     if let rule = entry.ruleLabel {
-                        bullet
+                        Text("·").foregroundStyle(.secondary.opacity(0.5))
                         Text(rule)
                             .font(.system(size: 10))
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
-                    Spacer(minLength: 0)
-                    Button {
-                        copy(entry.cleanedURL)
-                    } label: {
-                        Image(systemName: "doc.on.doc")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Copy cleaned URL")
-
-                    Button {
-                        if let url = URL(string: entry.cleanedURL) {
-                            NSWorkspace.shared.open(url)
-                        }
-                    } label: {
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Open again")
                 }
             }
+
+            Spacer()
+
+            Button {
+                copy(entry.cleanedURL)
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Copy cleaned URL")
+
+            Button {
+                if let url = URL(string: entry.cleanedURL) {
+                    NSWorkspace.shared.open(url)
+                }
+            } label: {
+                Image(systemName: "arrow.up.right.square")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Open again")
+
+            Button {
+                showingPromoteSheet = true
+            } label: {
+                Image(systemName: "plus.circle")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Promote to rule")
         }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 4)
+        .padding(.vertical, 12)
         .help(toolTip)
+        .sheet(isPresented: $showingPromoteSheet) {
+            let opts = LaunchOptionDiscovery.options()
+            AddRuleSheet(options: opts, prefill: AddRuleSheet.prefill(for: entry, options: opts))
+        }
     }
 
-    private var outcomeIcon: some View {
-        let symbol: String
-        let color: Color
+    private var outcomeColor: Color {
         switch entry.outcome {
-        case .opened:           symbol = "arrow.up.forward.app.fill"; color = .accentColor
-        case .openedIncognito:  symbol = "eyeglasses"; color = .indigo
-        case .opened_appScheme: symbol = "app.connected.to.app.below.fill"; color = .pink
-        case .blocked:          symbol = "shield.lefthalf.filled"; color = .red
-        case .picker:           symbol = "questionmark.app.fill"; color = .orange
+        case .opened:           return .accentColor
+        case .openedIncognito:  return .indigo
+        case .opened_appScheme: return .pink
+        case .blocked:          return .red
+        case .picker:           return .orange
         }
-        return Image(systemName: symbol)
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundColor(color)
-    }
-
-    private var cleanedPill: some View {
-        HStack(spacing: 3) {
-            Image(systemName: "wand.and.stars").font(.system(size: 8, weight: .semibold))
-            Text("cleaned").font(.system(size: 9, weight: .semibold))
-        }
-        .foregroundColor(.accentColor)
-        .padding(.horizontal, 5).padding(.vertical, 1)
-        .background(Capsule().fill(Color.accentColor.opacity(0.15)))
-    }
-
-    private var bullet: some View {
-        Text("•")
-            .font(.system(size: 10))
-            .foregroundColor(.secondary.opacity(0.4))
     }
 
     private var relativeTime: String {
