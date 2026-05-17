@@ -146,7 +146,6 @@ struct ActivityTab: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .disabled(filteredEntries.isEmpty)
                 .help("Export filtered entries to JSON or CSV")
 
                 Button(role: .destructive) {

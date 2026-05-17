@@ -33,7 +33,7 @@ enum ActivityExporter {
     }
 
     private static func rfc4180Escape(_ field: String) -> String {
-        guard field.contains(",") || field.contains("\"") || field.contains("\n") || field.contains("\r") else {
+        guard field.contains(",") || field.contains("\"") || field.contains("\n") || field.contains("\r") || field.contains(";") else {
             return field
         }
         return "\"" + field.replacingOccurrences(of: "\"", with: "\"\"") + "\""
