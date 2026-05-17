@@ -199,6 +199,18 @@ enum URLPathMatch: Codable, Hashable {
         }
     }
 
+    /// Builds a `URLPathMatch` from a kind string and value. Returns `nil`
+    /// for unknown kind strings so callers can surface a clean error.
+    static func from(kind: String, value: String) -> URLPathMatch? {
+        switch kind {
+        case "prefix":   return .prefix(value)
+        case "contains": return .contains(value)
+        case "regex":    return .regex(value)
+        case "glob":     return .glob(value)
+        default:         return nil
+        }
+    }
+
     private static func globMatches(pattern: String, in text: String) -> Bool {
         var regex = "^"
         for ch in pattern {
@@ -375,10 +387,13 @@ struct DomainRule: Codable, Identifiable, Hashable {
     }
 
     /// Human-readable kind label for both Rules UI and CLI/agent summaries.
-    /// `urlEquals` rules report as `url` so the Settings tab and `junction
-    /// rules list` both show the right discriminator at a glance.
+    /// `urlEquals` rules report as `url`; path-bearing rules append the path
+    /// kind so the Settings tab and `junction rules list` render distinct
+    /// labels for path-bearing vs path-less rules.
     var kindLabel: String {
-        urlEquals != nil ? "url" : host.kindLabel
+        if urlEquals != nil { return "url" }
+        if let path { return "\(host.kindLabel)+\(path.kindLabel)" }
+        return host.kindLabel
     }
 
     /// Human-readable value the row should show. For exact-URL rules this
@@ -388,13 +403,15 @@ struct DomainRule: Codable, Identifiable, Hashable {
     }
 
     /// Stable key for deduplicating rules when adding. Two exact-URL rules
-    /// with the same target replace each other; two host rules with the
-    /// same `kind:host` replace each other; the two kinds never collide.
+    /// with the same target replace each other; two host rules with the same
+    /// `kind:host:pathKind:pathValue` replace each other; a path-bearing rule
+    /// and an otherwise-identical path-less rule never collide.
     var dedupKey: String {
         if let urlEquals {
             return "url:\(urlEquals.lowercased())"
         }
-        return "\(host.kindLabel):\(host.displayValue.lowercased())"
+        let pathPart = path.map { ":\($0.kindLabel):\($0.displayValue)" } ?? ""
+        return "\(host.kindLabel):\(host.displayValue.lowercased())\(pathPart)"
     }
 }
 

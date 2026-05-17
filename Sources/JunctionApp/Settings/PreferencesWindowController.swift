@@ -26,13 +26,13 @@ final class PreferencesWindowController {
         let view = PreferencesView()
         let host = NSHostingController(rootView: view)
         let window = NSWindow(contentViewController: host)
-        window.title = "Junction Preferences"
+        window.title = "Junction"
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = true
-        window.setContentSize(NSSize(width: 820, height: 600))
-        window.minSize = NSSize(width: 760, height: 540)
+        window.setContentSize(NSSize(width: 1040, height: 720))
+        window.minSize = NSSize(width: 920, height: 640)
         window.center()
         window.isReleasedWhenClosed = false
         self.window = window
@@ -41,10 +41,6 @@ final class PreferencesWindowController {
         postFocusIfNeeded(focus)
     }
 
-    /// Posts the focus notification on the next runloop tick. The view's
-    /// `.onReceive` subscriber is only attached after `body` runs, so a
-    /// synchronous post during ``show(focus:)`` would arrive before there's
-    /// anyone listening.
     private func postFocusIfNeeded(_ focus: PreferencesFocusTarget?) {
         guard let focus else { return }
         DispatchQueue.main.async {
@@ -57,7 +53,7 @@ final class PreferencesWindowController {
     }
 }
 
-private enum PrefsSection: String, CaseIterable, Identifiable {
+enum PrefsSection: String, CaseIterable, Identifiable {
     case general, rewrites, targets, rules, appSchemes, hotkeys, activity
 
     var id: String { rawValue }
@@ -66,49 +62,29 @@ private enum PrefsSection: String, CaseIterable, Identifiable {
         switch self {
         case .general:    return "General"
         case .rewrites:   return "Rewrites"
-        case .targets:    return "Targets"
+        case .targets:    return "Browsers"
         case .rules:      return "Rules"
-        case .appSchemes: return "Native Apps"
+        case .appSchemes: return "Native apps"
         case .hotkeys:    return "Hotkeys"
         case .activity:   return "Activity"
         }
     }
 
-    /// Sentence-long blurb shown directly under the title in the detail
-    /// header. Replaces both the old short `subtitle` and the per-tab
-    /// "sectionBlurb" row — keeping the description in one place means
-    /// every tab has the same hierarchy.
-    var blurb: String {
+    /// One-line tagline shown only at the top of the body, never in the rail.
+    var tagline: String {
         switch self {
-        case .general:
-            return "Routing behavior, link cleaning, and appearance for the whole app."
-        case .rewrites:
-            return "Replace a URL's host before it gets routed. Disabled rows are skipped."
-        case .targets:
-            return "Browsers and profiles Junction can open. Toggle to hide from the picker, drag to reorder."
-        case .rules:
-            return "Rules are evaluated top to bottom — first match wins. Drag to reorder, toggle to disable."
-        case .appSchemes:
-            return "Hand matched URLs to a desktop app instead of the browser. Useful for Slack, Linear, Figma, Notion, Zoom."
-        case .hotkeys:
-            return "Global keyboard shortcuts that work from any app."
-        case .activity:
-            return "Recent links Junction has routed on this Mac. Stored locally only."
+        case .general:    return "Behavior, look, and link cleaning."
+        case .rewrites:   return "Replace a URL's host before routing."
+        case .targets:    return "Browsers and profiles Junction can open."
+        case .rules:      return "First match wins. Drag to reorder."
+        case .appSchemes: return "Open matching links in a native app."
+        case .hotkeys:    return "Global shortcuts that work everywhere."
+        case .activity:   return "Recently routed links, stored locally."
         }
     }
 
-    var symbol: String {
-        switch self {
-        case .general:    return "gearshape.fill"
-        case .rewrites:   return "arrow.triangle.2.circlepath"
-        case .targets:    return "globe"
-        case .rules:      return "list.bullet.rectangle.fill"
-        case .appSchemes: return "app.badge"
-        case .hotkeys:    return "command.square.fill"
-        case .activity:   return "clock.arrow.circlepath"
-        }
-    }
-
+    /// Sole splash of color per section — used for the rail dot and the
+    /// accent on the body title. No icon tiles, no badges.
     var tint: Color {
         switch self {
         case .general:    return .accentColor
@@ -122,27 +98,29 @@ private enum PrefsSection: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Root view
+
 struct PreferencesView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @State private var options: [LaunchOption] = []
     @State private var rulesFile: RulesFile = RulesStore.shared.rules
     @State private var selection: PrefsSection = .general
     @State private var showingAddRuleSheet: Bool = false
-    @State private var hoveredSection: PrefsSection? = nil
+    @State private var hoveredRail: PrefsSection? = nil
     @ObservedObject private var settings = SettingsStore.shared
 
     var body: some View {
         HStack(spacing: 0) {
             sidebar
-                .frame(width: 224)
 
-            detail
+            verticalHairline
+
+            content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(
-            VisualEffectView(material: .underWindowBackground, blendingMode: .behindWindow)
-        )
+        .background(canvasBackground)
         .tint(settings.settings.accentPreset.swiftUIColor)
-        .frame(minWidth: 760, minHeight: 540)
+        .frame(minWidth: 920, minHeight: 640)
         .onAppear(perform: reload)
         .onReceive(NotificationCenter.default.publisher(for: .junctionRulesChanged)) { _ in
             reload()
@@ -151,142 +129,131 @@ struct PreferencesView: View {
             guard let raw = note.userInfo?["section"] as? String,
                   let target = PrefsSection(rawValue: raw)
             else { return }
-            selection = target
+            withAnimation(.easeOut(duration: 0.18)) {
+                selection = target
+            }
         }
+        .sheet(isPresented: $showingAddRuleSheet) {
+            AddRuleSheet(options: options)
+        }
+    }
+
+    // MARK: - Canvas
+
+    /// A single flat backdrop. No radial spotlights, no per-section tint —
+    /// just near-black slate (dark) or a soft warm white (light).
+    private var canvasBackground: some View {
+        ZStack {
+            VisualEffectView(material: .underWindowBackground, blendingMode: .behindWindow)
+            (colorScheme == .dark
+             ? Color(red: 0.075, green: 0.075, blue: 0.085)
+             : Color(red: 0.985, green: 0.980, blue: 0.975))
+                .opacity(0.96)
+        }
+    }
+
+    private var verticalHairline: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.07))
+            .frame(width: 0.5)
+    }
+
+    private func hairline() -> some View {
+        Rectangle()
+            .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.06))
+            .frame(height: 0.5)
     }
 
     // MARK: - Sidebar
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            brandHeader
+            sidebarHeader
+                .padding(.horizontal, 22)
+                .padding(.top, 26)
+                .padding(.bottom, 26)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(spacing: 1) {
                 ForEach(PrefsSection.allCases) { section in
                     sidebarRow(section)
                 }
             }
             .padding(.horizontal, 10)
 
-            Spacer()
+            Spacer(minLength: 0)
 
             sidebarFooter
+                .padding(.horizontal, 22)
+                .padding(.bottom, 18)
         }
+        .frame(width: 220)
         .frame(maxHeight: .infinity)
-        .background(
-            VisualEffectView(material: .sidebar, blendingMode: .behindWindow)
-        )
-        // Crisper trailing hairline than the system `Divider()`, which
-        // can look chunky against the sidebar material in dark mode.
-        .overlay(alignment: .trailing) {
-            Rectangle()
-                .fill(Color.primary.opacity(0.10))
-                .frame(width: 0.5)
-        }
     }
 
-    private var brandHeader: some View {
+    private var sidebarHeader: some View {
         HStack(spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.accentColor.opacity(0.95), Color.accentColor.opacity(0.55)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            settings.settings.accentPreset.swiftUIColor,
+                            settings.settings.accentPreset.swiftUIColor.opacity(0.55),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
                     )
-                    .frame(width: 30, height: 30)
-                    .shadow(color: Color.accentColor.opacity(0.35), radius: 5, x: 0, y: 2)
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.5)
-                    .frame(width: 30, height: 30)
-                Image(systemName: "arrow.triangle.branch")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(.white)
-            }
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Junction")
-                    .font(.system(size: 14, weight: .semibold))
-                Text("Preferences")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.secondary)
-            }
-
-            Spacer()
+                )
+                .frame(width: 10, height: 10)
+            Text("Junction")
+                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .foregroundStyle(.primary)
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 30)
-        .padding(.bottom, 22)
+        .accessibilityElement(children: .combine)
     }
 
     private func sidebarRow(_ section: PrefsSection) -> some View {
         let isSelected = selection == section
-        let isHovered = hoveredSection == section && !isSelected
-        return Button(action: { selection = section }) {
-            HStack(spacing: 10) {
-                sidebarIcon(for: section, selected: isSelected)
+        let isHovered = hoveredRail == section && !isSelected
+        return Button {
+            withAnimation(.easeOut(duration: 0.16)) { selection = section }
+        } label: {
+            HStack(spacing: 11) {
+                Circle()
+                    .fill(section.tint)
+                    .frame(width: 7, height: 7)
+                    .opacity(isSelected ? 1.0 : 0.55)
+
                 Text(section.title)
-                    .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
-                    .foregroundColor(isSelected ? .primary : .secondary)
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .medium, design: .rounded))
+                    .foregroundStyle(
+                        isSelected
+                        ? Color.primary
+                        : Color.primary.opacity(isHovered ? 0.85 : 0.60)
+                    )
+                    .lineLimit(1)
+
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(
                         isSelected
-                        ? section.tint.opacity(0.13)
-                        : (isHovered ? Color.primary.opacity(0.05) : Color.clear)
-                    )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(
-                        isSelected ? section.tint.opacity(0.20) : Color.clear,
-                        lineWidth: 0.5
+                        ? Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.05)
+                        : (isHovered ? Color.primary.opacity(0.03) : .clear)
                     )
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hovering in
-            if hovering {
-                hoveredSection = section
-            } else if hoveredSection == section {
-                hoveredSection = nil
-            }
+            if hovering { hoveredRail = section }
+            else if hoveredRail == section { hoveredRail = nil }
         }
-    }
-
-    private func sidebarIcon(for section: PrefsSection, selected: Bool) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(
-                    selected
-                    ? LinearGradient(
-                        colors: [section.tint.opacity(0.95), section.tint.opacity(0.65)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    : LinearGradient(
-                        colors: [Color.secondary.opacity(0.18), Color.secondary.opacity(0.08)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .frame(width: 22, height: 22)
-            if selected {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.5)
-                    .frame(width: 22, height: 22)
-            }
-            Image(systemName: section.symbol)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(selected ? .white : .secondary)
-        }
+        .accessibilityLabel(Text(section.title))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private var sidebarFooter: some View {
@@ -294,95 +261,52 @@ struct PreferencesView: View {
             Circle()
                 .fill(Color.green.opacity(0.7))
                 .frame(width: 5, height: 5)
-                .overlay(Circle().stroke(Color.green.opacity(0.25), lineWidth: 2).frame(width: 9, height: 9))
-            Text("Junction")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.secondary.opacity(0.85))
-            Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev")
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundColor(.secondary.opacity(0.6))
-            Spacer()
+            Text("v" + (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"))
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary.opacity(0.65))
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 18)
-        .padding(.bottom, 16)
     }
 
-    // MARK: - Detail
+    // MARK: - Content scroll area
 
-    private var detail: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            detailHeader
+    private var content: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                contentHeader
+                    .padding(.bottom, 36)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    switch selection {
-                    case .general:    generalTab
-                    case .rewrites:   rewritesTab
-                    case .targets:    targetsTab
-                    case .rules:      rulesTab
-                    case .appSchemes: appSchemesTab
-                    case .hotkeys:    hotkeysTab
-                    case .activity:   activityTab
-                    }
-                }
-                .padding(.horizontal, 32)
-                .padding(.top, 4)
-                .padding(.bottom, 32)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+                tabBody
+                    .padding(.bottom, 60)
             }
+            .padding(.horizontal, 56)
+            .padding(.top, 56)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
 
-    private var detailHeader: some View {
-        HStack(alignment: .top, spacing: 14) {
-            sectionIconTile(for: selection, size: 38, cornerRadius: 10)
-
-            VStack(alignment: .leading, spacing: 4) {
+    private var contentHeader: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
                 Text(selection.title)
-                    .font(.system(size: 22, weight: .bold))
-                Text(selection.blurb)
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .font(.system(size: 36, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .contentTransition(.interpolate)
+                Spacer(minLength: 16)
+                headerAction
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            headerAction
-        }
-        .padding(.horizontal, 32)
-        .padding(.top, 26)
-        .padding(.bottom, 18)
-    }
-
-    private func sectionIconTile(for section: PrefsSection, size: CGFloat, cornerRadius: CGFloat) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [section.tint.opacity(0.95), section.tint.opacity(0.62)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: size, height: size)
-                .shadow(color: section.tint.opacity(0.32), radius: 7, x: 0, y: 2)
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.22), lineWidth: 0.5)
-                .frame(width: size, height: size)
-            Image(systemName: section.symbol)
-                .font(.system(size: size * 0.42, weight: .semibold))
-                .foregroundColor(.white)
+            Text(selection.tagline)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .contentTransition(.interpolate)
         }
     }
 
-    /// Per-tab right-aligned header action. Most tabs surface their "primary
-    /// add" affordance here so it's visible without scrolling; tabs without
-    /// one render an EmptyView so the layout collapses.
     @ViewBuilder
     private var headerAction: some View {
         switch selection {
         case .rewrites:
-            primaryButton("Add rewrite", symbol: "plus") {
+            ghostButton("Add rewrite", symbol: "plus") {
                 withAnimation(.easeOut(duration: 0.18)) {
                     settings.settings.redirects.append(
                         DomainRedirect(
@@ -395,93 +319,76 @@ struct PreferencesView: View {
                 }
             }
         case .rules:
-            primaryButton("Add rule", symbol: "plus") {
-                showingAddRuleSheet = true
-            }
+            ghostButton("Add rule", symbol: "plus") { showingAddRuleSheet = true }
         case .targets:
-            countBadge("\(visibleCount) of \(options.count) visible")
+            Text("\(visibleCount) of \(options.count) shown")
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary)
         default:
             EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var tabBody: some View {
+        switch selection {
+        case .general:    generalTab
+        case .rewrites:   rewritesTab
+        case .targets:    targetsTab
+        case .rules:      rulesTab
+        case .appSchemes: appSchemesTab
+        case .hotkeys:    hotkeysTab
+        case .activity:   activityTab
         }
     }
 
     // MARK: - General
 
     private var generalTab: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            appearanceSection
-            routingSection
-            diagnosticsSection
-        }
-    }
-
-    private var appearanceSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionLabel("Appearance")
-            Card {
-                VStack(spacing: 0) {
-                    surfaceRow
-                    cardDivider
-                    accentRow
+        VStack(alignment: .leading, spacing: 44) {
+            section("Appearance") {
+                SettingRow(title: "Surface", subtitle: "Glass uses translucent panels; Solid is opaque.") {
+                    Picker("", selection: $settings.settings.chromeTheme) {
+                        ForEach(ChromeTheme.allCases) { theme in
+                            Text(theme.title).tag(theme)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 160)
                 }
+                hairline()
+                SettingRow(title: "Accent", subtitle: settings.settings.accentPreset.title) {
+                    HStack(spacing: 8) {
+                        ForEach(AccentPreset.allCases) { preset in
+                            accentSwatch(preset)
+                        }
+                    }
+                }
+            }
+
+            section("Routing") {
+                SettingRow(title: "Clean URLs", subtitle: "Strip utm_*, fbclid, gclid and friends.") {
+                    Toggle("", isOn: $settings.settings.cleanURLsBeforeOpening).labelsHidden().toggleStyle(.switch)
+                }
+                hairline()
+                SettingRow(title: "Expand shortened links", subtitle: "Resolve t.co, bit.ly, lnkd.in first.") {
+                    Toggle("", isOn: $settings.settings.expandShortenedURLs).labelsHidden().toggleStyle(.switch)
+                }
+                hairline()
+                SettingRow(title: "Watch clipboard", subtitle: "Show a HUD when you copy a link.") {
+                    Toggle("", isOn: $settings.settings.clipboardWatcherEnabled).labelsHidden().toggleStyle(.switch)
+                }
+                hairline()
+                SettingRow(title: "Record activity", subtitle: "Keep a local log of recent links.") {
+                    Toggle("", isOn: $settings.settings.historyEnabled).labelsHidden().toggleStyle(.switch)
+                }
+            }
+
+            section("Diagnostics") {
+                URLInspectorCard()
             }
         }
-    }
-
-    private var surfaceRow: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                iconTile(symbol: "rectangle.on.rectangle.angled", tint: .accentColor, size: 32)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Surface")
-                        .font(.system(size: 13, weight: .semibold))
-                    Text("Glass blurs the desktop behind the picker and clipboard HUD. Solid uses an opaque, textured surface.")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 0)
-            }
-
-            Picker("Surface style", selection: $settings.settings.chromeTheme) {
-                ForEach(ChromeTheme.allCases) { theme in
-                    Text(theme.title).tag(theme)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-        }
-        .padding(16)
-    }
-
-    private var accentRow: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                iconTile(symbol: "paintpalette.fill", tint: .pink, size: 32)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Accent color")
-                        .font(.system(size: 13, weight: .semibold))
-                    Text("Tints buttons, progress bars, and selection across the app.")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 0)
-                Text(settings.settings.accentPreset.title)
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 7).padding(.vertical, 2)
-                    .background(Capsule().fill(Color.primary.opacity(0.06)))
-            }
-
-            HStack(spacing: 10) {
-                ForEach(AccentPreset.allCases) { preset in
-                    accentSwatch(preset)
-                }
-                Spacer(minLength: 0)
-            }
-        }
-        .padding(16)
     }
 
     private func accentSwatch(_ preset: AccentPreset) -> some View {
@@ -492,139 +399,65 @@ struct PreferencesView: View {
             ZStack {
                 if preset == .system {
                     Circle()
-                        .fill(Color.primary.opacity(0.08))
-                        .frame(width: 28, height: 28)
+                        .fill(Color.primary.opacity(0.10))
+                        .frame(width: 18, height: 18)
                     Image(systemName: "apple.logo")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.primary)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.primary)
                 } else {
                     Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [preset.swiftUIColor, preset.swiftUIColor.opacity(0.78)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 28, height: 28)
-                        .shadow(color: preset.swiftUIColor.opacity(0.35), radius: 4, x: 0, y: 1)
+                        .fill(preset.swiftUIColor)
+                        .frame(width: 18, height: 18)
                 }
-                Circle()
-                    .strokeBorder(Color.white.opacity(preset == .system ? 0 : 0.25), lineWidth: 0.5)
-                    .frame(width: 28, height: 28)
-                Circle()
-                    .strokeBorder(
-                        Color.primary.opacity(isSelected ? 0.85 : 0.12),
-                        lineWidth: isSelected ? 2 : 1
-                    )
-                    .frame(width: isSelected ? 32 : 29, height: isSelected ? 32 : 29)
+                if isSelected {
+                    Circle()
+                        .strokeBorder(Color.primary.opacity(0.85), lineWidth: 1.5)
+                        .frame(width: 24, height: 24)
+                }
             }
-            .frame(width: 34, height: 34)
+            .frame(width: 24, height: 24)
         }
         .buttonStyle(.plain)
+        .help(preset.title)
         .accessibilityLabel(Text(preset.title))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .help(preset.title)
-    }
-
-    private var routingSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionLabel("Routing")
-            Card {
-                VStack(spacing: 0) {
-                    toggleRow(
-                        title: "Clean URLs",
-                        subtitle: "Strip utm_*, fbclid, gclid, and similar trackers before opening.",
-                        symbol: "sparkles",
-                        tint: .accentColor,
-                        isOn: $settings.settings.cleanURLsBeforeOpening
-                    )
-                    cardDivider
-                    toggleRow(
-                        title: "Expand shortened links",
-                        subtitle: "Resolve t.co, bit.ly, lnkd.in and other shorteners first.",
-                        symbol: "arrow.up.right.square",
-                        tint: .blue,
-                        isOn: $settings.settings.expandShortenedURLs
-                    )
-                    cardDivider
-                    toggleRow(
-                        title: "Watch clipboard",
-                        subtitle: "Show a HUD when you copy a link so you can clean or route it.",
-                        symbol: "doc.on.clipboard",
-                        tint: .pink,
-                        isOn: $settings.settings.clipboardWatcherEnabled
-                    )
-                    cardDivider
-                    toggleRow(
-                        title: "Record activity",
-                        subtitle: "Keep a local log of recent links so you can re-route or audit them. Stored on this Mac only.",
-                        symbol: "clock.arrow.circlepath",
-                        tint: .green,
-                        isOn: $settings.settings.historyEnabled
-                    )
-                }
-            }
-        }
-    }
-
-    private var diagnosticsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionLabel("Diagnostics")
-            URLInspectorCard()
-        }
     }
 
     // MARK: - Rewrites
 
     private var rewritesTab: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        Group {
             if settings.settings.redirects.isEmpty {
-                emptyState(
-                    icon: "arrow.triangle.2.circlepath",
-                    title: "No rewrites yet",
-                    message: "Add a host rewrite to send links through a different domain."
+                emptyStateText(
+                    "No rewrites yet.",
+                    detail: "Use Add rewrite to send a host through a different domain."
                 )
             } else {
-                Card {
-                    VStack(spacing: 0) {
-                        ForEach(Array($settings.settings.redirects.enumerated()), id: \.element.id) { idx, $redirect in
-                            redirectRow(redirect: $redirect)
-                            if idx < settings.settings.redirects.count - 1 {
-                                cardDivider
-                            }
-                        }
+                VStack(spacing: 0) {
+                    ForEach(Array($settings.settings.redirects.enumerated()), id: \.element.id) { idx, $redirect in
+                        rewriteRow(redirect: $redirect)
+                        if idx < settings.settings.redirects.count - 1 { hairline() }
                     }
                 }
             }
         }
     }
 
-    private func redirectRow(redirect: Binding<DomainRedirect>) -> some View {
+    private func rewriteRow(redirect: Binding<DomainRedirect>) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Toggle("", isOn: redirect.enabled)
                     .toggleStyle(.switch)
                     .labelsHidden()
-                    .controlSize(.small)
+                    .controlSize(.mini)
 
-                hostField(text: redirect.fromHost, placeholder: "from-host")
+                plainField(text: redirect.fromHost, placeholder: "from-host")
 
                 Image(systemName: "arrow.right")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.secondary.opacity(0.55))
+                    .foregroundStyle(.tertiary)
 
-                hostField(text: redirect.toHost, placeholder: "to-host")
-
-                if let label = redirect.wrappedValue.label {
-                    Text(label)
-                        .font(.system(size: 10, weight: .semibold))
-                        .lineLimit(1)
-                        .padding(.horizontal, 7).padding(.vertical, 3)
-                        .background(Capsule().fill(Color.secondary.opacity(0.14)))
-                        .foregroundColor(.secondary)
-                        .fixedSize()
-                }
+                plainField(text: redirect.toHost, placeholder: "to-host")
 
                 deleteIconButton(help: "Remove rewrite") {
                     withAnimation(.easeOut(duration: 0.18)) {
@@ -635,125 +468,76 @@ struct PreferencesView: View {
                 }
             }
 
-            HStack(spacing: 8) {
-                Image(systemName: "curlybraces")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.secondary.opacity(0.7))
-                    .frame(width: 22)
-                TextField(
-                    "path template (optional, e.g. /article{path})",
-                    text: Binding(
-                        get: { redirect.wrappedValue.pathTemplate ?? "" },
-                        set: { redirect.wrappedValue.pathTemplate = $0.isEmpty ? nil : $0 }
-                    )
+            TextField(
+                "/article{path}   (optional path template)",
+                text: Binding(
+                    get: { redirect.wrappedValue.pathTemplate ?? "" },
+                    set: { redirect.wrappedValue.pathTemplate = $0.isEmpty ? nil : $0 }
                 )
-                .textFieldStyle(.plain)
-                .font(.system(size: 11, design: .monospaced))
-                .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.primary.opacity(0.04))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.05), lineWidth: 0.5)
-                )
-                Text("{path} {pathNoSlash} {query} {fragment}")
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundColor(.secondary.opacity(0.6))
-                    .lineLimit(1)
-            }
-            .padding(.leading, 30)
+            )
+            .textFieldStyle(.plain)
+            .font(.system(size: 11, design: .monospaced))
+            .foregroundStyle(.secondary)
+            .padding(.leading, 38)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.vertical, 14)
+        .opacity(redirect.wrappedValue.enabled ? 1.0 : 0.55)
     }
 
-    private func hostField(text: Binding<String>, placeholder: String) -> some View {
+    private func plainField(text: Binding<String>, placeholder: String) -> some View {
         TextField(placeholder, text: text)
             .textFieldStyle(.plain)
-            .font(.system(size: 12, design: .monospaced))
-            .padding(.horizontal, 9).padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(Color.primary.opacity(0.05))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
-            )
+            .font(.system(size: 13, design: .monospaced))
             .frame(maxWidth: .infinity)
     }
 
-    private func deleteIconButton(help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: "trash")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.secondary)
-                .frame(width: 24, height: 24)
-                .background(Circle().fill(Color.primary.opacity(0.06)))
-                .overlay(Circle().strokeBorder(Color.primary.opacity(0.05), lineWidth: 0.5))
-        }
-        .buttonStyle(.plain)
-        .help(help)
-    }
-
-    // MARK: - Targets
+    // MARK: - Targets (browsers)
 
     private var targetsTab: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 6) {
-                pillButton("Show all", symbol: "eye") { setAllHidden(false) }
+                ghostButton("Show all", symbol: "eye") { setAllHidden(false) }
                     .disabled(visibleCount == options.count)
-                pillButton("Hide all", symbol: "eye.slash") { setAllHidden(true) }
+                ghostButton("Hide all", symbol: "eye.slash") { setAllHidden(true) }
                     .disabled(visibleCount == 0)
-                pillButton("Reset order", symbol: "arrow.uturn.backward") { resetOrder() }
+                ghostButton("Reset order", symbol: "arrow.uturn.backward") { resetOrder() }
                     .disabled(settings.settings.targetOrder.isEmpty)
                 Spacer()
             }
 
-            Card {
-                List {
+            List {
+                Section {
+                    ForEach(visibleTargets) { option in
+                        targetRow(option)
+                            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .overlay(alignment: .bottom) { hairline() }
+                    }
+                    .onMove(perform: moveVisible)
+                } header: {
+                    subSectionLabel("Visible", count: visibleTargets.count)
+                }
+
+                if !hiddenTargets.isEmpty {
                     Section {
-                        if visibleTargets.isEmpty {
-                            Text("No visible targets. Enable at least one below.")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                                .padding(.vertical, 6)
+                        ForEach(hiddenTargets) { option in
+                            targetRow(option)
+                                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(Color.clear)
-                        } else {
-                            ForEach(visibleTargets) { option in
-                                targetRow(option)
-                                    .listRowInsets(EdgeInsets(top: 3, leading: 8, bottom: 3, trailing: 8))
-                                    .listRowSeparator(.hidden)
-                                    .listRowBackground(Color.clear)
-                            }
-                            .onMove(perform: moveVisible)
+                                .overlay(alignment: .bottom) { hairline() }
                         }
+                        .onMove(perform: moveHidden)
                     } header: {
-                        listSectionHeader("Visible", count: visibleTargets.count)
-                    }
-
-                    if !hiddenTargets.isEmpty {
-                        Section {
-                            ForEach(hiddenTargets) { option in
-                                targetRow(option)
-                                    .listRowInsets(EdgeInsets(top: 3, leading: 8, bottom: 3, trailing: 8))
-                                    .listRowSeparator(.hidden)
-                                    .listRowBackground(Color.clear)
-                            }
-                            .onMove(perform: moveHidden)
-                        } header: {
-                            listSectionHeader("Hidden", count: hiddenTargets.count)
-                        }
+                        subSectionLabel("Hidden", count: hiddenTargets.count)
                     }
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .background(Color.clear)
-                .frame(minHeight: 340)
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
+            .frame(minHeight: 380)
         }
     }
 
@@ -767,35 +551,31 @@ struct PreferencesView: View {
         return options.filter { hidden.contains($0.target.storageKey) }
     }
 
-    private func listSectionHeader(_ title: String, count: Int) -> some View {
-        HStack(spacing: 6) {
-            Text(title.uppercased())
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(.secondary)
-                .tracking(0.8)
-            Text("\(count)")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 6).padding(.vertical, 1)
-                .background(Capsule().fill(Color.secondary.opacity(0.14)))
-            Spacer()
-        }
-        .padding(.top, 10)
-        .padding(.bottom, 4)
-        .padding(.horizontal, 4)
-    }
-
     private var visibleCount: Int { visibleTargets.count }
 
     private func targetRow(_ option: LaunchOption) -> some View {
         let key = option.target.storageKey
         let isHidden = settings.settings.hiddenTargetKeys.contains(key)
-        return HStack(spacing: 12) {
-            Image(systemName: "line.3.horizontal")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.secondary.opacity(0.5))
-                .frame(width: 14)
-                .help("Drag to reorder")
+        return HStack(spacing: 14) {
+            Image(nsImage: option.icon)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 22, height: 22)
+                .opacity(isHidden ? 0.40 : 1.0)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(option.displayName)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(isHidden ? .secondary : .primary)
+                    .lineLimit(1)
+                Text(option.target.storageKey)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary.opacity(0.7))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer()
 
             Toggle("", isOn: Binding(
                 get: { !isHidden },
@@ -803,57 +583,9 @@ struct PreferencesView: View {
             ))
             .toggleStyle(.switch)
             .labelsHidden()
-            .controlSize(.small)
-
-            ZStack(alignment: .bottomTrailing) {
-                Image(nsImage: option.icon)
-                    .resizable()
-                    .interpolation(.high)
-                    .frame(width: 26, height: 26)
-                    .opacity(isHidden ? 0.4 : 1.0)
-                if let hex = option.colorHex, let color = Color(hexString: hex) {
-                    Circle()
-                        .fill(color)
-                        .frame(width: 9, height: 9)
-                        .overlay(Circle().stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
-                        .offset(x: 2, y: 2)
-                        .opacity(isHidden ? 0.4 : 1.0)
-                }
-            }
-            .frame(width: 28, height: 28)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(option.displayName)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(isHidden ? .secondary : .primary)
-                    .lineLimit(1)
-                Text(option.target.storageKey)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.secondary.opacity(0.75))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-
-            Spacer()
-
-            if isHidden {
-                Text("Hidden")
-                    .font(.system(size: 10, weight: .semibold))
-                    .padding(.horizontal, 7).padding(.vertical, 2)
-                    .background(Capsule().fill(Color.secondary.opacity(0.16)))
-                    .foregroundColor(.secondary)
-            }
+            .controlSize(.mini)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(Color.primary.opacity(isHidden ? 0.025 : 0.05))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.05), lineWidth: 0.5)
-        )
+        .padding(.vertical, 12)
     }
 
     private func moveVisible(from source: IndexSet, to destination: Int) {
@@ -884,34 +616,20 @@ struct PreferencesView: View {
     // MARK: - Rules
 
     private var rulesTab: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            rulesList
-            fallbackRow
-        }
-        .sheet(isPresented: $showingAddRuleSheet) {
-            AddRuleSheet(options: options)
-        }
-    }
-
-    @ViewBuilder
-    private var rulesList: some View {
-        if rulesFile.rules.isEmpty {
-            emptyState(
-                icon: "list.bullet.rectangle",
-                title: "No rules yet",
-                message: "Use the Remember toggle in the picker to save a rule, import a recipe, or edit the rules file directly."
-            )
-        } else {
-            // List (vs. our usual Card+VStack+ForEach) so `.onMove` works on
-            // macOS — matches the Targets tab. Background and separators are
-            // cleared so the Card's surface shows through unchanged.
-            Card {
+        VStack(alignment: .leading, spacing: 28) {
+            if rulesFile.rules.isEmpty {
+                emptyStateText(
+                    "No rules yet.",
+                    detail: "Use the Remember toggle in the picker or Add rule above."
+                )
+            } else {
                 List {
                     ForEach(rulesFile.rules) { rule in
                         ruleRow(rule)
-                            .listRowInsets(EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))
+                            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
+                            .overlay(alignment: .bottom) { hairline() }
                     }
                     .onMove { source, destination in
                         RulesStore.shared.moveRule(from: source, to: destination)
@@ -920,19 +638,17 @@ struct PreferencesView: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
                 .background(Color.clear)
-                .frame(minHeight: 200, maxHeight: 520)
+                .frame(minHeight: 240, maxHeight: 560)
+            }
+
+            section("Fallback") {
+                fallbackRow
             }
         }
     }
 
     private func ruleRow(_ rule: DomainRule) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "line.3.horizontal")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.secondary.opacity(0.65))
-                .help("Drag to reorder (first match wins)")
-                .accessibilityHidden(true)
-
+        HStack(spacing: 12) {
             Toggle(
                 "",
                 isOn: Binding(
@@ -945,107 +661,72 @@ struct PreferencesView: View {
             .toggleStyle(.switch)
             .controlSize(.mini)
             .labelsHidden()
-            .help(rule.enabled ? "Disable rule (kept in list, won't match)" : "Enable rule")
-            .accessibilityLabel("Enable rule for \(rule.displayValue)")
 
-            HStack(spacing: 12) {
-                Text(rule.kindLabel.uppercased())
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .tracking(0.6)
-                    .padding(.horizontal, 7).padding(.vertical, 3)
-                    .background(Capsule().fill(Color.secondary.opacity(0.14)))
-                    .foregroundColor(.secondary)
-                    .frame(width: 58, alignment: .center)
+            Text(rule.kindLabel.lowercased())
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .tracking(0.4)
+                .foregroundStyle(.secondary)
+                .frame(width: 48, alignment: .leading)
 
-                Text(rule.displayValue)
-                    .font(.system(size: 12, design: .monospaced))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .strikethrough(!rule.enabled, color: .secondary)
-                    .help(rule.displayValue)
+            Text(rule.displayValue)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(rule.enabled ? .primary : Color.primary.opacity(0.5))
+                .strikethrough(!rule.enabled, color: .secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .help(rule.displayValue)
 
-                Spacer()
+            actionLabel(rule.action, compact: true)
+                .foregroundStyle(.secondary)
 
-                actionLabel(rule.action)
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(Color.primary.opacity(0.05))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .strokeBorder(Color.primary.opacity(0.04), lineWidth: 0.5)
-                    )
+            cleanOverrideMenu(for: rule)
 
-                cleanOverrideMenu(for: rule)
-
-                deleteIconButton(help: "Remove rule") {
-                    withAnimation(.easeOut(duration: 0.18)) {
-                        RulesStore.shared.remove(ruleID: rule.id)
-                    }
+            deleteIconButton(help: "Remove rule") {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    RulesStore.shared.remove(ruleID: rule.id)
                 }
             }
-            .opacity(rule.enabled ? 1.0 : 0.45)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.vertical, 12)
+        .opacity(rule.enabled ? 1.0 : 0.62)
     }
 
-    /// Three-state menu: inherit the global Clean URLs setting, force on, or force off.
     private func cleanOverrideMenu(for rule: DomainRule) -> some View {
         let current = rule.cleanOverride
         return Menu {
-            Button {
-                updateCleanOverride(ruleID: rule.id, to: nil)
-            } label: {
-                Label(
-                    "Use global setting",
-                    systemImage: current == nil ? "checkmark" : ""
-                )
+            Button { updateCleanOverride(ruleID: rule.id, to: nil) } label: {
+                Label("Use global setting", systemImage: current == nil ? "checkmark" : "")
             }
-            Button {
-                updateCleanOverride(ruleID: rule.id, to: true)
-            } label: {
-                Label(
-                    "Always clean",
-                    systemImage: current == true ? "checkmark" : ""
-                )
+            Button { updateCleanOverride(ruleID: rule.id, to: true) } label: {
+                Label("Always clean", systemImage: current == true ? "checkmark" : "")
             }
-            Button {
-                updateCleanOverride(ruleID: rule.id, to: false)
-            } label: {
-                Label(
-                    "Never clean",
-                    systemImage: current == false ? "checkmark" : ""
-                )
+            Button { updateCleanOverride(ruleID: rule.id, to: false) } label: {
+                Label("Never clean", systemImage: current == false ? "checkmark" : "")
             }
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "wand.and.stars")
-                    .font(.system(size: 10, weight: .semibold))
-                Text(cleanOverrideLabel(current))
-                    .font(.system(size: 10, weight: .medium))
-            }
-            .foregroundColor(cleanOverrideTint(current))
-            .padding(.horizontal, 7).padding(.vertical, 3)
-            .background(Capsule().fill(cleanOverrideTint(current).opacity(0.15)))
+            Image(systemName: "wand.and.stars")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(cleanOverrideTint(current))
+                .frame(width: 22, height: 22)
         }
         .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
         .fixedSize()
-        .help("Cleaning behavior for this rule")
+        .help(cleanOverrideHelp(current))
     }
 
-    private func cleanOverrideLabel(_ value: Bool?) -> String {
+    private func cleanOverrideHelp(_ value: Bool?) -> String {
         switch value {
-        case .none:        return "Inherit"
-        case .some(true):  return "Always clean"
-        case .some(false): return "Never clean"
+        case .none:        return "Cleaning: inherit global"
+        case .some(true):  return "Cleaning: always"
+        case .some(false): return "Cleaning: never"
         }
     }
 
     private func cleanOverrideTint(_ value: Bool?) -> Color {
         switch value {
-        case .none:        return .secondary
+        case .none:        return .secondary.opacity(0.7)
         case .some(true):  return .accentColor
         case .some(false): return .orange
         }
@@ -1057,228 +738,46 @@ struct PreferencesView: View {
         }
     }
 
-    private func actionLabel(_ action: RuleAction) -> some View {
-        HStack(spacing: 6) {
+    /// Inline action representation for a rule. Kept text-only and compact
+    /// so the row scans like a sentence: `[toggle] suffix github.com → Chrome`.
+    private func actionLabel(_ action: RuleAction, compact: Bool = false) -> some View {
+        let bodySize: CGFloat = compact ? 11 : 12
+        let iconSide: CGFloat = compact ? 12 : 14
+        return HStack(spacing: 5) {
             switch action {
             case .ask:
-                Image(systemName: "questionmark.circle.fill")
-                    .foregroundColor(.orange)
-                Text("Always ask")
-                    .font(.system(size: 12, weight: .medium))
+                Image(systemName: "questionmark.circle.fill").foregroundStyle(.orange)
+                Text("Ask").font(.system(size: bodySize, weight: .medium))
             case .block:
-                Image(systemName: "nosign")
-                    .foregroundColor(.red)
-                Text("Block")
-                    .font(.system(size: 12, weight: .medium))
+                Image(systemName: "nosign").foregroundStyle(.red)
+                Text("Block").font(.system(size: bodySize, weight: .medium))
             case .appScheme(let scheme):
-                Image(systemName: "app.badge.fill")
-                    .foregroundColor(.pink)
-                Text(scheme)
-                    .font(.system(size: 12, design: .monospaced))
+                Image(systemName: "app.fill").foregroundStyle(.pink)
+                Text(scheme).font(.system(size: bodySize, design: .monospaced)).lineLimit(1).truncationMode(.middle)
             case .openIncognito(let target):
-                Image(systemName: "eyeglasses")
-                    .foregroundColor(.indigo)
+                Image(systemName: "eyeglasses").foregroundStyle(.indigo)
                 if let opt = options.first(where: { $0.target == target }) {
-                    Text("Private · \(opt.displayName)")
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                    Text("Private · \(opt.displayName)").font(.system(size: bodySize, weight: .medium)).lineLimit(1)
                 } else {
-                    Text("Private · \(target.storageKey)")
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(.secondary)
+                    Text("Private · \(target.storageKey)").font(.system(size: bodySize, design: .monospaced))
                 }
             case .open(let target):
                 if let opt = options.first(where: { $0.target == target }) {
                     Image(nsImage: opt.icon)
                         .resizable()
                         .interpolation(.high)
-                        .frame(width: 14, height: 14)
-                    Text(opt.displayName)
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    if let hex = opt.colorHex, let color = Color(hexString: hex) {
-                        Circle()
-                            .fill(color)
-                            .frame(width: 7, height: 7)
-                            .overlay(Circle().stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
-                    }
+                        .frame(width: iconSide, height: iconSide)
+                    Text(opt.displayName).font(.system(size: bodySize, weight: .medium)).lineLimit(1).truncationMode(.middle)
                 } else {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                    Text(target.storageKey)
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(.secondary)
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    Text(target.storageKey).font(.system(size: bodySize, design: .monospaced))
                 }
             }
         }
-        .foregroundColor(.primary)
-    }
-
-    // MARK: - Native apps
-
-    private var appSchemesTab: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Card {
-                VStack(spacing: 0) {
-                    ForEach(Array(settings.settings.appSchemes.enumerated()), id: \.element.id) { idx, rewrite in
-                        appSchemeRow(rewrite)
-                        if idx < settings.settings.appSchemes.count - 1 {
-                            cardDivider
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func appSchemeRow(_ rewrite: AppSchemeRewrite) -> some View {
-        let installed = NSWorkspace.shared.urlForApplication(withBundleIdentifier: rewrite.bundleID) != nil
-        return HStack(spacing: 14) {
-            Toggle("", isOn: Binding(
-                get: { rewrite.enabled },
-                set: { settings.setAppSchemeEnabled(id: rewrite.id, enabled: $0) }
-            ))
-            .toggleStyle(.switch)
-            .labelsHidden()
-            .controlSize(.small)
-            .disabled(!installed)
-
-            iconTile(symbol: "app.fill", tint: installed ? .pink : .secondary, size: 30)
-                .opacity(installed ? 1.0 : 0.55)
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(rewrite.name)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(installed ? .primary : .secondary)
-                    if !installed {
-                        Text("Not installed")
-                            .font(.system(size: 9, weight: .semibold))
-                            .padding(.horizontal, 6).padding(.vertical, 1)
-                            .background(Capsule().fill(Color.secondary.opacity(0.18)))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                Text(rewrite.rules.map { $0.host }.joined(separator: ", "))
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            Spacer()
-            Text(rewrite.bundleID)
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundColor(.secondary.opacity(0.7))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: 160, alignment: .trailing)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-    }
-
-    // MARK: - Hotkeys
-
-    private var hotkeysTab: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Card {
-                VStack(spacing: 0) {
-                    hotkeyEntry(
-                        title: "Open clipboard link in picker",
-                        detail: "Trigger the picker for the URL on your clipboard (or the last routed URL if clipboard doesn't have one).",
-                        symbol: "doc.on.clipboard",
-                        tint: .pink,
-                        binding: Binding(
-                            get: { settings.settings.hotkeys.summonPicker },
-                            set: { settings.setHotkey($0, for: \.summonPicker) }
-                        )
-                    )
-                    cardDivider
-                    hotkeyEntry(
-                        title: "Reroute last link",
-                        detail: "Show the picker for the most recently opened URL, so you can switch browsers.",
-                        symbol: "arrow.uturn.backward.circle.fill",
-                        tint: .blue,
-                        binding: Binding(
-                            get: { settings.settings.hotkeys.rerouteLast },
-                            set: { settings.setHotkey($0, for: \.rerouteLast) }
-                        )
-                    )
-                    cardDivider
-                    hotkeyEntry(
-                        title: "Paste & open",
-                        detail: "Open the clipboard URL using your rules, skipping the picker.",
-                        symbol: "bolt.fill",
-                        tint: .orange,
-                        binding: Binding(
-                            get: { settings.settings.hotkeys.pasteAndOpen },
-                            set: { settings.setHotkey($0, for: \.pasteAndOpen) }
-                        )
-                    )
-                }
-            }
-        }
-    }
-
-    private func hotkeyEntry(
-        title: String,
-        detail: String,
-        symbol: String,
-        tint: Color,
-        binding: Binding<HotkeyBinding>
-    ) -> some View {
-        HStack(alignment: .center, spacing: 14) {
-            iconTile(symbol: symbol, tint: tint, size: 32)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                Text(detail)
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 12)
-
-            HotkeyRecorderView(binding: binding)
-                .frame(width: 150, height: 28)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-    }
-
-    private var activityTab: some View {
-        ActivityTab()
     }
 
     private var fallbackRow: some View {
-        HStack(spacing: 12) {
-            iconTile(symbol: "arrow.down.right.circle.fill", tint: .accentColor, size: 30)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Fallback")
-                    .font(.system(size: 13, weight: .semibold))
-                Text("Used when no rule matches")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-            }
-
-            Spacer()
-
-            actionLabel(rulesFile.fallback)
-                .padding(.horizontal, 9).padding(.vertical, 5)
-                .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(Color.primary.opacity(0.06))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.05), lineWidth: 0.5)
-                )
-
+        SettingRow(title: "When no rule matches", subtitle: actionDescription(rulesFile.fallback)) {
             Menu {
                 Button("Always ask") { RulesStore.shared.setFallback(.ask) }
                 Divider()
@@ -1288,196 +787,207 @@ struct PreferencesView: View {
                     }
                 }
             } label: {
-                HStack(spacing: 4) {
-                    Text("Change")
-                        .font(.system(size: 11, weight: .semibold))
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .bold))
+                HStack(spacing: 5) {
+                    Text("Change").font(.system(size: 11, weight: .semibold))
+                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
                 }
+                .foregroundStyle(.primary)
                 .padding(.horizontal, 10).padding(.vertical, 5)
                 .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .fill(Color.primary.opacity(0.07))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
                 )
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [Color.accentColor.opacity(0.14), Color.accentColor.opacity(0.04)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.accentColor.opacity(0.22), lineWidth: 0.5)
-        )
     }
 
-    // MARK: - Shared UI primitives
-
-    private func iconTile(symbol: String, tint: Color, size: CGFloat) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [tint.opacity(0.28), tint.opacity(0.12)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .frame(width: size, height: size)
-            RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
-                .strokeBorder(tint.opacity(0.20), lineWidth: 0.5)
-                .frame(width: size, height: size)
-            Image(systemName: symbol)
-                .font(.system(size: size * 0.45, weight: .semibold))
-                .foregroundColor(tint)
+    /// Plain-text description of an action — used in rows where we don't
+    /// want the busy icon-and-name treatment.
+    private func actionDescription(_ action: RuleAction) -> String {
+        switch action {
+        case .ask:                  return "Show the picker."
+        case .block:                return "Block the link."
+        case .appScheme(let s):     return "Open via \(s)://"
+        case .openIncognito(let t): return "Private · " + (options.first { $0.target == t }?.displayName ?? t.storageKey)
+        case .open(let t):          return options.first { $0.target == t }?.displayName ?? t.storageKey
         }
     }
 
-    private func toggleRow(
-        title: String,
-        subtitle: String,
-        symbol: String,
-        tint: Color,
-        isOn: Binding<Bool>
-    ) -> some View {
-        HStack(alignment: .center, spacing: 14) {
-            iconTile(symbol: symbol, tint: tint, size: 32)
+    // MARK: - Native apps
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                Text(subtitle)
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+    private var appSchemesTab: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(settings.settings.appSchemes.enumerated()), id: \.element.id) { idx, rewrite in
+                appSchemeRow(rewrite)
+                if idx < settings.settings.appSchemes.count - 1 { hairline() }
             }
-
-            Spacer(minLength: 16)
-
-            Toggle("", isOn: isOn)
-                .toggleStyle(.switch)
-                .labelsHidden()
-                .controlSize(.small)
         }
-        .padding(.horizontal, 16)
+    }
+
+    private func appSchemeRow(_ rewrite: AppSchemeRewrite) -> some View {
+        let installed = NSWorkspace.shared.urlForApplication(withBundleIdentifier: rewrite.bundleID) != nil
+        return HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 7) {
+                    Text(rewrite.name)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(installed ? .primary : .secondary)
+                    if !installed {
+                        Text("not installed")
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.secondary.opacity(0.7))
+                    }
+                }
+                Text(rewrite.rules.map { $0.host }.joined(separator: ", "))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary.opacity(0.75))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer()
+            Toggle("", isOn: Binding(
+                get: { rewrite.enabled },
+                set: { settings.setAppSchemeEnabled(id: rewrite.id, enabled: $0) }
+            ))
+            .toggleStyle(.switch)
+            .labelsHidden()
+            .controlSize(.mini)
+            .disabled(!installed)
+        }
         .padding(.vertical, 14)
     }
 
-    private var cardDivider: some View {
-        Rectangle()
-            .fill(Color.primary.opacity(0.06))
-            .frame(height: 0.5)
-            .padding(.leading, 62)
+    // MARK: - Hotkeys
+
+    private var hotkeysTab: some View {
+        VStack(spacing: 0) {
+            hotkeyRow(
+                title: "Open clipboard link",
+                subtitle: "Show the picker for the URL on your clipboard.",
+                binding: Binding(
+                    get: { settings.settings.hotkeys.summonPicker },
+                    set: { settings.setHotkey($0, for: \.summonPicker) }
+                )
+            )
+            hairline()
+            hotkeyRow(
+                title: "Reroute last link",
+                subtitle: "Show the picker for the most recent URL.",
+                binding: Binding(
+                    get: { settings.settings.hotkeys.rerouteLast },
+                    set: { settings.setHotkey($0, for: \.rerouteLast) }
+                )
+            )
+            hairline()
+            hotkeyRow(
+                title: "Paste & open",
+                subtitle: "Open the clipboard URL with your rules.",
+                binding: Binding(
+                    get: { settings.settings.hotkeys.pasteAndOpen },
+                    set: { settings.setHotkey($0, for: \.pasteAndOpen) }
+                )
+            )
+        }
     }
 
-    private func sectionLabel(_ text: String) -> some View {
-        Text(text.uppercased())
-            .font(.system(size: 10, weight: .bold))
-            .tracking(0.8)
-            .foregroundColor(.secondary)
-            .padding(.leading, 4)
+    private func hotkeyRow(title: String, subtitle: String, binding: Binding<HotkeyBinding>) -> some View {
+        SettingRow(title: title, subtitle: subtitle) {
+            HotkeyRecorderView(binding: binding)
+                .frame(width: 150, height: 26)
+        }
     }
 
-    private func primaryButton(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: symbol)
-                    .font(.system(size: 10, weight: .bold))
-                Text(title)
-                    .font(.system(size: 12, weight: .semibold))
+    private var activityTab: some View {
+        ActivityTab()
+    }
+
+    // MARK: - Primitives
+
+    /// Top-level grouping inside a tab. Just an uppercase label, then content.
+    /// No card, no border — content sits flat on the canvas.
+    private func section<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .tracking(0.6)
+                .foregroundStyle(.secondary.opacity(0.7))
+                .padding(.bottom, 12)
+            VStack(spacing: 0) {
+                content()
             }
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.small)
     }
 
-    private func pillButton(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
+    /// Sub-heading used inside a List section (Targets/Rules grouping).
+    private func subSectionLabel(_ title: String, count: Int) -> some View {
+        HStack(spacing: 6) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .tracking(0.6)
+                .foregroundStyle(.secondary.opacity(0.7))
+            Text("\(count)")
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary.opacity(0.5))
+            Spacer()
+        }
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+    }
+
+    private func emptyStateText(_ title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.primary)
+            Text(detail)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 28)
+    }
+
+    /// Lightweight bordered button used in the header (Add rewrite, Add rule)
+    /// and the Targets tab quick-actions. No filled chrome — just text plus
+    /// optional symbol, with a hairline border.
+    private func ghostButton(_ title: String, symbol: String? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 5) {
-                Image(systemName: symbol)
-                    .font(.system(size: 10, weight: .semibold))
+                if let symbol {
+                    Image(systemName: symbol)
+                        .font(.system(size: 10, weight: .semibold))
+                }
                 Text(title)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
             }
-            .padding(.horizontal, 10).padding(.vertical, 5)
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
             .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
             )
-            .foregroundColor(.primary)
         }
         .buttonStyle(.plain)
     }
 
-    private func countBadge(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 11, weight: .semibold, design: .rounded))
-            .foregroundColor(.secondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(Capsule().fill(Color.primary.opacity(0.06)))
-            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5))
-    }
-
-    private func emptyState(icon: String, title: String, message: String) -> some View {
-        VStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.secondary.opacity(0.18), Color.secondary.opacity(0.06)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .frame(width: 54, height: 54)
-                Circle()
-                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
-                    .frame(width: 54, height: 54)
-                Image(systemName: icon)
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(.secondary)
-            }
-            VStack(spacing: 4) {
-                Text(title)
-                    .font(.system(size: 14, weight: .semibold))
-                Text(message)
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+    private func deleteIconButton(help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "trash")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 36)
-        .padding(.horizontal, 32)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.primary.opacity(0.025))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.06), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-        )
+        .buttonStyle(.plain)
+        .help(help)
     }
 
     private func reload() {
@@ -1486,60 +996,83 @@ struct PreferencesView: View {
     }
 }
 
-/// Layered card surface used by every preferences tab. Subtle inner fill +
-/// a faint top-edge highlight that sits over a solid hairline border gives
-/// the same "lifted off the chrome" feel as macOS Settings rows without
-/// requiring `.regularMaterial` (which can look heavy on top of
-/// `.underWindowBackground`).
-private struct Card<Content: View>: View {
-    var padding: CGFloat = 0
-    @ViewBuilder var content: () -> Content
+// MARK: - Generic settings row
+
+/// Two-column row used everywhere: title (+ optional subtitle) on the left,
+/// trailing control on the right. Zero chrome — separation between rows is
+/// handled by `hairline()` painted by the parent.
+struct SettingRow<Trailing: View>: View {
+    let title: String
+    let subtitle: String?
+    @ViewBuilder let trailing: () -> Trailing
+
+    init(title: String, subtitle: String? = nil, @ViewBuilder trailing: @escaping () -> Trailing) {
+        self.title = title
+        self.subtitle = subtitle
+        self.trailing = trailing
+    }
 
     var body: some View {
-        content()
-            .padding(padding)
-            .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color.primary.opacity(0.045))
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.10),
-                                    Color.white.opacity(0.0),
-                                ],
-                                startPoint: .top,
-                                endPoint: .center
-                            ),
-                            lineWidth: 0.5
-                        )
+        HStack(alignment: .center, spacing: 24) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-            )
+            }
+
+            Spacer(minLength: 24)
+
+            trailing()
+        }
+        .padding(.vertical, 16)
     }
 }
 
 // MARK: - Add rule sheet
 
-/// Minimal v1: host kind + value, action of open / incognito / ask / block /
-/// app-scheme. Advanced fields (`path`, `queryContains`, `schemes`, `when`,
-/// `alsoCopyCleaned`) land in a follow-up — model and matcher already
-/// support them, this sheet just doesn't surface them yet so the flow stays
-/// fast for the common case.
+/// Minimal sheet for adding a rule. Same fields as before, but laid out as
+/// a flat form: labels above inputs, hairline-divided rows, no card chrome.
 private struct AddRuleSheet: View {
     let options: [LaunchOption]
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var hostKind: HostKind = .suffix
     @State private var hostValue: String = ""
     @State private var actionKind: ActionKind = .open
     @State private var selectedTarget: LaunchTarget? = nil
     @State private var schemeValue: String = ""
+    @State private var pathKind: PathKind = .prefix
+    @State private var pathValue: String = ""
+
+    enum PathKind: String, CaseIterable, Identifiable {
+        case prefix, contains, regex, glob
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .prefix:   return "Prefix"
+            case .contains: return "Contains"
+            case .regex:    return "Regex"
+            case .glob:     return "Glob"
+            }
+        }
+        var placeholder: String {
+            switch self {
+            case .prefix:   return "/orgs/acme"
+            case .contains: return "/issues"
+            case .regex:    return "^/v[0-9]+/"
+            case .glob:     return "/files/*.swift"
+            }
+        }
+    }
 
     enum HostKind: String, CaseIterable, Identifiable {
         case equals, suffix, regex, urlEquals
@@ -1560,8 +1093,6 @@ private struct AddRuleSheet: View {
             case .urlEquals: return "https://github.com/orgs/acme/people"
             }
         }
-        /// True when the input is a full URL string rather than a host
-        /// pattern. Drives validation and the eventual `urlEquals` field.
         var isExactURL: Bool { self == .urlEquals }
     }
 
@@ -1580,9 +1111,6 @@ private struct AddRuleSheet: View {
         var needsTarget: Bool { self == .open || self == .incognito }
     }
 
-    /// Targets the user can pick. For incognito-bound actions we filter down
-    /// to browsers we know support private mode — otherwise the rule would
-    /// silently fall back to the picker at routing time.
     private var pickableTargets: [LaunchOption] {
         switch actionKind {
         case .incognito:
@@ -1600,24 +1128,14 @@ private struct AddRuleSheet: View {
         schemeValue.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Returns nil when the form is submittable; otherwise a short message
-    /// the footer can show inline. Drives both the disabled state of the
-    /// Add button and the visible error text.
     private var validationError: String? {
         if trimmedHost.isEmpty {
             return hostKind == .urlEquals ? "URL can't be empty" : "Host can't be empty"
         }
-        if hostKind == .regex {
-            // The matcher uses `NSRegularExpression`; reject anything that
-            // would silently `try?` away to a never-matching rule.
-            if (try? NSRegularExpression(pattern: trimmedHost)) == nil {
-                return "Invalid regular expression"
-            }
+        if hostKind == .regex, (try? NSRegularExpression(pattern: trimmedHost)) == nil {
+            return "Invalid regular expression"
         }
         if hostKind == .urlEquals {
-            // Require something parseable as an absolute URL with a scheme
-            // and host — otherwise the rule could never match anything the
-            // matcher actually sees coming through the pipeline.
             guard let parsed = URL(string: trimmedHost),
                   let scheme = parsed.scheme, !scheme.isEmpty,
                   parsed.host?.isEmpty == false
@@ -1635,107 +1153,117 @@ private struct AddRuleSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            header
+        VStack(alignment: .leading, spacing: 22) {
+            Text("New rule")
+                .font(.system(size: 22, weight: .bold, design: .rounded))
 
-            matchSection
-            actionSection
+            VStack(alignment: .leading, spacing: 10) {
+                Text("MATCH")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .tracking(0.6)
+                    .foregroundStyle(.secondary.opacity(0.75))
 
-            // Surface specific problems (bad regex, missing target, missing
-            // scheme) once the user has actually typed a host. The "empty
-            // host" case is communicated by the disabled Add button alone —
-            // showing a red banner on initial render would feel accusatory.
-            if !trimmedHost.isEmpty, let validationError {
-                Label(validationError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.orange)
-            }
+                Picker("Match by", selection: $hostKind) {
+                    ForEach(HostKind.allCases) { kind in
+                        Text(kind.label).tag(kind)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
 
-            footer
-        }
-        .padding(20)
-        .frame(minWidth: 440)
-        .onAppear(perform: seedDefaultTarget)
-        .onChange(of: actionKind) { _ in seedDefaultTarget() }
-    }
+                TextField(hostKind.placeholder, text: $hostValue)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 13, design: .monospaced))
+                    .disableAutocorrection(true)
 
-    private var header: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "plus.rectangle.on.folder")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(.accentColor)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Add rule")
-                    .font(.system(size: 15, weight: .semibold))
-                Text("New rules are inserted at the top of the list.")
+                Text(hostKindHelp)
                     .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer()
-        }
-    }
 
-    // MARK: - Match section
-
-    private var matchSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionTitle("Match")
-            Card {
+            if !hostKind.isExactURL {
                 VStack(alignment: .leading, spacing: 10) {
-                    Picker("Match by", selection: $hostKind) {
-                        ForEach(HostKind.allCases) { kind in
+                    Text("PATH (OPTIONAL)")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .tracking(0.6)
+                        .foregroundStyle(.secondary.opacity(0.75))
+
+                    Picker("Path match", selection: $pathKind) {
+                        ForEach(PathKind.allCases) { kind in
                             Text(kind.label).tag(kind)
                         }
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
 
-                    TextField(hostKind.placeholder, text: $hostValue)
+                    TextField(pathKind.placeholder, text: $pathValue)
                         .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(.system(size: 13, design: .monospaced))
                         .disableAutocorrection(true)
 
-                    Text(hostKindHelp)
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Leave empty to match any path.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
                 }
-                .padding(12)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("ACTION")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .tracking(0.6)
+                    .foregroundStyle(.secondary.opacity(0.75))
+
+                Picker("Action", selection: $actionKind) {
+                    ForEach(ActionKind.allCases) { kind in
+                        Text(kind.label).tag(kind)
+                    }
+                }
+                .labelsHidden()
+
+                if actionKind.needsTarget {
+                    targetPicker
+                } else if actionKind == .appScheme {
+                    VStack(alignment: .leading, spacing: 6) {
+                        TextField("slack", text: $schemeValue)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 13, design: .monospaced))
+                            .disableAutocorrection(true)
+                        Text("Junction hands matching URLs to the app registered for this scheme.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            if !trimmedHost.isEmpty, let validationError {
+                Label(validationError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.orange)
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Add rule") { submit() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(validationError != nil)
             }
         }
+        .padding(26)
+        .frame(minWidth: 460)
+        .onAppear(perform: seedDefaultTarget)
+        .onChange(of: actionKind) { _ in seedDefaultTarget() }
     }
 
     private var hostKindHelp: String {
         switch hostKind {
-        case .equals:    return "Matches one specific host exactly (api.github.com)."
-        case .suffix:    return "Matches that host and all of its subdomains (github.com, www.github.com, gist.github.com)."
-        case .regex:     return "NSRegularExpression syntax, case-insensitive. Anchor with ^ and $ to be safe."
-        case .urlEquals: return "Matches only this exact URL (scheme + host + path + query). Junction strips trackers before matching, so paste the canonical form — e.g. without utm_* params."
-        }
-    }
-
-    // MARK: - Action section
-
-    private var actionSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionTitle("Action")
-            Card {
-                VStack(alignment: .leading, spacing: 10) {
-                    Picker("Action", selection: $actionKind) {
-                        ForEach(ActionKind.allCases) { kind in
-                            Text(kind.label).tag(kind)
-                        }
-                    }
-                    .labelsHidden()
-
-                    if actionKind.needsTarget {
-                        targetPicker
-                    } else if actionKind == .appScheme {
-                        schemeField
-                    }
-                }
-                .padding(12)
-            }
+        case .equals:    return "Matches one host exactly (api.github.com)."
+        case .suffix:    return "Matches that host and all subdomains."
+        case .regex:     return "NSRegularExpression syntax, case-insensitive."
+        case .urlEquals: return "Matches only this exact URL. Junction strips trackers first."
         }
     }
 
@@ -1743,9 +1271,9 @@ private struct AddRuleSheet: View {
         let targets = pickableTargets
         return Group {
             if targets.isEmpty {
-                Text("No browsers found that support this action.")
+                Text("No browsers support this action.")
                     .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             } else {
                 Picker("Target", selection: Binding(
                     get: { selectedTarget },
@@ -1761,45 +1289,6 @@ private struct AddRuleSheet: View {
         }
     }
 
-    private var schemeField: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            TextField("slack", text: $schemeValue)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 12, design: .monospaced))
-                .disableAutocorrection(true)
-            Text("Junction will hand matching URLs to the app registered for this URL scheme.")
-                .font(.system(size: 10))
-                .foregroundColor(.secondary)
-        }
-    }
-
-    // MARK: - Footer
-
-    private var footer: some View {
-        HStack {
-            Spacer()
-            Button("Cancel") { dismiss() }
-                .keyboardShortcut(.cancelAction)
-            Button("Add rule") { submit() }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(validationError != nil)
-        }
-    }
-
-    private func sectionTitle(_ title: String) -> some View {
-        Text(title.uppercased())
-            .font(.system(size: 10, weight: .bold))
-            .tracking(0.8)
-            .foregroundColor(.secondary)
-    }
-
-    // MARK: - Behavior
-
-    /// Preselects the first valid target whenever the action kind flips so
-    /// the user doesn't have to open a picker just to satisfy validation.
-    /// Clears the selection when the new action filter removes the previous
-    /// pick (e.g. switching to Incognito-only and the old target was Safari).
     private func seedDefaultTarget() {
         guard actionKind.needsTarget else {
             selectedTarget = nil
@@ -1825,14 +1314,18 @@ private struct AddRuleSheet: View {
             }
         }()
 
+        let trimmedPath = pathValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pathMatch: URLPathMatch? = (!hostKind.isExactURL && !trimmedPath.isEmpty) ? {
+            switch pathKind {
+            case .prefix:   return .prefix(trimmedPath)
+            case .contains: return .contains(trimmedPath)
+            case .regex:    return .regex(trimmedPath)
+            case .glob:     return .glob(trimmedPath)
+            }
+        }() : nil
+
         let rule: DomainRule
         if hostKind == .urlEquals {
-            // We also seed `host` with the URL's host so the (legacy) host
-            // surface in display code and `dedupKey` has something sensible
-            // — even though the matcher short-circuits on `urlEquals`. Use
-            // the typed form as-is for the `urlEquals` value; matching does
-            // its own canonicalization, so we don't want to rewrite what
-            // the user typed in the file on disk.
             let parsed = URL(string: trimmedHost)
             let host: HostMatch = .equals(parsed?.host ?? trimmedHost)
             rule = DomainRule(host: host, action: action, urlEquals: trimmedHost)
@@ -1842,10 +1335,10 @@ private struct AddRuleSheet: View {
                 case .equals:    return .equals(trimmedHost)
                 case .suffix:    return .suffix(trimmedHost)
                 case .regex:     return .regex(trimmedHost)
-                case .urlEquals: return .equals(trimmedHost)  // unreachable
+                case .urlEquals: return .equals(trimmedHost)
                 }
             }()
-            rule = DomainRule(host: host, action: action)
+            rule = DomainRule(host: host, action: action, path: pathMatch)
         }
 
         RulesStore.shared.addRule(rule)

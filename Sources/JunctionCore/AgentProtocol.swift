@@ -16,12 +16,12 @@ public enum AgentRequest: Codable, Sendable {
     case open(url: String, inTarget: String?, ask: Bool, clean: Bool?)
     case listRules
     case listTargets
-    case addRule(hostKind: String, hostValue: String, target: String?, cleanOverride: Bool?)
+    case addRule(hostKind: String, hostValue: String, target: String?, cleanOverride: Bool?, pathKind: String?, pathValue: String?)
     case removeRule(hostValue: String)
     case inspect(url: String)
     case listHistory(limit: Int)
 
-    private enum Keys: String, CodingKey { case kind, url, inTarget, ask, clean, hostKind, hostValue, target, limit, cleanOverride }
+    private enum Keys: String, CodingKey { case kind, url, inTarget, ask, clean, hostKind, hostValue, target, limit, cleanOverride, pathKind, pathValue }
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: Keys.self)
@@ -38,12 +38,14 @@ public enum AgentRequest: Codable, Sendable {
             try c.encode("listRules", forKey: .kind)
         case .listTargets:
             try c.encode("listTargets", forKey: .kind)
-        case .addRule(let hostKind, let hostValue, let target, let cleanOverride):
+        case .addRule(let hostKind, let hostValue, let target, let cleanOverride, let pathKind, let pathValue):
             try c.encode("addRule", forKey: .kind)
             try c.encode(hostKind, forKey: .hostKind)
             try c.encode(hostValue, forKey: .hostValue)
             try c.encodeIfPresent(target, forKey: .target)
             try c.encodeIfPresent(cleanOverride, forKey: .cleanOverride)
+            try c.encodeIfPresent(pathKind, forKey: .pathKind)
+            try c.encodeIfPresent(pathValue, forKey: .pathValue)
         case .removeRule(let hostValue):
             try c.encode("removeRule", forKey: .kind)
             try c.encode(hostValue, forKey: .hostValue)
@@ -78,9 +80,9 @@ public enum AgentRequest: Codable, Sendable {
                 hostKind: try c.decode(String.self, forKey: .hostKind),
                 hostValue: try c.decode(String.self, forKey: .hostValue),
                 target: try c.decodeIfPresent(String.self, forKey: .target),
-                // Older CLIs won't include cleanOverride; default to nil so
-                // existing scripts keep working.
-                cleanOverride: (try? c.decodeIfPresent(Bool.self, forKey: .cleanOverride)) ?? nil
+                cleanOverride: (try? c.decodeIfPresent(Bool.self, forKey: .cleanOverride)) ?? nil,
+                pathKind: (try? c.decodeIfPresent(String.self, forKey: .pathKind)) ?? nil,
+                pathValue: (try? c.decodeIfPresent(String.self, forKey: .pathValue)) ?? nil
             )
         case "removeRule":
             self = .removeRule(hostValue: try c.decode(String.self, forKey: .hostValue))
