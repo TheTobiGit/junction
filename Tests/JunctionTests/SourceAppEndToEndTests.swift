@@ -74,6 +74,61 @@ final class SourceAppEndToEndTests: XCTestCase {
         XCTAssertEqual(mailEntries.count, 0)
     }
 
+    // VAL-CROSS-001: ActivityStats.byHost over a Slack-sourced entry produces correct host stat with dominantBrowser
+    func test_statsProduceCorrectHostStatForSlackEntry_VAL_CROSS_001() throws {
+        let url = URL(string: "https://github.com/")!
+        let result = URLTransformResult(original: url, `final`: url, steps: [])
+
+        let entries: [RoutingHistory.Entry] = [
+            {
+                var e = RoutingHistory.Entry(
+                    timestamp: Date(),
+                    originalURL: url.absoluteString,
+                    cleanedURL: url.absoluteString,
+                    outcome: .opened,
+                    targetBundleID: brave,
+                    ruleLabel: nil,
+                    cleaningSteps: []
+                )
+                e.sourceBundleID = slack
+                return e
+            }(),
+            {
+                var e = RoutingHistory.Entry(
+                    timestamp: Date(),
+                    originalURL: url.absoluteString,
+                    cleanedURL: url.absoluteString,
+                    outcome: .opened,
+                    targetBundleID: brave,
+                    ruleLabel: nil,
+                    cleaningSteps: []
+                )
+                e.sourceBundleID = slack
+                return e
+            }(),
+            {
+                var e = RoutingHistory.Entry(
+                    timestamp: Date(),
+                    originalURL: url.absoluteString,
+                    cleanedURL: url.absoluteString,
+                    outcome: .opened,
+                    targetBundleID: chrome,
+                    ruleLabel: nil,
+                    cleaningSteps: []
+                )
+                e.sourceBundleID = "com.apple.Mail"
+                return e
+            }(),
+        ]
+
+        let stats = ActivityStats.byHost(entries: entries)
+        XCTAssertEqual(stats.count, 1)
+        let stat = try XCTUnwrap(stats.first)
+        XCTAssertEqual(stat.host, "github.com")
+        XCTAssertEqual(stat.count, 3)
+        XCTAssertEqual(stat.dominantBrowser, brave)
+    }
+
     // VAL-CROSS-001: nil sourceBundleID entry excluded when source filter is set
     func test_nilSourceExcludedWhenSourceFilterSet_VAL_CROSS_001() throws {
         let tmpURL = FileManager.default.temporaryDirectory
