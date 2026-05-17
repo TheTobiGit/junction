@@ -9,7 +9,7 @@ import Foundation
 ///   matched exactly against the built-in `defaultExactParams` set or the
 ///   `defaultPrefixes` array (e.g. `"utm_"` suppresses the `utm_` prefix rule;
 ///   `"fbclid"` suppresses that exact param).
-struct TrackerOverrides: Codable, Equatable {
+struct TrackerOverrides: Codable, Equatable, Hashable {
     var additions: [String] = []
     var disabled: [String] = []
 }

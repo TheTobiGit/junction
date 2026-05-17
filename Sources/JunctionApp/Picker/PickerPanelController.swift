@@ -41,11 +41,21 @@ final class PickerPanelController {
             // does so picker-confirmed opens behave identically to rule-driven
             // opens. Look up the matching rule for the cleaned URL — that's
             // what we'd be opening when cleaning is on, so it's the right key.
-            let trace = URLTransformers.default.runTraced(url)
-            let match = RulesStore.shared.match(url: trace.final, context: context)
+            let globalSettings = SettingsStore.shared.settings
+            let globalTrace = URLTransformers.default.runTraced(url)
+            let match = RulesStore.shared.match(url: globalTrace.final, context: context)
+            let trace: URLTransformResult
+            if let ruleOverrides = match.rule?.trackerOverrides {
+                trace = URLTransformers.pipeline(
+                    globalOverrides: globalSettings.trackerOverrides,
+                    ruleOverrides: ruleOverrides
+                ).runTraced(url)
+            } else {
+                trace = globalTrace
+            }
             let shouldClean = DomainRule.resolveCleanFlag(
                 rule: match.rule,
-                globalEnabled: SettingsStore.shared.settings.cleanURLsBeforeOpening
+                globalEnabled: globalSettings.cleanURLsBeforeOpening
             )
             let urlToOpen = shouldClean ? trace.final : url
             URLOpener.open(urlToOpen, with: option, incognito: incognito) { success in

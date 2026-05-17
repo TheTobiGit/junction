@@ -1,7 +1,7 @@
 import Foundation
 
 struct TrackerStripper: URLTransformer {
-    let identifier = "tracker-stripper"
+    let identifier: String
 
     static let defaultExactParams: Set<String> = [
         // Big-ad-tech click IDs
@@ -52,7 +52,8 @@ struct TrackerStripper: URLTransformer {
     private let effectivePrefixes: [String]
     private let preservedByOverride: Set<String>
 
-    init(overrides: TrackerOverrides = TrackerOverrides()) {
+    init(overrides: TrackerOverrides = TrackerOverrides(), identifier: String = "tracker-stripper") {
+        self.identifier = identifier
         var exact = Self.defaultExactParams
         var prefixes = Self.defaultPrefixes
         var preserved: Set<String> = []

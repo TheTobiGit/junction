@@ -252,9 +252,10 @@ struct DomainRule: Codable, Identifiable, Hashable {
     /// all ignored — exact matches by definition specify the full URL.
     /// `enabled` and `when` are still honored.
     var urlEquals: String? = nil
+    var trackerOverrides: TrackerOverrides? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, host, action, enabled, when, schemes, path, queryContains, alsoCopyCleaned, cleanOverride, urlEquals
+        case id, host, action, enabled, when, schemes, path, queryContains, alsoCopyCleaned, cleanOverride, urlEquals, trackerOverrides
     }
 
     init(
@@ -268,7 +269,8 @@ struct DomainRule: Codable, Identifiable, Hashable {
         queryContains: String? = nil,
         alsoCopyCleaned: Bool = false,
         cleanOverride: Bool? = nil,
-        urlEquals: String? = nil
+        urlEquals: String? = nil,
+        trackerOverrides: TrackerOverrides? = nil
     ) {
         self.id = id
         self.host = host
@@ -281,6 +283,7 @@ struct DomainRule: Codable, Identifiable, Hashable {
         self.alsoCopyCleaned = alsoCopyCleaned
         self.cleanOverride = cleanOverride
         self.urlEquals = urlEquals
+        self.trackerOverrides = trackerOverrides
     }
 
     init(from decoder: Decoder) throws {
@@ -296,6 +299,7 @@ struct DomainRule: Codable, Identifiable, Hashable {
         self.alsoCopyCleaned = (try? c.decode(Bool.self, forKey: .alsoCopyCleaned)) ?? false
         self.cleanOverride = try? c.decodeIfPresent(Bool.self, forKey: .cleanOverride)
         self.urlEquals = try? c.decodeIfPresent(String.self, forKey: .urlEquals)
+        self.trackerOverrides = try? c.decodeIfPresent(TrackerOverrides.self, forKey: .trackerOverrides)
     }
 
     func matches(url: URL, host resolvedHost: String?, context: RouteContext) -> Bool {

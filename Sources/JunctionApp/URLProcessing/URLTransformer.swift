@@ -54,4 +54,24 @@ enum URLTransformers {
             TrackerStripper(overrides: settings.trackerOverrides)
         ])
     }
+
+    static func pipeline(globalOverrides: TrackerOverrides, ruleOverrides: TrackerOverrides?) -> URLTransformPipeline {
+        let settings = SettingsStore.shared.settings
+        let trackerStripper: TrackerStripper
+        if let ruleOverrides {
+            let merged = TrackerOverrides(
+                additions: globalOverrides.additions + ruleOverrides.additions,
+                disabled: globalOverrides.disabled + ruleOverrides.disabled
+            )
+            trackerStripper = TrackerStripper(overrides: merged, identifier: "rule-tracker-stripper")
+        } else {
+            trackerStripper = TrackerStripper(overrides: globalOverrides)
+        }
+        return URLTransformPipeline(transformers: [
+            OutgoingRedirectUnwrapper(),
+            RedirectTransformer(redirects: settings.redirects),
+            AMPCollapser(),
+            trackerStripper
+        ])
+    }
 }

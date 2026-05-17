@@ -436,20 +436,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func routeAfterExpansion(original: URL, resolved: URL, context: RouteContext) {
         // Re-run the pipeline post-expansion: shorteners can resolve to URLs
         // that themselves carry trackers, AMP suffixes, or wrapper params.
-        let trace = URLTransformers.default.runTraced(resolved)
-        let normalized = trace.final
+        // First pass uses global overrides to get a normalized URL for rule matching.
+        let globalSettings = SettingsStore.shared.settings
+        let globalTrace = URLTransformers.default.runTraced(resolved)
+        let normalized = globalTrace.final
 
         guard isAcceptableScheme(normalized) else { return }
 
         if let rewritten = AppSchemeRewriter.rewrite(
             normalized,
-            using: SettingsStore.shared.settings.appSchemes
+            using: globalSettings.appSchemes
         ) {
             NSWorkspace.shared.open(rewritten)
             LastURLStore.shared.recordRouted(normalized)
             RoutingHistory.shared.record(
                 originalURL: original,
-                result: trace,
+                result: globalTrace,
                 outcome: .opened_appScheme,
                 ruleLabel: "app-scheme-rewrite",
                 sourceBundleID: context.source?.bundleID,
@@ -459,10 +461,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let match = RulesStore.shared.match(url: normalized, context: context)
+
+        // If the matched rule carries per-rule tracker overrides, rebuild the
+        // pipeline merging global + rule overrides and re-run from the resolved
+        // URL so the rule's disabled entries can suppress global stripping.
+        let trace: URLTransformResult
+        if let ruleOverrides = match.rule?.trackerOverrides {
+            trace = URLTransformers.pipeline(
+                globalOverrides: globalSettings.trackerOverrides,
+                ruleOverrides: ruleOverrides
+            ).runTraced(resolved)
+        } else {
+            trace = globalTrace
+        }
         let ruleLabel = match.rule.map { "\($0.kindLabel):\($0.displayValue)" }
 
         if match.rule?.alsoCopyCleaned == true {
-            copyCleaned(normalized)
+            copyCleaned(trace.final)
         }
 
         // Honor `cleanURLsBeforeOpening` plus the per-rule override: the rule's
@@ -471,13 +486,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // when the global setting is off".
         let globalCleaning = SettingsStore.shared.settings.cleanURLsBeforeOpening
         let cleaned = DomainRule.resolveCleanFlag(rule: match.rule, globalEnabled: globalCleaning)
-        let urlToOpen = cleaned ? normalized : resolved
+        let urlToOpen = cleaned ? trace.final : resolved
 
         // Picker keeps the resolved-but-not-yet-cleaned URL so it can show the
         // "cleaned" diff and let the user copy either form.
         switch match.action {
         case .block:
-            showBlockedNotice(normalized)
+            showBlockedNotice(trace.final)
             RoutingHistory.shared.record(
                 originalURL: original,
                 result: trace,
