@@ -557,6 +557,7 @@ struct PreferencesView: View {
     private func targetRow(_ option: LaunchOption) -> some View {
         let key = option.target.storageKey
         let isHidden = settings.settings.hiddenTargetKeys.contains(key)
+        let isPinned = settings.settings.pinnedTargetKey == key
         return HStack(spacing: 14) {
             Image(nsImage: option.icon)
                 .resizable()
@@ -577,6 +578,16 @@ struct PreferencesView: View {
             }
 
             Spacer()
+
+            Image(systemName: isPinned ? "pin.fill" : "pin")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(isPinned ? Color.accentColor : Color.secondary)
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
+                .simultaneousGesture(TapGesture().onEnded {
+                    settings.setPinnedTargetKey(isPinned ? nil : key)
+                })
+                .help(isPinned ? "Unpin from first slot" : "Pin to first slot")
 
             Toggle("", isOn: Binding(
                 get: { !isHidden },

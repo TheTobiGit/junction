@@ -325,6 +325,19 @@ struct PickerView: View {
               ? "\(option.browser.name) doesn't support private windows — it will open normally."
               : "Open in \(option.displayName)")
         .contentShape(Rectangle())
+        .contextMenu {
+            let key = option.target.storageKey
+            let isPinned = appSettings.settings.pinnedTargetKey == key
+            if isPinned {
+                Button("Unpin") {
+                    appSettings.setPinnedTargetKey(nil)
+                }
+            } else {
+                Button("Pin to first slot") {
+                    appSettings.setPinnedTargetKey(key)
+                }
+            }
+        }
         .onTapGesture {
             let flags = NSEvent.modifierFlags
             if flags.contains(.shift) {

@@ -77,7 +77,10 @@ enum LaunchOptionDiscovery {
     }
 
     private static func applyUserOrder(_ options: [LaunchOption]) -> [LaunchOption] {
-        let order = SettingsStore.shared.settings.targetOrder
+        applyUserOrder(options, order: SettingsStore.shared.settings.targetOrder)
+    }
+
+    static func applyUserOrder(_ options: [LaunchOption], order: [String]) -> [LaunchOption] {
         guard !order.isEmpty else { return options }
 
         var byKey = Dictionary(uniqueKeysWithValues: options.map { ($0.target.storageKey, $0) })

@@ -34,6 +34,7 @@ struct JunctionSettings: Codable {
     var chromeTheme: ChromeTheme = .glass
     var accentPreset: AccentPreset = .system
     var historyEnabled: Bool = true
+    var pinnedTargetKey: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case cleanURLsBeforeOpening
@@ -48,6 +49,7 @@ struct JunctionSettings: Codable {
         case chromeTheme
         case accentPreset
         case historyEnabled
+        case pinnedTargetKey
     }
 
     init() {}
@@ -69,6 +71,18 @@ struct JunctionSettings: Codable {
         self.chromeTheme = (try? c.decode(ChromeTheme.self, forKey: .chromeTheme)) ?? .glass
         self.accentPreset = (try? c.decode(AccentPreset.self, forKey: .accentPreset)) ?? .system
         self.historyEnabled = (try? c.decode(Bool.self, forKey: .historyEnabled)) ?? true
+        self.pinnedTargetKey = try? c.decodeIfPresent(String.self, forKey: .pinnedTargetKey)
+    }
+
+    /// Sets `pinnedTargetKey` and rewrites `targetOrder` so the pinned key is at index 0.
+    /// When `key` is nil, clears the pin without altering `targetOrder`.
+    mutating func setPinnedTargetKey(_ key: String?) {
+        pinnedTargetKey = key
+        guard let key else { return }
+        var order = targetOrder
+        order.removeAll { $0 == key }
+        order.insert(key, at: 0)
+        targetOrder = order
     }
 
     static func mergeAppSchemes(stored: [AppSchemeRewrite]) -> [AppSchemeRewrite] {
@@ -153,6 +167,10 @@ final class SettingsStore: ObservableObject {
 
     func setHotkey(_ binding: HotkeyBinding, for keyPath: WritableKeyPath<HotkeySettings, HotkeyBinding>) {
         settings.hotkeys[keyPath: keyPath] = binding
+    }
+
+    func setPinnedTargetKey(_ key: String?) {
+        settings.setPinnedTargetKey(key)
     }
 
     func markOnboardingComplete() {
