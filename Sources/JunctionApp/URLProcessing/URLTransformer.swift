@@ -45,8 +45,10 @@ struct URLTransformPipeline {
 }
 
 enum URLTransformers {
+    internal static var settingsProvider: () -> JunctionSettings = { SettingsStore.shared.settings }
+
     static var `default`: URLTransformPipeline {
-        let settings = SettingsStore.shared.settings
+        let settings = settingsProvider()
         return URLTransformPipeline(transformers: [
             OutgoingRedirectUnwrapper(),
             RedirectTransformer(redirects: settings.redirects),
@@ -56,7 +58,7 @@ enum URLTransformers {
     }
 
     static func pipeline(globalOverrides: TrackerOverrides, ruleOverrides: TrackerOverrides?) -> URLTransformPipeline {
-        let settings = SettingsStore.shared.settings
+        let settings = settingsProvider()
         let trackerStripper: TrackerStripper
         if let ruleOverrides {
             let merged = TrackerOverrides(

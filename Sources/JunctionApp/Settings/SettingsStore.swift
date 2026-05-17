@@ -169,14 +169,14 @@ final class SettingsStore: ObservableObject {
 
     private let fileURL: URL
 
-    private init() {
+    init(fileURL: URL? = nil) {
         let fm = FileManager.default
         let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let dir = base.appendingPathComponent("Junction", isDirectory: true)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        self.fileURL = dir.appendingPathComponent("settings.json")
+        self.fileURL = fileURL ?? dir.appendingPathComponent("settings.json")
 
-        if let data = try? Data(contentsOf: fileURL),
+        if let data = try? Data(contentsOf: self.fileURL),
            let decoded = try? JSONDecoder().decode(JunctionSettings.self, from: data) {
             self.settings = decoded
         } else {
