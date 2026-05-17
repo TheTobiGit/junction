@@ -115,17 +115,27 @@ final class TrackerOverridesPlumbingTests: XCTestCase {
 
     // MARK: - Settings integration: SettingsStore → URLTransformers.default
 
-    // Mutates JunctionSettings.trackerOverrides via SettingsStore and asserts
-    // URLTransformers.default picks up the change end-to-end.
+    // Mutates JunctionSettings.trackerOverrides via a temp-file-backed SettingsStore
+    // and asserts URLTransformers.default picks up the change end-to-end via the
+    // settingsProvider seam. Never touches SettingsStore.shared or the real
+    // ~/Library/Application Support/Junction/settings.json.
     // VAL-M4-TRACKER-LIST-001 covers TrackerStripper(overrides:) directly;
     // this test covers the SettingsStore → URLTransformers.default wiring.
     func test_settingsStoreTrackerOverridesFlowsIntoDefaultPipeline() {
-        let original = SettingsStore.shared.settings.trackerOverrides
-        defer { SettingsStore.shared.settings.trackerOverrides = original }
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test-settings-\(UUID().uuidString).json")
+        let tempStore = SettingsStore(fileURL: tempURL)
+
+        let originalProvider = URLTransformers.settingsProvider
+        URLTransformers.settingsProvider = { tempStore.settings }
+        defer {
+            URLTransformers.settingsProvider = originalProvider
+            try? FileManager.default.removeItem(at: tempURL)
+        }
 
         var overrides = TrackerOverrides()
         overrides.additions = ["foo"]
-        SettingsStore.shared.settings.trackerOverrides = overrides
+        tempStore.settings.trackerOverrides = overrides
 
         let url = URL(string: "https://example.com/?foo=1&keep=1")!
         let result = URLTransformers.default.run(url)
