@@ -1,6 +1,6 @@
 import Foundation
 
-enum ShortenerExpander {
+final class ShortenerExpander {
     static let knownShortenerHosts: Set<String> = [
         "t.co", "bit.ly", "lnkd.in", "buff.ly", "goo.gl", "ow.ly",
         "tinyurl.com", "is.gd", "youtu.be", "wp.me", "amzn.to", "dlvr.it",
@@ -10,18 +10,66 @@ enum ShortenerExpander {
         "spoti.fi", "apple.co", "ift.tt",
     ]
 
+    static let shared = ShortenerExpander()
+
+    private let networkExpand: (URL, TimeInterval, @escaping (URL) -> Void) -> Void
+    private var cache: [URL: URL] = [:]
+    private let lock = NSLock()
+
+    init(networkExpand: ((URL, TimeInterval, @escaping (URL) -> Void) -> Void)? = nil) {
+        self.networkExpand = networkExpand ?? ShortenerExpander.defaultNetworkExpand
+    }
+
+    internal var cacheSize: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return cache.count
+    }
+
+    internal func seedCache(_ url: URL, resolvedTo resolved: URL) {
+        lock.lock()
+        cache[url] = resolved
+        lock.unlock()
+    }
+
     static func isShortened(_ url: URL) -> Bool {
         guard var host = url.host?.lowercased() else { return false }
         if host.hasPrefix("www.") { host.removeFirst(4) }
         return knownShortenerHosts.contains(host)
     }
 
-    static func expand(_ url: URL, timeout: TimeInterval = 2.0, completion: @escaping (URL) -> Void) {
-        guard isShortened(url) else {
+    func expand(_ url: URL, timeout: TimeInterval = 2.0, completion: @escaping (URL) -> Void) {
+        guard Self.isShortened(url) else {
             completion(url)
             return
         }
 
+        lock.lock()
+        let cached = cache[url]
+        lock.unlock()
+
+        if let cached {
+            // SSRF guard applies to cached values: a poisoned cache entry must
+            // not bypass the public-routability check.
+            let safe = URLSafety.isPubliclyRoutable(cached) ? cached : url
+            completion(safe)
+            return
+        }
+
+        networkExpand(url, timeout) { [weak self] resolved in
+            guard let self else { completion(url); return }
+            if URLSafety.isPubliclyRoutable(resolved) {
+                self.lock.lock()
+                self.cache[url] = resolved
+                self.lock.unlock()
+                completion(resolved)
+            } else {
+                completion(url)
+            }
+        }
+    }
+
+    private static func defaultNetworkExpand(_ url: URL, _ timeout: TimeInterval, _ completion: @escaping (URL) -> Void) {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = timeout
         config.timeoutIntervalForResource = timeout
@@ -37,11 +85,11 @@ enum ShortenerExpander {
             // If HEAD didn't yield a different URL, retry once with a ranged GET.
             if resolved.absoluteString == url.absoluteString {
                 attemptExpansion(method: "GET", url: url, config: config, timeout: timeout, rangeOnly: true) { fallback in
-                    finish(original: url, resolved: fallback, completion: completion)
+                    completion(fallback)
                 }
                 return
             }
-            finish(original: url, resolved: resolved, completion: completion)
+            completion(resolved)
         }
     }
 
@@ -70,14 +118,6 @@ enum ShortenerExpander {
             completion(resolved)
         }
         task.resume()
-    }
-
-    private static func finish(original: URL, resolved: URL, completion: @escaping (URL) -> Void) {
-        // SSRF guard: refuse to surface a redirect that points at a non-public
-        // host (loopback, RFC1918, link-local, 169.254.169.254, *.local, etc.).
-        // Falling back to the original shortener keeps the user in control.
-        let safe = URLSafety.isPubliclyRoutable(resolved) ? resolved : original
-        completion(safe)
     }
 }
 

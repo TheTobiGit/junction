@@ -413,7 +413,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if SettingsStore.shared.settings.expandShortenedURLs,
            ShortenerExpander.isShortened(prenormalized) {
-            ShortenerExpander.expand(prenormalized) { [weak self] expanded in
+            ShortenerExpander.shared.expand(prenormalized) { [weak self] expanded in
                 DispatchQueue.main.async {
                     self?.routeAfterExpansion(
                         original: url,
