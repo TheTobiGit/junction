@@ -8,14 +8,53 @@ struct ActivityTab: View {
     @State private var query: String = ""
     @State private var showCleanedOnly: Bool = false
     @State private var selectedOutcomes: Set<RoutingHistory.Outcome> = []
+    @State private var selectedHost: String? = nil
+    @State private var selectedSourceBundleID: String? = nil
+    @State private var selectedTargetBundleID: String? = nil
     @State private var confirmingClear: Bool = false
 
     private var filteredEntries: [RoutingHistory.Entry] {
         ActivityFilter.filter(history.entries, criteria: .init(
             query: query,
             showCleanedOnly: showCleanedOnly,
-            outcomes: selectedOutcomes
+            outcomes: selectedOutcomes,
+            host: selectedHost,
+            sourceBundleID: selectedSourceBundleID,
+            targetBundleID: selectedTargetBundleID
         ))
+    }
+
+    private var distinctHosts: [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for entry in history.entries {
+            if let h = URL(string: entry.cleanedURL)?.host?.lowercased(), seen.insert(h).inserted {
+                result.append(h)
+            }
+        }
+        return result.sorted()
+    }
+
+    private var distinctSourceBundleIDs: [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for entry in history.entries {
+            if let s = entry.sourceBundleID, seen.insert(s).inserted {
+                result.append(s)
+            }
+        }
+        return result.sorted()
+    }
+
+    private var distinctTargetBundleIDs: [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for entry in history.entries {
+            if let t = entry.targetBundleID, seen.insert(t).inserted {
+                result.append(t)
+            }
+        }
+        return result.sorted()
     }
 
     private var outcomeCounts: [RoutingHistory.Outcome: Int] {
@@ -60,62 +99,136 @@ struct ActivityTab: View {
     // MARK: - Filters
 
     private var filterBar: some View {
-        HStack(alignment: .center, spacing: 12) {
-            HStack(spacing: 7) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 11, weight: .medium))
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 12) {
+                HStack(spacing: 7) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    TextField("Filter", text: $query)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12))
+                }
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05))
+                )
+                .frame(maxWidth: 260)
+
+                Toggle(isOn: $showCleanedOnly) {
+                    Text("Cleaned only").font(.system(size: 11, weight: .medium))
+                }
+                .toggleStyle(.checkbox)
+
+                Spacer()
+
+                Text("\(filteredEntries.count) of \(history.entries.count)")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
-                TextField("Filter", text: $query)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12))
+
+                Button(role: .destructive) {
+                    confirmingClear = true
+                } label: {
+                    Text("Clear")
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .foregroundStyle(.primary)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(history.entries.isEmpty)
+                .confirmationDialog(
+                    "Clear all \(history.entries.count) entries?",
+                    isPresented: $confirmingClear,
+                    titleVisibility: .visible
+                ) {
+                    Button("Clear", role: .destructive) { history.clear() }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("This permanently removes Junction's local activity log.")
+                }
             }
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05))
-            )
-            .frame(maxWidth: 260)
 
-            Toggle(isOn: $showCleanedOnly) {
-                Text("Cleaned only").font(.system(size: 11, weight: .medium))
-            }
-            .toggleStyle(.checkbox)
-
-            Spacer()
-
-            Text("\(filteredEntries.count) of \(history.entries.count)")
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(.secondary)
-
-            Button(role: .destructive) {
-                confirmingClear = true
-            } label: {
-                Text("Clear")
-                    .font(.system(size: 11, weight: .semibold))
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .foregroundStyle(.primary)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-                    )
-            }
-            .buttonStyle(.plain)
-            .disabled(history.entries.isEmpty)
-            .confirmationDialog(
-                "Clear all \(history.entries.count) entries?",
-                isPresented: $confirmingClear,
-                titleVisibility: .visible
-            ) {
-                Button("Clear", role: .destructive) { history.clear() }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This permanently removes Junction's local activity log.")
+            if !distinctHosts.isEmpty || !distinctSourceBundleIDs.isEmpty || !distinctTargetBundleIDs.isEmpty {
+                dropdownFilterRow
             }
         }
+    }
+
+    private var dropdownFilterRow: some View {
+        HStack(spacing: 10) {
+            if !distinctHosts.isEmpty {
+                Picker(selection: $selectedHost) {
+                    Text("All hosts").tag(String?.none)
+                    ForEach(distinctHosts, id: \.self) { h in
+                        Text(h).tag(String?.some(h))
+                    }
+                } label: {
+                    Text("Host").font(.system(size: 11, weight: .medium))
+                }
+                .pickerStyle(.menu)
+                .controlSize(.small)
+                .help("Filter by host")
+            }
+
+            if !distinctSourceBundleIDs.isEmpty {
+                Picker(selection: $selectedSourceBundleID) {
+                    Text("All sources").tag(String?.none)
+                    ForEach(distinctSourceBundleIDs, id: \.self) { s in
+                        Text(prettyBundleIDLabel(s)).tag(String?.some(s))
+                    }
+                } label: {
+                    Text("Source app").font(.system(size: 11, weight: .medium))
+                }
+                .pickerStyle(.menu)
+                .controlSize(.small)
+                .help("Filter by source app")
+            }
+
+            if !distinctTargetBundleIDs.isEmpty {
+                Picker(selection: $selectedTargetBundleID) {
+                    Text("All browsers").tag(String?.none)
+                    ForEach(distinctTargetBundleIDs, id: \.self) { t in
+                        Text(prettyBundleIDLabel(t)).tag(String?.some(t))
+                    }
+                } label: {
+                    Text("Browser").font(.system(size: 11, weight: .medium))
+                }
+                .pickerStyle(.menu)
+                .controlSize(.small)
+                .help("Filter by target browser")
+            }
+
+            if selectedHost != nil || selectedSourceBundleID != nil || selectedTargetBundleID != nil {
+                Button("Reset") {
+                    selectedHost = nil
+                    selectedSourceBundleID = nil
+                    selectedTargetBundleID = nil
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.mini)
+                .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+    }
+
+    private func prettyBundleIDLabel(_ id: String) -> String {
+        if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id),
+           let bundle = Bundle(url: app),
+           let name = bundle.infoDictionary?["CFBundleName"] as? String {
+            return name
+        }
+        return id
     }
 
     private var outcomePills: some View {
