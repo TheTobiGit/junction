@@ -5,6 +5,7 @@ import AppKit
 struct PreviewView: View {
     @ObservedObject var model: PickerViewModel
     @ObservedObject private var appSettings = SettingsStore.shared
+    @State private var readerEnabled: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,10 +37,12 @@ struct PreviewView: View {
         ZStack(alignment: .top) {
             WebContainer(
                 url: model.previewURL,
+                readerEnabled: readerEnabled,
                 title: $model.previewTitle,
                 isLoading: $model.previewLoading,
                 progress: $model.previewProgress
             )
+            .id(readerEnabled)
             .background(Color.black.opacity(0.25))
 
             VStack(spacing: 0) {
@@ -47,6 +50,7 @@ struct PreviewView: View {
                 HStack(alignment: .top) {
                     backButton
                     Spacer(minLength: 0)
+                    readerToggleButton
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
@@ -84,6 +88,15 @@ struct PreviewView: View {
             help: "Back to picker (␣ or ⎋)"
         ) {
             model.exitPreview()
+        }
+    }
+
+    private var readerToggleButton: some View {
+        FloatingIconButton(
+            systemName: readerEnabled ? "doc.plaintext.fill" : "doc.plaintext",
+            help: readerEnabled ? "Exit reader mode" : "Enter reader mode"
+        ) {
+            readerEnabled.toggle()
         }
     }
 
@@ -366,12 +379,13 @@ private struct DockTile: View {
 
 private struct WebContainer: NSViewRepresentable {
     let url: URL
+    let readerEnabled: Bool
     @Binding var title: String?
     @Binding var isLoading: Bool
     @Binding var progress: Double
 
     func makeNSView(context: Context) -> WKWebView {
-        let webView = PreviewWebViewFactory.makeWebView()
+        let webView = PreviewWebViewFactory.makeWebView(readerEnabled: readerEnabled)
         webView.navigationDelegate = context.coordinator
         context.coordinator.observe(webView: webView)
         webView.load(URLRequest(url: url))
