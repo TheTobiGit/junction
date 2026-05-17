@@ -1,5 +1,22 @@
 import Foundation
 import Combine
+import CoreGraphics
+
+private struct PickerFrameCodable: Codable {
+    var x: CGFloat
+    var y: CGFloat
+    var width: CGFloat
+    var height: CGFloat
+
+    init(_ rect: CGRect) {
+        x = rect.origin.x
+        y = rect.origin.y
+        width = rect.size.width
+        height = rect.size.height
+    }
+
+    var rect: CGRect { CGRect(x: x, y: y, width: width, height: height) }
+}
 
 struct HotkeyBinding: Codable, Hashable {
     var keyCode: UInt32
@@ -35,6 +52,7 @@ struct JunctionSettings: Codable {
     var accentPreset: AccentPreset = .system
     var historyEnabled: Bool = true
     var pinnedTargetKey: String? = nil
+    var pickerFrame: CGRect? = nil
 
     enum CodingKeys: String, CodingKey {
         case cleanURLsBeforeOpening
@@ -50,6 +68,7 @@ struct JunctionSettings: Codable {
         case accentPreset
         case historyEnabled
         case pinnedTargetKey
+        case pickerFrame
     }
 
     init() {}
@@ -72,6 +91,27 @@ struct JunctionSettings: Codable {
         self.accentPreset = (try? c.decode(AccentPreset.self, forKey: .accentPreset)) ?? .system
         self.historyEnabled = (try? c.decode(Bool.self, forKey: .historyEnabled)) ?? true
         self.pinnedTargetKey = try? c.decodeIfPresent(String.self, forKey: .pinnedTargetKey)
+        self.pickerFrame = (try? c.decodeIfPresent(PickerFrameCodable.self, forKey: .pickerFrame))?.rect
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(cleanURLsBeforeOpening, forKey: .cleanURLsBeforeOpening)
+        try c.encode(expandShortenedURLs, forKey: .expandShortenedURLs)
+        try c.encode(clipboardWatcherEnabled, forKey: .clipboardWatcherEnabled)
+        try c.encode(redirects, forKey: .redirects)
+        try c.encode(hiddenTargetKeys, forKey: .hiddenTargetKeys)
+        try c.encode(targetOrder, forKey: .targetOrder)
+        try c.encode(appSchemes, forKey: .appSchemes)
+        try c.encode(hotkeys, forKey: .hotkeys)
+        try c.encode(hasCompletedOnboarding, forKey: .hasCompletedOnboarding)
+        try c.encode(chromeTheme, forKey: .chromeTheme)
+        try c.encode(accentPreset, forKey: .accentPreset)
+        try c.encode(historyEnabled, forKey: .historyEnabled)
+        try c.encodeIfPresent(pinnedTargetKey, forKey: .pinnedTargetKey)
+        if let frame = pickerFrame {
+            try c.encode(PickerFrameCodable(frame), forKey: .pickerFrame)
+        }
     }
 
     /// Sets `pinnedTargetKey` and rewrites `targetOrder` so the pinned key is at index 0.
