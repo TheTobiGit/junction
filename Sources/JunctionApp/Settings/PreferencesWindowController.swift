@@ -104,6 +104,7 @@ struct PreferencesView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var options: [LaunchOption] = []
     @State private var rulesFile: RulesFile = RulesStore.shared.rules
+    @State private var shadowedRuleIDs: Set<UUID> = RuleConflictDetector.shadowed(rules: RulesStore.shared.rules.rules)
     @State private var selection: PrefsSection = .general
     @State private var showingAddRuleSheet: Bool = false
     @State private var hoveredRail: PrefsSection? = nil
@@ -680,6 +681,19 @@ struct PreferencesView: View {
             actionLabel(rule.action, compact: true)
                 .foregroundStyle(.secondary)
 
+            if shadowedRuleIDs.contains(rule.id) {
+                Text("shadowed")
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .tracking(0.3)
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(Color.orange.opacity(0.12))
+                    )
+            }
+
             cleanOverrideMenu(for: rule)
 
             deleteIconButton(help: "Remove rule") {
@@ -993,6 +1007,7 @@ struct PreferencesView: View {
     private func reload() {
         options = LaunchOptionDiscovery.options()
         rulesFile = RulesStore.shared.rules
+        shadowedRuleIDs = RuleConflictDetector.shadowed(rules: rulesFile.rules)
     }
 }
 
