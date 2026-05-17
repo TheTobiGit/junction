@@ -653,9 +653,12 @@ struct PreferencesView: View {
         let sourceIndices = IndexSet(underlyingMoved.compactMap { moved in
             visible.firstIndex(where: { $0.id == moved.id })
         })
-        let destRow = rows[min(destination, rows.count - 1)]
-        let destOption = destRow.underlyingOption ?? underlyingMoved.first!
-        let destIdx = visible.firstIndex(where: { $0.id == destOption.id }) ?? visible.count
+        let destIdx = LaunchOptionGrouping.resolveDestinationIndex(
+            destination: destination,
+            rowUnderlyingOptions: rows.map { $0.underlyingOption },
+            flat: visible,
+            fallback: underlyingMoved.first!
+        )
         visible.move(fromOffsets: sourceIndices, toOffset: destIdx)
         options = visible + hiddenTargets
         settings.setTargetOrder(options.map { $0.target.storageKey })
@@ -669,9 +672,12 @@ struct PreferencesView: View {
         let sourceIndices = IndexSet(underlyingMoved.compactMap { moved in
             hidden.firstIndex(where: { $0.id == moved.id })
         })
-        let destRow = rows[min(destination, rows.count - 1)]
-        let destOption = destRow.underlyingOption ?? underlyingMoved.first!
-        let destIdx = hidden.firstIndex(where: { $0.id == destOption.id }) ?? hidden.count
+        let destIdx = LaunchOptionGrouping.resolveDestinationIndex(
+            destination: destination,
+            rowUnderlyingOptions: rows.map { $0.underlyingOption },
+            flat: hidden,
+            fallback: underlyingMoved.first!
+        )
         hidden.move(fromOffsets: sourceIndices, toOffset: destIdx)
         options = visibleTargets + hidden
         settings.setTargetOrder(options.map { $0.target.storageKey })

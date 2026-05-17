@@ -249,6 +249,130 @@ final class LaunchOptionGroupingTests: XCTestCase {
         XCTAssertEqual(allIDs.sorted(), input.map { $0.id }.sorted())
     }
 
+    // MARK: - resolveDestinationIndex (drag-to-end fix)
+
+    // Dragging a visible row to destination == rows.count must append it last.
+    func test_resolveDestinationIndex_endOfVisibleSection_returnsCount() {
+        let chrome = makeBrowser(bundleID: "com.google.Chrome", name: "Chrome")
+        let safari = makeBrowser(bundleID: "com.apple.Safari", name: "Safari")
+        let firefox = makeBrowser(bundleID: "org.mozilla.firefox", name: "Firefox")
+
+        let a = LaunchOption(browser: chrome, profile: nil)
+        let b = LaunchOption(browser: safari, profile: nil)
+        let c = LaunchOption(browser: firefox, profile: nil)
+
+        let flat = [a, b, c]
+        let rowOptions: [LaunchOption?] = [a, b, c]
+
+        let idx = LaunchOptionGrouping.resolveDestinationIndex(
+            destination: rowOptions.count,
+            rowUnderlyingOptions: rowOptions,
+            flat: flat,
+            fallback: a
+        )
+        XCTAssertEqual(idx, flat.count, "destination == rows.count must map to flat.count (append to end)")
+
+        var result = flat
+        result.move(fromOffsets: IndexSet(integer: 0), toOffset: idx)
+        XCTAssertEqual(result.map { $0.id }, [b.id, c.id, a.id], "Chrome must land last after drag to end")
+    }
+
+    // Source < destination: after removing source the insertion point shifts, but
+    // Array.move handles this internally — resolveDestinationIndex must still return flat.count.
+    func test_resolveDestinationIndex_endOfVisibleSection_sourceBeforeDestination() {
+        let chrome = makeBrowser(bundleID: "com.google.Chrome", name: "Chrome")
+        let safari = makeBrowser(bundleID: "com.apple.Safari", name: "Safari")
+
+        let a = LaunchOption(browser: chrome, profile: nil)
+        let b = LaunchOption(browser: safari, profile: nil)
+
+        let flat = [a, b]
+        let rowOptions: [LaunchOption?] = [a, b]
+
+        // source = 0 (Chrome), destination = 2 (end) — source < destination
+        let idx = LaunchOptionGrouping.resolveDestinationIndex(
+            destination: 2,
+            rowUnderlyingOptions: rowOptions,
+            flat: flat,
+            fallback: a
+        )
+        XCTAssertEqual(idx, 2)
+
+        var result = flat
+        result.move(fromOffsets: IndexSet(integer: 0), toOffset: idx)
+        XCTAssertEqual(result.map { $0.id }, [b.id, a.id], "Chrome must land after Safari")
+    }
+
+    // Dragging a hidden row to destination == rows.count must append it last in the hidden section.
+    func test_resolveDestinationIndex_endOfHiddenSection_returnsCount() {
+        let chrome = makeBrowser(bundleID: "com.google.Chrome", name: "Chrome")
+        let safari = makeBrowser(bundleID: "com.apple.Safari", name: "Safari")
+        let firefox = makeBrowser(bundleID: "org.mozilla.firefox", name: "Firefox")
+
+        let a = LaunchOption(browser: chrome, profile: nil)
+        let b = LaunchOption(browser: safari, profile: nil)
+        let c = LaunchOption(browser: firefox, profile: nil)
+
+        let hidden = [a, b, c]
+        let rowOptions: [LaunchOption?] = [a, b, c]
+
+        let idx = LaunchOptionGrouping.resolveDestinationIndex(
+            destination: rowOptions.count,
+            rowUnderlyingOptions: rowOptions,
+            flat: hidden,
+            fallback: a
+        )
+        XCTAssertEqual(idx, hidden.count, "destination == rows.count must map to hidden.count")
+
+        var result = hidden
+        result.move(fromOffsets: IndexSet(integer: 0), toOffset: idx)
+        XCTAssertEqual(result.map { $0.id }, [b.id, c.id, a.id])
+    }
+
+    // Mid-list drag still resolves correctly (regression guard).
+    func test_resolveDestinationIndex_midList_returnsCorrectIndex() {
+        let chrome = makeBrowser(bundleID: "com.google.Chrome", name: "Chrome")
+        let safari = makeBrowser(bundleID: "com.apple.Safari", name: "Safari")
+        let firefox = makeBrowser(bundleID: "org.mozilla.firefox", name: "Firefox")
+
+        let a = LaunchOption(browser: chrome, profile: nil)
+        let b = LaunchOption(browser: safari, profile: nil)
+        let c = LaunchOption(browser: firefox, profile: nil)
+
+        let flat = [a, b, c]
+        let rowOptions: [LaunchOption?] = [a, b, c]
+
+        let idx = LaunchOptionGrouping.resolveDestinationIndex(
+            destination: 1,
+            rowUnderlyingOptions: rowOptions,
+            flat: flat,
+            fallback: a
+        )
+        XCTAssertEqual(idx, 1)
+    }
+
+    // Group header row (nil underlying option) falls back to the provided fallback option.
+    func test_resolveDestinationIndex_groupHeaderRow_usesFallback() {
+        let chrome = makeBrowser(bundleID: "com.google.Chrome", name: "Chrome")
+        let safari = makeBrowser(bundleID: "com.apple.Safari", name: "Safari")
+
+        let chromeDefault = LaunchOption(browser: chrome, profile: makeProfile("Default", "Default"))
+        let chromeWork = LaunchOption(browser: chrome, profile: makeProfile("Work", "Work"))
+        let safariApp = LaunchOption(browser: safari, profile: nil)
+
+        let flat = [chromeDefault, chromeWork, safariApp]
+        // rows: [groupHeader(nil), safari]
+        let rowOptions: [LaunchOption?] = [nil, safariApp]
+
+        let idx = LaunchOptionGrouping.resolveDestinationIndex(
+            destination: 0,
+            rowUnderlyingOptions: rowOptions,
+            flat: flat,
+            fallback: chromeDefault
+        )
+        XCTAssertEqual(idx, 0, "Group header row must fall back to fallback option's index")
+    }
+
     // MARK: - Helpers
 
     private func makeBrowser(bundleID: String, name: String) -> Browser {

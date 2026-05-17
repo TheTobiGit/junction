@@ -85,6 +85,24 @@ enum LaunchOptionGrouping {
         return result
     }
 
+    /// Resolves the flat-array insertion index for a drag-to-reorder operation.
+    /// When `destination` equals `rowUnderlyingOptions.count` (drop at end of list),
+    /// returns `flat.count` so the moved item appends after the last element.
+    /// For any other destination, maps through the row's underlying option to its
+    /// index in `flat`, falling back to `flat.count` when the row is a group header.
+    static func resolveDestinationIndex(
+        destination: Int,
+        rowUnderlyingOptions: [LaunchOption?],
+        flat: [LaunchOption],
+        fallback: LaunchOption
+    ) -> Int {
+        if destination >= rowUnderlyingOptions.count {
+            return flat.count
+        }
+        let destOption = rowUnderlyingOptions[destination] ?? fallback
+        return flat.firstIndex(where: { $0.id == destOption.id }) ?? flat.count
+    }
+
     /// Returns the set of group IDs that should be expanded by default, based on
     /// whether the pinned target key lives inside a group.
     static func defaultExpandedGroupIDs(
