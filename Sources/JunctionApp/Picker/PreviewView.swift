@@ -7,6 +7,8 @@ struct PreviewView: View {
     @ObservedObject private var appSettings = SettingsStore.shared
     @State private var readerEnabled: Bool = false
 
+    var idnRiskFlags: [RiskFlag] { model.riskFlags.filter { $0.isIDNRelated } }
+
     var body: some View {
         VStack(spacing: 0) {
             webArea
@@ -150,6 +152,10 @@ struct PreviewView: View {
             }
 
             Spacer(minLength: 10)
+
+            if !idnRiskFlags.isEmpty {
+                RiskChip(flags: idnRiskFlags)
+            }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 10)
