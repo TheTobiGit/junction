@@ -54,7 +54,9 @@ final class PickerPanelController {
                         outcome: incognito ? .openedIncognito : .opened,
                         targetBundleID: option.browser.bundleID,
                         ruleLabel: "picker",
-                        openedURL: urlToOpen
+                        openedURL: urlToOpen,
+                        sourceBundleID: context.source?.bundleID,
+                        targetStorageKey: option.target.storageKey
                     )
                 }
             }
