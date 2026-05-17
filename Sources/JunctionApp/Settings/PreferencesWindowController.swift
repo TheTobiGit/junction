@@ -1052,6 +1052,13 @@ private struct AddRuleSheet: View {
     @State private var schemeValue: String = ""
     @State private var pathKind: PathKind = .prefix
     @State private var pathValue: String = ""
+    @State private var runningApps: [RunningAppEntry] = []
+    @State private var selectedSourceApps: Set<String> = []
+
+    private struct RunningAppEntry: Identifiable {
+        let id: String
+        let name: String
+    }
 
     enum PathKind: String, CaseIterable, Identifiable {
         case prefix, contains, regex, glob
@@ -1208,6 +1215,47 @@ private struct AddRuleSheet: View {
                 }
             }
 
+            if !hostKind.isExactURL {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("SOURCE APP (OPTIONAL)")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .tracking(0.6)
+                        .foregroundStyle(.secondary.opacity(0.75))
+                        .help("Best-effort attribution via FrontmostTracker — the most recent non-Junction frontmost app. May be inaccurate when links are opened from background apps.")
+
+                    if runningApps.isEmpty {
+                        Text("No regular apps running.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(runningApps) { app in
+                                    Toggle(isOn: Binding(
+                                        get: { selectedSourceApps.contains(app.id) },
+                                        set: { checked in
+                                            if checked { selectedSourceApps.insert(app.id) }
+                                            else { selectedSourceApps.remove(app.id) }
+                                        }
+                                    )) {
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(app.name)
+                                                .font(.system(size: 12))
+                                            Text(app.id)
+                                                .font(.system(size: 10, design: .monospaced))
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    .toggleStyle(.checkbox)
+                                }
+                            }
+                            .padding(.horizontal, 2)
+                        }
+                        .frame(maxHeight: 120)
+                    }
+                }
+            }
+
             VStack(alignment: .leading, spacing: 10) {
                 Text("ACTION")
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
@@ -1254,7 +1302,16 @@ private struct AddRuleSheet: View {
         }
         .padding(26)
         .frame(minWidth: 460)
-        .onAppear(perform: seedDefaultTarget)
+        .onAppear {
+            seedDefaultTarget()
+            runningApps = NSWorkspace.shared.runningApplications
+                .filter { $0.activationPolicy == .regular }
+                .compactMap { app in
+                    guard let bid = app.bundleIdentifier else { return nil }
+                    return RunningAppEntry(id: bid, name: app.localizedName ?? bid)
+                }
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        }
         .onChange(of: actionKind) { _ in seedDefaultTarget() }
     }
 
@@ -1338,7 +1395,9 @@ private struct AddRuleSheet: View {
                 case .urlEquals: return .equals(trimmedHost)
                 }
             }()
-            rule = DomainRule(host: host, action: action, path: pathMatch)
+            let condition: RuleCondition? = selectedSourceApps.isEmpty ? nil :
+                RuleCondition(sourceApp: Array(selectedSourceApps).sorted())
+            rule = DomainRule(host: host, action: action, when: condition, path: pathMatch)
         }
 
         RulesStore.shared.addRule(rule)

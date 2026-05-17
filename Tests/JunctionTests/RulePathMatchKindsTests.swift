@@ -186,11 +186,12 @@ final class RulePathMatchKindsTests: XCTestCase {
             target: "app:com.apple.Safari",
             cleanOverride: nil,
             pathKind: "prefix",
-            pathValue: "/orgs/acme"
+            pathValue: "/orgs/acme",
+            sourceApps: nil
         )
         let data = try encoder.encode(original)
         let decoded = try decoder.decode(AgentRequest.self, from: data)
-        guard case .addRule(let hk, let hv, let t, _, let pk, let pv) = decoded else {
+        guard case .addRule(let hk, let hv, let t, _, let pk, let pv, _) = decoded else {
             return XCTFail("expected .addRule")
         }
         XCTAssertEqual(hk, "suffix")
@@ -205,11 +206,12 @@ final class RulePathMatchKindsTests: XCTestCase {
         {"kind":"addRule","hostKind":"suffix","hostValue":"github.com","target":"app:com.apple.Safari"}
         """#.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(AgentRequest.self, from: json)
-        guard case .addRule(_, _, _, _, let pk, let pv) = decoded else {
+        guard case .addRule(_, _, _, _, let pk, let pv, let apps) = decoded else {
             return XCTFail("expected .addRule")
         }
         XCTAssertNil(pk)
         XCTAssertNil(pv)
+        XCTAssertNil(apps)
     }
 
     func test_pathMatchBuiltFromAgentRequestFields_VAL_M1_CLI_001() {
@@ -242,11 +244,12 @@ final class RulePathMatchKindsTests: XCTestCase {
                 target: "app:com.apple.Safari",
                 cleanOverride: nil,
                 pathKind: kind,
-                pathValue: "/test"
+                pathValue: "/test",
+                sourceApps: nil
             )
             let data = try encoder.encode(req)
             let decoded = try decoder.decode(AgentRequest.self, from: data)
-            guard case .addRule(_, _, _, _, let pk, let pv) = decoded else {
+            guard case .addRule(_, _, _, _, let pk, let pv, _) = decoded else {
                 return XCTFail("expected .addRule for kind \(kind)")
             }
             XCTAssertEqual(pk, kind, "pathKind should round-trip for \(kind)")

@@ -130,6 +130,7 @@ enum JunctionCLI {
         var pathContains: String? = nil
         var pathRegex: String? = nil
         var pathGlob: String? = nil
+        var sourceApps: [String] = []
 
         var i = 0
         while i < args.count {
@@ -167,6 +168,9 @@ enum JunctionCLI {
             case "--path-glob":
                 guard i + 1 < args.count else { throw CLIError(message: "--path-glob requires a value") }
                 pathGlob = args[i + 1]; i += 2
+            case "--from":
+                guard i + 1 < args.count else { throw CLIError(message: "--from requires a bundle ID") }
+                sourceApps.append(args[i + 1]); i += 2
             default:
                 if hostValue == nil { hostValue = a } else {
                     throw CLIError(message: "unexpected argument: \(a)")
@@ -215,7 +219,8 @@ enum JunctionCLI {
             target: resolvedTarget,
             cleanOverride: cleanOverride,
             pathKind: resolvedPathKind,
-            pathValue: resolvedPathValue
+            pathValue: resolvedPathValue,
+            sourceApps: sourceApps.isEmpty ? nil : sourceApps
         ))
         switch response {
         case .ok(let m): if let m { print(m) }
@@ -433,6 +438,8 @@ enum JunctionCLI {
                             (--in <target> | --ask | --block
                              | --incognito <target> | --scheme <name>)
                             [--clean|--no-clean]
+                            [--path-prefix|--path-contains|--path-regex|--path-glob <value>]
+                            [--from <bundleID> ...]
           junction rules remove <host>
           junction targets
           junction ping
