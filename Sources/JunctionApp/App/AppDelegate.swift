@@ -109,7 +109,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             outcome: incognito ? .openedIncognito : .opened,
                             targetBundleID: option.browser.bundleID,
                             ruleLabel: "junction-scheme",
-                            openedURL: finalURL
+                            openedURL: finalURL,
+                            sourceBundleID: FrontmostTracker.shared.lastNonJunction?.bundleID,
+                            targetStorageKey: option.target.storageKey
                         )
                     }
                 }
@@ -346,7 +348,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         outcome: .opened,
                         targetBundleID: option.browser.bundleID,
                         ruleLabel: "agent",
-                        openedURL: finalURL
+                        openedURL: finalURL,
+                        sourceBundleID: context.source?.bundleID,
+                        targetStorageKey: option.target.storageKey
                     )
                 }
             }
@@ -433,7 +437,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 originalURL: original,
                 result: trace,
                 outcome: .opened_appScheme,
-                ruleLabel: "app-scheme-rewrite"
+                ruleLabel: "app-scheme-rewrite",
+                sourceBundleID: context.source?.bundleID,
+                targetStorageKey: nil
             )
             return
         }
@@ -462,7 +468,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 originalURL: original,
                 result: trace,
                 outcome: .blocked,
-                ruleLabel: ruleLabel
+                ruleLabel: ruleLabel,
+                sourceBundleID: context.source?.bundleID,
+                targetStorageKey: nil
             )
             return
         case .appScheme(let scheme):
@@ -479,7 +487,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     result: trace,
                     outcome: .opened_appScheme,
                     ruleLabel: ruleLabel,
-                    openedURL: urlToOpen
+                    openedURL: urlToOpen,
+                    sourceBundleID: context.source?.bundleID,
+                    targetStorageKey: nil
                 )
             } else {
                 showPicker(for: resolved, context: context)
@@ -487,7 +497,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     originalURL: original,
                     result: trace,
                     outcome: .picker,
-                    ruleLabel: ruleLabel
+                    ruleLabel: ruleLabel,
+                    sourceBundleID: context.source?.bundleID,
+                    targetStorageKey: nil
                 )
             }
             return
@@ -495,7 +507,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let option = resolve(target: target) else {
                 showPicker(for: resolved, context: context)
                 RoutingHistory.shared.record(
-                    originalURL: original, result: trace, outcome: .picker, ruleLabel: ruleLabel
+                    originalURL: original, result: trace, outcome: .picker, ruleLabel: ruleLabel,
+                    sourceBundleID: context.source?.bundleID, targetStorageKey: nil
                 )
                 return
             }
@@ -513,7 +526,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         outcome: .opened,
                         targetBundleID: option.browser.bundleID,
                         ruleLabel: ruleLabel,
-                        openedURL: urlToOpen
+                        openedURL: urlToOpen,
+                        sourceBundleID: context.source?.bundleID,
+                        targetStorageKey: option.target.storageKey
                     )
                 }
             }
@@ -521,14 +536,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let option = resolve(target: target) else {
                 showPicker(for: resolved, context: context)
                 RoutingHistory.shared.record(
-                    originalURL: original, result: trace, outcome: .picker, ruleLabel: ruleLabel
+                    originalURL: original, result: trace, outcome: .picker, ruleLabel: ruleLabel,
+                    sourceBundleID: context.source?.bundleID, targetStorageKey: nil
                 )
                 return
             }
             guard supportsPrivate(option) else {
                 showPicker(for: resolved, context: context)
                 RoutingHistory.shared.record(
-                    originalURL: original, result: trace, outcome: .picker, ruleLabel: ruleLabel
+                    originalURL: original, result: trace, outcome: .picker, ruleLabel: ruleLabel,
+                    sourceBundleID: context.source?.bundleID, targetStorageKey: nil
                 )
                 return
             }
@@ -541,7 +558,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         outcome: .openedIncognito,
                         targetBundleID: option.browser.bundleID,
                         ruleLabel: ruleLabel,
-                        openedURL: urlToOpen
+                        openedURL: urlToOpen,
+                        sourceBundleID: context.source?.bundleID,
+                        targetStorageKey: option.target.storageKey
                     )
                 }
             }
@@ -551,7 +570,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 originalURL: original,
                 result: trace,
                 outcome: .picker,
-                ruleLabel: ruleLabel
+                ruleLabel: ruleLabel,
+                sourceBundleID: context.source?.bundleID,
+                targetStorageKey: nil
             )
         }
     }
