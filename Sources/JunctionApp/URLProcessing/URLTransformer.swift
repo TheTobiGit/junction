@@ -46,11 +46,12 @@ struct URLTransformPipeline {
 
 enum URLTransformers {
     static var `default`: URLTransformPipeline {
-        URLTransformPipeline(transformers: [
+        let settings = SettingsStore.shared.settings
+        return URLTransformPipeline(transformers: [
             OutgoingRedirectUnwrapper(),
-            RedirectTransformer(redirects: SettingsStore.shared.settings.redirects),
+            RedirectTransformer(redirects: settings.redirects),
             AMPCollapser(),
-            TrackerStripper()
+            TrackerStripper(overrides: settings.trackerOverrides)
         ])
     }
 }

@@ -9,7 +9,7 @@ extension Notification.Name {
 
 /// Identifier matched by ``PreferencesView`` to set its initial selection.
 enum PreferencesFocusTarget: String {
-    case general, rewrites, targets, rules, appSchemes, hotkeys, activity
+    case general, rewrites, targets, rules, appSchemes, hotkeys, activity, trackers
 }
 
 final class PreferencesWindowController {
@@ -54,7 +54,7 @@ final class PreferencesWindowController {
 }
 
 enum PrefsSection: String, CaseIterable, Identifiable {
-    case general, rewrites, targets, rules, appSchemes, hotkeys, activity
+    case general, rewrites, targets, rules, appSchemes, hotkeys, activity, trackers
 
     var id: String { rawValue }
 
@@ -67,6 +67,7 @@ enum PrefsSection: String, CaseIterable, Identifiable {
         case .appSchemes: return "Native apps"
         case .hotkeys:    return "Hotkeys"
         case .activity:   return "Activity"
+        case .trackers:   return "Trackers"
         }
     }
 
@@ -80,6 +81,7 @@ enum PrefsSection: String, CaseIterable, Identifiable {
         case .appSchemes: return "Open matching links in a native app."
         case .hotkeys:    return "Global shortcuts that work everywhere."
         case .activity:   return "Recently routed links, stored locally."
+        case .trackers:   return "Customize which tracking params are stripped."
         }
     }
 
@@ -94,6 +96,7 @@ enum PrefsSection: String, CaseIterable, Identifiable {
         case .appSchemes: return .pink
         case .hotkeys:    return .blue
         case .activity:   return .green
+        case .trackers:   return .red
         }
     }
 }
@@ -108,6 +111,7 @@ struct PreferencesView: View {
     @State private var selection: PrefsSection = .general
     @State private var showingAddRuleSheet: Bool = false
     @State private var hoveredRail: PrefsSection? = nil
+    @State private var newTrackerEntry: String = ""
     @ObservedObject private var settings = SettingsStore.shared
 
     var body: some View {
@@ -340,6 +344,7 @@ struct PreferencesView: View {
         case .appSchemes: appSchemesTab
         case .hotkeys:    hotkeysTab
         case .activity:   activityTab
+        case .trackers:   trackersTab
         }
     }
 
@@ -927,6 +932,107 @@ struct PreferencesView: View {
 
     private var activityTab: some View {
         ActivityTab()
+    }
+
+    // MARK: - Trackers
+
+    private var trackersTab: some View {
+        VStack(alignment: .leading, spacing: 44) {
+            section("Custom trackers") {
+                HStack(spacing: 10) {
+                    TextField("param_name or prefix_", text: $newTrackerEntry)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 13, design: .monospaced))
+                        .onSubmit { addCustomTracker() }
+                    ghostButton("Add", symbol: "plus") { addCustomTracker() }
+                        .disabled(newTrackerEntry.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                .padding(.vertical, 12)
+                .help("Entries ending in _ are treated as prefixes (e.g. mc_ strips mc_eid, mc_cid). All others match exact param names.")
+
+                let additions = settings.settings.trackerOverrides.additions
+                if !additions.isEmpty {
+                    hairline()
+                    ForEach(additions, id: \.self) { entry in
+                        HStack(spacing: 8) {
+                            Text(entry)
+                                .font(.system(size: 13, design: .monospaced))
+                                .foregroundStyle(.primary)
+                            if entry.hasSuffix("_") {
+                                Text("prefix")
+                                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                    .tracking(0.3)
+                                    .foregroundStyle(.secondary.opacity(0.7))
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                            .fill(Color.secondary.opacity(0.10))
+                                    )
+                            }
+                            Spacer()
+                            deleteIconButton(help: "Remove \(entry)") {
+                                settings.settings.trackerOverrides.additions.removeAll { $0 == entry }
+                            }
+                        }
+                        .padding(.vertical, 10)
+                        if entry != additions.last { hairline() }
+                    }
+                }
+            }
+
+            section("Built-in prefixes") {
+                ForEach(Array(TrackerStripper.defaultPrefixes.enumerated()), id: \.offset) { idx, prefix in
+                    builtInTrackerRow(entry: prefix, isLast: idx == TrackerStripper.defaultPrefixes.count - 1)
+                }
+            }
+
+            section("Built-in params") {
+                let sorted = TrackerStripper.defaultExactParams.sorted()
+                ForEach(Array(sorted.enumerated()), id: \.offset) { idx, param in
+                    builtInTrackerRow(entry: param, isLast: idx == sorted.count - 1)
+                }
+            }
+        }
+    }
+
+    private func builtInTrackerRow(entry: String, isLast: Bool) -> some View {
+        let isDisabled = settings.settings.trackerOverrides.disabled.contains(entry)
+        return VStack(spacing: 0) {
+            HStack {
+                Text(entry)
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundStyle(isDisabled ? Color.secondary : Color.primary)
+                    .strikethrough(isDisabled, color: .secondary)
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { !isDisabled },
+                    set: { enabled in
+                        if enabled {
+                            settings.settings.trackerOverrides.disabled.removeAll { $0 == entry }
+                        } else if !settings.settings.trackerOverrides.disabled.contains(entry) {
+                            settings.settings.trackerOverrides.disabled.append(entry)
+                        }
+                    }
+                ))
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .controlSize(.mini)
+            }
+            .padding(.vertical, 10)
+            if !isLast { hairline() }
+        }
+    }
+
+    private func addCustomTracker() {
+        let entry = newTrackerEntry.trimmingCharacters(in: .whitespaces)
+        guard !entry.isEmpty else { return }
+        guard !settings.settings.trackerOverrides.additions.contains(entry) else {
+            newTrackerEntry = ""
+            return
+        }
+        settings.settings.trackerOverrides.additions.append(entry)
+        newTrackerEntry = ""
     }
 
     // MARK: - Primitives
