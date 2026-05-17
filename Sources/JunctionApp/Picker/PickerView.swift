@@ -73,10 +73,17 @@ struct PickerView: View {
     }
 
     private var pickerBody: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-            optionList
-            footer
+        ZStack {
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                optionList
+                footer
+            }
+
+            if model.showQRSheet {
+                QRSheetOverlay(model: model)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            }
         }
         .background(
             JunctionChromeBackground(
@@ -97,6 +104,7 @@ struct PickerView: View {
                 )
         )
         .frame(width: width, height: Self.pickerHeight)
+        .animation(.spring(response: 0.25, dampingFraction: 0.85), value: model.showQRSheet)
     }
 
     private var header: some View {
@@ -365,6 +373,22 @@ struct PickerView: View {
 
             Spacer(minLength: 10)
 
+            Button {
+                model.openQRSheet()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "qrcode")
+                        .font(.system(size: 12, weight: .medium))
+                    Text("QR")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Capsule().fill(Color.white.opacity(0.08)))
+            }
+            .buttonStyle(.plain)
+            .help("Show QR code for this URL")
+
             hintSegments
         }
         .frame(height: 34)
@@ -385,6 +409,54 @@ struct PickerView: View {
 
 private extension RiskLevel {
     var rank: Int { rawValue }
+}
+
+private struct QRSheetOverlay: View {
+    @ObservedObject var model: PickerViewModel
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.6)
+                .onTapGesture {
+                    model.closeQRSheet()
+                }
+
+            VStack(spacing: 20) {
+                if let cgImage = model.qrImage {
+                    let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+                    Image(nsImage: nsImage)
+                        .interpolation(.none)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 200, height: 200)
+                        .padding(16)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                } else {
+                    ProgressView()
+                        .frame(width: 200, height: 200)
+                }
+
+                Button("Done") {
+                    model.closeQRSheet()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .keyboardShortcut(.defaultAction)
+            }
+            .padding(28)
+            .background(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(Color(NSColor.windowBackgroundColor).opacity(0.96))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                    )
+            )
+            .shadow(color: Color.black.opacity(0.4), radius: 24, x: 0, y: 8)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
 }
 
 private struct PickerTile: View {
@@ -618,6 +690,14 @@ private final class KeyCatcherView: NSView {
             let cmd = modifiers.contains(.command)
             let opt = modifiers.contains(.option)
             let shift = modifiers.contains(.shift)
+
+            if model.showQRSheet {
+                if event.keyCode == 53 {
+                    model.closeQRSheet()
+                    return nil
+                }
+                return nil
+            }
 
             if model.previewMode {
                 switch event.keyCode {
