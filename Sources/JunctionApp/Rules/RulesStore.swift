@@ -33,6 +33,14 @@ final class RulesStore {
         startWatching()
     }
 
+    init(fileURL: URL) {
+        self.fileURL = fileURL
+        self.file = Self.load(from: fileURL) ?? RulesFile()
+        if !FileManager.default.fileExists(atPath: fileURL.path) {
+            writeToDisk(file)
+        }
+    }
+
     struct RuleMatch {
         let action: RuleAction
         let rule: DomainRule?
