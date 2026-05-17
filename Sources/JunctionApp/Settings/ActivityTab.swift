@@ -68,6 +68,7 @@ struct ActivityTab: View {
             if !history.entries.isEmpty {
                 filterBar
                 outcomePills
+                statsCard
             }
 
             content
@@ -284,6 +285,84 @@ struct ActivityTab: View {
         .buttonStyle(.plain)
         .disabled(!isAvailable)
         .help(isAvailable ? "Filter by \(title.lowercased())" : "No \(title.lowercased()) entries yet")
+    }
+
+    // MARK: - Stats card
+
+    private var statsCard: some View {
+        let stats = ActivityStats.byHost(entries: history.entries)
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("PER-HOST STATS")
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .tracking(0.6)
+                .foregroundStyle(.secondary.opacity(0.7))
+
+            VStack(spacing: 0) {
+                ForEach(Array(stats.enumerated()), id: \.element.host) { idx, stat in
+                    hostStatRow(stat)
+                    if idx < stats.count - 1 {
+                        Rectangle()
+                            .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.06))
+                            .frame(height: 0.5)
+                    }
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.primary.opacity(colorScheme == .dark ? 0.05 : 0.03))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+            )
+        }
+    }
+
+    private func hostStatRow(_ stat: ActivityStats.HostStat) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(stat.host)
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(minWidth: 120, alignment: .leading)
+
+            Spacer(minLength: 8)
+
+            HStack(spacing: 16) {
+                statCell(label: "routes", value: "\(stat.count)")
+
+                statCell(label: "last", value: relativeTime(stat.lastRoute))
+
+                if let browser = stat.dominantBrowser {
+                    statCell(label: "browser", value: prettyBundleIDLabel(browser))
+                }
+
+                if stat.trackerHits > 0 {
+                    statCell(label: "cleaned", value: "\(stat.trackerHits)")
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+
+    private func statCell(label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label.uppercased())
+                .font(.system(size: 8, weight: .semibold, design: .rounded))
+                .tracking(0.4)
+                .foregroundStyle(.secondary.opacity(0.6))
+            Text(value)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+        }
+    }
+
+    private func relativeTime(_ date: Date) -> String {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .short
+        return f.localizedString(for: date, relativeTo: Date())
     }
 
     // MARK: - Content
