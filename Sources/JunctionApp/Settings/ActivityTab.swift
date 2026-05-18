@@ -408,9 +408,15 @@ struct ActivityTab: View {
     @ViewBuilder
     private var content: some View {
         if !settings.settings.historyEnabled && history.entries.isEmpty {
-            emptyText("Recording is off.", detail: "Enable it above to start collecting recent links.")
+            VStack(alignment: .leading, spacing: 16) {
+                ActivityEmptyIllustration()
+                emptyText("Recording is off.", detail: "Enable it above to start collecting recent links.")
+            }
         } else if history.entries.isEmpty {
-            emptyText("No activity yet.", detail: "Open a link through Junction and it'll show up here.")
+            VStack(alignment: .leading, spacing: 16) {
+                ActivityEmptyIllustration()
+                emptyText("No activity yet.", detail: "Open a link through Junction and it'll show up here.")
+            }
         } else {
             VStack(spacing: 0) {
                 ForEach(Array(filteredEntries.enumerated()), id: \.element.id) { idx, entry in
