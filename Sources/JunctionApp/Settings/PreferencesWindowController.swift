@@ -771,10 +771,13 @@ struct PreferencesView: View {
     private var rulesTab: some View {
         VStack(alignment: .leading, spacing: 28) {
             if rulesFile.rules.isEmpty {
-                emptyStateText(
-                    "No rules yet.",
-                    detail: "Use the Remember toggle in the picker or Add rule above."
-                )
+                VStack(alignment: .leading, spacing: 16) {
+                    RulesEmptyIllustration()
+                    emptyStateText(
+                        "No rules yet.",
+                        detail: "Use the Remember toggle in the picker or Add rule above."
+                    )
+                }
             } else {
                 List {
                     ForEach(rulesFile.rules) { rule in
