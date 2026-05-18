@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var picker: PickerPanelController?
     private var prefs: PreferencesWindowController?
     private var onboarding: OnboardingWindowController?
+    private var postDefaultTour: PostDefaultTourOverlayController?
     private var pendingURLs: [URL] = []
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -28,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startAgentServer()
         configureHotkeys()
         observeWorkspaceForAppSchemeCache()
+        observeWorkspaceForPostDefaultTour()
         flushPendingURLs()
         maybeShowOnboarding()
     }
@@ -154,6 +156,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { _ in
             GlobalHotkeyManager.shared.reload(from: SettingsStore.shared.settings.hotkeys)
         }
+    }
+
+    private func observeWorkspaceForPostDefaultTour() {
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.maybeShowPostDefaultTour()
+        }
+    }
+
+    private func maybeShowPostDefaultTour() {
+        let settings = SettingsStore.shared.settings
+        let status = DefaultWebBrowserStatus.current
+        guard OnboardingTourManager.shouldShowPostDefaultTour(settings: settings, status: status) else { return }
+        let controller = postDefaultTour ?? PostDefaultTourOverlayController()
+        postDefaultTour = controller
+        controller.onDismiss = { [weak self] in
+            OnboardingTourManager.markPostDefaultTourComplete()
+            self?.postDefaultTour = nil
+        }
+        controller.show()
     }
 
     /// Drop the cached `bundleID → installed?` map whenever the workspace

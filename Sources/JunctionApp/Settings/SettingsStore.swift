@@ -54,6 +54,7 @@ struct JunctionSettings: Codable {
     var pinnedTargetKey: String? = nil
     var pickerFrame: CGRect? = nil
     var trackerOverrides: TrackerOverrides = TrackerOverrides()
+    var toursCompleted: [String: Bool] = [:]
 
     enum CodingKeys: String, CodingKey {
         case cleanURLsBeforeOpening
@@ -71,6 +72,7 @@ struct JunctionSettings: Codable {
         case pinnedTargetKey
         case pickerFrame
         case trackerOverrides
+        case toursCompleted
     }
 
     init() {}
@@ -95,6 +97,7 @@ struct JunctionSettings: Codable {
         self.pinnedTargetKey = try? c.decodeIfPresent(String.self, forKey: .pinnedTargetKey)
         self.pickerFrame = (try? c.decodeIfPresent(PickerFrameCodable.self, forKey: .pickerFrame))?.rect
         self.trackerOverrides = (try? c.decodeIfPresent(TrackerOverrides.self, forKey: .trackerOverrides)) ?? TrackerOverrides()
+        self.toursCompleted = (try? c.decodeIfPresent([String: Bool].self, forKey: .toursCompleted)) ?? [:]
     }
 
     func encode(to encoder: Encoder) throws {
@@ -116,6 +119,7 @@ struct JunctionSettings: Codable {
             try c.encode(PickerFrameCodable(frame), forKey: .pickerFrame)
         }
         try c.encode(trackerOverrides, forKey: .trackerOverrides)
+        try c.encode(toursCompleted, forKey: .toursCompleted)
     }
 
     /// Sets `pinnedTargetKey` and rewrites `targetOrder` so the pinned key is at index 0.

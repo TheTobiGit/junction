@@ -73,7 +73,7 @@ struct OnboardingView: View {
     @ObservedObject private var settings = SettingsStore.shared
 
     private var visibleSteps: [OnboardingStep] {
-        if DefaultWebBrowserStatus.isJunctionDefaultForHTTPAndHTTPS {
+        if DefaultWebBrowserStatus.current.isJunctionDefaultForHTTPAndHTTPS {
             OnboardingStep.allCases.filter { $0 != .defaultBrowser }
         } else {
             Array(OnboardingStep.allCases)
