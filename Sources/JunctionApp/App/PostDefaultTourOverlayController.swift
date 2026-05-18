@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-final class PostDefaultTourOverlayController {
+final class PostDefaultTourOverlayController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     var onDismiss: (() -> Void)?
 
@@ -14,8 +14,6 @@ final class PostDefaultTourOverlayController {
 
         let view = PostDefaultTourView(onDismiss: { [weak self] in
             self?.window?.close()
-            self?.window = nil
-            self?.onDismiss?()
         })
         let host = NSHostingController(rootView: view)
         let window = NSWindow(contentViewController: host)
@@ -28,9 +26,15 @@ final class PostDefaultTourOverlayController {
         window.minSize = NSSize(width: 520, height: 400)
         window.center()
         window.isReleasedWhenClosed = false
+        window.delegate = self
         self.window = window
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        window = nil
+        onDismiss?()
     }
 }
 

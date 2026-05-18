@@ -56,6 +56,36 @@ final class PostDefaultTourGatingTests: XCTestCase {
         XCTAssertFalse(OnboardingTourManager.shouldShowPostDefaultTour(settings: settings, status: status))
     }
 
+    // VAL-M6-TOUR-008: windowWillClose path invokes onDismiss so markPostDefaultTourComplete is called
+    // regardless of whether the user clicks "Get Started" or the title-bar close button.
+    func test_windowWillClose_invokesOnDismiss_VAL_M6_TOUR_008() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let store = SettingsStore(fileURL: dir.appendingPathComponent("settings.json"))
+        store.settings.hasCompletedOnboarding = true
+        store.settings.toursCompleted = [:]
+
+        let controller = PostDefaultTourOverlayController()
+        var dismissCallCount = 0
+        controller.onDismiss = {
+            OnboardingTourManager.markPostDefaultTourComplete(store: store)
+            dismissCallCount += 1
+        }
+
+        controller.windowWillClose(Notification(name: NSWindow.willCloseNotification))
+
+        XCTAssertEqual(dismissCallCount, 1, "windowWillClose must invoke onDismiss exactly once")
+        XCTAssertTrue(store.settings.toursCompleted["postDefault"] == true,
+                      "markPostDefaultTourComplete must be called via the windowWillClose path")
+
+        let defaultStatus = DefaultWebBrowserStatus(isJunctionDefaultForHTTPAndHTTPS: true)
+        XCTAssertFalse(OnboardingTourManager.shouldShowPostDefaultTour(settings: store.settings, status: defaultStatus),
+                       "tour must not re-appear after windowWillClose dismissal")
+    }
+
     // Verify tour fires exactly once: mark complete then flip default away and back → still false
     func test_tourDoesNotRetriggerAfterDefaultBrowserFlips() throws {
         let dir = FileManager.default.temporaryDirectory

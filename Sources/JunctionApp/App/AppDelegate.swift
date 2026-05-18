@@ -170,6 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func maybeShowPostDefaultTour() {
         let settings = SettingsStore.shared.settings
+        guard settings.toursCompleted["postDefault"] != true else { return }
         let status = DefaultWebBrowserStatus.current
         guard OnboardingTourManager.shouldShowPostDefaultTour(settings: settings, status: status) else { return }
         let controller = postDefaultTour ?? PostDefaultTourOverlayController()
