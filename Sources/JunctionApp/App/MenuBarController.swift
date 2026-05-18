@@ -53,7 +53,7 @@ final class MenuBarController: NSObject {
         menu.addItem(title)
         menu.addItem(.separator())
 
-        if !DefaultWebBrowserStatus.isJunctionDefaultForHTTPAndHTTPS {
+        if !DefaultWebBrowserStatus.current.isJunctionDefaultForHTTPAndHTTPS {
             let setDefault = NSMenuItem(
                 title: "Set as Default Browser…",
                 action: #selector(setAsDefault),
@@ -213,7 +213,7 @@ extension MenuBarController: NSMenuDelegate {
             recent.submenu = makeRecentSubmenu()
         }
 
-        let isDefault = DefaultWebBrowserStatus.isJunctionDefaultForHTTPAndHTTPS
+        let isDefault = DefaultWebBrowserStatus.current.isJunctionDefaultForHTTPAndHTTPS
         let hasSetDefaultItem = menu.items.contains(where: { $0.tag == MenuTags.setDefaultBrowser.rawValue })
 
         if isDefault, hasSetDefaultItem {
