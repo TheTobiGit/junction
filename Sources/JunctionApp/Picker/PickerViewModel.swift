@@ -31,6 +31,7 @@ final class PickerViewModel: ObservableObject {
     @Published private(set) var qrImage: CGImage? = nil
     var qrImageProvider: (String) -> CGImage? = QRCodeGenerator.generate(from:)
     @Published var expandedGroupIDs: Set<String> = []
+    @Published var cheatSheetVisible: Bool = false
 
     private let pickHandler: (LaunchOption, Bool, Bool) -> Void
     private let pickMultiHandler: ([LaunchOption], Bool) -> Void
@@ -368,6 +369,10 @@ final class PickerViewModel: ObservableObject {
     private func resolvedIncognito(for option: LaunchOption, requested: Bool?) -> Bool {
         let wantsPrivate = requested ?? incognitoMode
         return wantsPrivate && URLOpener.supportsIncognito(bundleID: option.browser.bundleID)
+    }
+
+    var cheatSheetEntries: [String] {
+        previewMode ? PickerShortcutHelp.previewEntries : PickerShortcutHelp.pickerEntries
     }
 
     func openQRSheet() {

@@ -59,8 +59,14 @@ struct PickerView: View {
                 pickerBody
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
+
+            if model.cheatSheetVisible {
+                CheatSheetOverlay(model: model)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: model.previewMode)
+        .animation(.spring(response: 0.25, dampingFraction: 0.85), value: model.cheatSheetVisible)
         .background(KeyEventCatcher(model: model))
         .tint(appSettings.settings.accentPreset.swiftUIColor)
         .scaleEffect(appeared ? 1.0 : 0.96)
@@ -492,6 +498,44 @@ private extension RiskLevel {
     var rank: Int { rawValue }
 }
 
+private struct CheatSheetOverlay: View {
+    @ObservedObject var model: PickerViewModel
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.55)
+                .onTapGesture {
+                    model.cheatSheetVisible = false
+                }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Keyboard Shortcuts")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.primary)
+                    .padding(.bottom, 2)
+
+                ForEach(model.cheatSheetEntries, id: \.self) { entry in
+                    Text(entry)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 18)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(NSColor.windowBackgroundColor).opacity(0.96))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                    )
+            )
+            .shadow(color: Color.black.opacity(0.4), radius: 20, x: 0, y: 6)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+}
+
 private struct QRSheetOverlay: View {
     @ObservedObject var model: PickerViewModel
 
@@ -864,6 +908,16 @@ private final class KeyCatcherView: NSView {
                 return nil
             }
 
+            // Cheat sheet key handling: ? toggles overlay; Escape hides it when visible.
+            // Works in both picker and preview modes. dismiss signal is only acted on
+            // in normal picker mode below (preview mode has its own Escape semantics).
+            let cheatEvent = KeyEvent(
+                characters: event.charactersIgnoringModifiers,
+                keyCode: event.keyCode
+            )
+            let cheatOutcome = PickerKeyHandler.handle(event: cheatEvent, model: model)
+            if cheatOutcome.consumed { return nil }
+
             if model.previewMode {
                 switch event.keyCode {
                 case 53:
@@ -910,13 +964,17 @@ private final class KeyCatcherView: NSView {
                 return event
             }
 
+            // Normal picker mode: act on dismiss signal from PickerKeyHandler (Escape, sheet hidden).
+            if cheatOutcome.dismiss {
+                model.cancel()
+                return nil
+            }
+
             switch event.keyCode {
             case 124, 125:
                 model.moveSelection(1); return nil
             case 123, 126:
                 model.moveSelection(-1); return nil
-            case 53:
-                model.cancel(); return nil
             case 49:
                 if shift {
                     model.toggleMultiAtSelection()
