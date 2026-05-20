@@ -502,49 +502,102 @@ private struct CheatSheetOverlay: View {
 
 private struct QRSheetOverlay: View {
     @ObservedObject var model: PickerViewModel
+    @ObservedObject private var appSettings = SettingsStore.shared
+    @State private var doneHovered = false
+
+    private var accent: Color { appSettings.settings.accentPreset.swiftUIColor }
+    private var theme: ChromeTheme { appSettings.settings.chromeTheme }
+
+    private let qrSize: CGFloat = 160
+    private let quietZone: CGFloat = 10
+
+    private var codeSide: CGFloat { qrSize + quietZone * 2 }
+    private var cardWidth: CGFloat { codeSide + 32 }
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.6)
+            Color.black.opacity(0.55)
                 .onTapGesture {
                     model.closeQRSheet()
                 }
 
-            VStack(spacing: 20) {
-                if let cgImage = model.qrImage {
-                    let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
-                    Image(nsImage: nsImage)
-                        .interpolation(.none)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 200, height: 200)
-                        .padding(16)
-                        .background(Color.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                } else {
-                    ProgressView()
-                        .frame(width: 200, height: 200)
+            PickerGlassPanel(theme: theme, accent: accent, subtle: true) {
+                VStack(spacing: 0) {
+                    qrPlate
+                    doneButton
+                        .padding(.top, 12)
                 }
-
-                Button("Done") {
-                    model.closeQRSheet()
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
-                .keyboardShortcut(.defaultAction)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .frame(width: cardWidth)
             }
-            .padding(28)
-            .background(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(Color(NSColor.windowBackgroundColor).opacity(0.96))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
-                    )
-            )
-            .shadow(color: Color.black.opacity(0.4), radius: 24, x: 0, y: 8)
         }
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var qrPlate: some View {
+        Group {
+            if let cgImage = model.qrImage {
+                let nsImage = NSImage(
+                    cgImage: cgImage,
+                    size: NSSize(width: cgImage.width, height: cgImage.height)
+                )
+                Image(nsImage: nsImage)
+                    .interpolation(.none)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: qrSize, height: qrSize)
+            } else {
+                ProgressView()
+                    .controlSize(.regular)
+                    .frame(width: qrSize, height: qrSize)
+            }
+        }
+        .padding(quietZone)
+        .frame(width: codeSide, height: codeSide)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.84))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.14), lineWidth: 0.5)
+        )
+        .help("Scan to open this link on your phone")
+    }
+
+    private var doneButton: some View {
+        Button {
+            model.closeQRSheet()
+        } label: {
+            Text("Done")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.primary.opacity(doneHovered ? 0.92 : 0.78))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(doneHovered ? 0.12 : 0.09),
+                                    Color.white.opacity(doneHovered ? 0.06 : 0.04),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Color.white.opacity(doneHovered ? 0.14 : 0.09), lineWidth: 0.5)
+                )
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(.defaultAction)
+        .onHover { doneHovered = $0 }
+        .animation(.easeOut(duration: 0.12), value: doneHovered)
     }
 }
 
