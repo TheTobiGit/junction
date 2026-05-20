@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0](https://github.com/TheTobiGit/junction/compare/v0.2.0...v0.3.0) (2026-05-20)
+
+
+### Features
+
+* **picker:** restyle QR sheet to match picker chrome ([84d7c14](https://github.com/TheTobiGit/junction/commit/84d7c1450eee766db117f0b552da80b688260792))
+* **picker:** restyle QR sheet to match picker chrome ([ff3adc3](https://github.com/TheTobiGit/junction/commit/ff3adc35e83bacd7a899845c1bdfa5b5ae99fd8c))
+
+
+### Bug Fixes
+
+* **ci:** re-run release-please on its own controlled files ([cf78899](https://github.com/TheTobiGit/junction/commit/cf78899ccdde472bfe9ff82f1a15f6726b4c2139))
+* **ci:** re-run release-please on its own controlled files ([3ec7cf7](https://github.com/TheTobiGit/junction/commit/3ec7cf76772772fdc059e21507b7d0935c7f20bd))
+
 ## [0.2.0](https://github.com/TheTobiGit/junction/compare/v0.1.1...v0.2.0) (2026-05-20)
 
 
