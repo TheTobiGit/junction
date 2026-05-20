@@ -126,3 +126,71 @@ struct JunctionChromeBackground: View {
         }
     }
 }
+
+/// Frosted inset panel for picker overlays (QR sheet, shortcuts, etc.).
+struct PickerGlassPanel<Content: View>: View {
+    var theme: ChromeTheme
+    var accent: Color
+    var cornerRadius: CGFloat = 18
+    /// Quieter wash and shadows for compact overlays (e.g. QR sheet).
+    var subtle: Bool = false
+    @ViewBuilder var content: () -> Content
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    }
+
+    var body: some View {
+        content()
+            .background {
+                ZStack {
+                    shape.fill(.ultraThinMaterial)
+                    Group {
+                        switch theme {
+                        case .glass:
+                            GlassChromeOverlay(accent: accent)
+                        case .solid:
+                            SolidChromeOverlay(accent: accent)
+                        }
+                    }
+                    .opacity(subtle ? 0.38 : 1)
+                    .clipShape(shape)
+                    shape.fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(subtle ? 0.06 : 0.10),
+                                Color.white.opacity(subtle ? 0.01 : 0.02),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                }
+            }
+            .overlay(
+                shape.strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(subtle ? 0.14 : 0.22),
+                            Color.white.opacity(0.05),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 1
+                )
+            )
+            .shadow(
+                color: Color.black.opacity(subtle ? 0.32 : 0.42),
+                radius: subtle ? 14 : 22,
+                x: 0,
+                y: subtle ? 5 : 8
+            )
+            .shadow(
+                color: accent.opacity(subtle ? 0 : 0.16),
+                radius: 16,
+                x: 0,
+                y: 4
+            )
+    }
+}
