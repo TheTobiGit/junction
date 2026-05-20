@@ -126,6 +126,11 @@ enum JunctionCLI {
         var incognitoTarget: String? = nil
         var scheme: String? = nil
         var cleanOverride: Bool? = nil
+        var pathPrefix: String? = nil
+        var pathContains: String? = nil
+        var pathRegex: String? = nil
+        var pathGlob: String? = nil
+        var sourceApps: [String] = []
 
         var i = 0
         while i < args.count {
@@ -151,6 +156,21 @@ enum JunctionCLI {
                 cleanOverride = true; i += 1
             case "--no-clean":
                 cleanOverride = false; i += 1
+            case "--path-prefix":
+                guard i + 1 < args.count else { throw CLIError(message: "--path-prefix requires a value") }
+                pathPrefix = args[i + 1]; i += 2
+            case "--path-contains":
+                guard i + 1 < args.count else { throw CLIError(message: "--path-contains requires a value") }
+                pathContains = args[i + 1]; i += 2
+            case "--path-regex":
+                guard i + 1 < args.count else { throw CLIError(message: "--path-regex requires a value") }
+                pathRegex = args[i + 1]; i += 2
+            case "--path-glob":
+                guard i + 1 < args.count else { throw CLIError(message: "--path-glob requires a value") }
+                pathGlob = args[i + 1]; i += 2
+            case "--from":
+                guard i + 1 < args.count else { throw CLIError(message: "--from requires a bundle ID") }
+                sourceApps.append(args[i + 1]); i += 2
             default:
                 if hostValue == nil { hostValue = a } else {
                     throw CLIError(message: "unexpected argument: \(a)")
@@ -160,7 +180,12 @@ enum JunctionCLI {
         }
 
         guard let value = hostValue else {
-            throw CLIError(message: "missing host (usage: junction rules add <host> [--suffix|--equals|--regex] [--in <target>|--ask|--block|--incognito <target>|--scheme <name>] [--clean|--no-clean])")
+            throw CLIError(message: "missing host (usage: junction rules add <host> [--suffix|--equals|--regex] [--in <target>|--ask|--block|--incognito <target>|--scheme <name>] [--clean|--no-clean] [--path-prefix|--path-contains|--path-regex|--path-glob <value>])")
+        }
+
+        let pathFlagCount = [pathPrefix, pathContains, pathRegex, pathGlob].compactMap { $0 }.count
+        guard pathFlagCount <= 1 else {
+            throw CLIError(message: "specify at most one of --path-prefix, --path-contains, --path-regex, --path-glob")
         }
 
         let resolvedTarget: String?
@@ -180,11 +205,22 @@ enum JunctionCLI {
             resolvedTarget = target
         }
 
+        let resolvedPathKind: String?
+        let resolvedPathValue: String?
+        if let v = pathPrefix { resolvedPathKind = "prefix"; resolvedPathValue = v }
+        else if let v = pathContains { resolvedPathKind = "contains"; resolvedPathValue = v }
+        else if let v = pathRegex { resolvedPathKind = "regex"; resolvedPathValue = v }
+        else if let v = pathGlob { resolvedPathKind = "glob"; resolvedPathValue = v }
+        else { resolvedPathKind = nil; resolvedPathValue = nil }
+
         let response = try sendRequest(.addRule(
             hostKind: hostKind,
             hostValue: value,
             target: resolvedTarget,
-            cleanOverride: cleanOverride
+            cleanOverride: cleanOverride,
+            pathKind: resolvedPathKind,
+            pathValue: resolvedPathValue,
+            sourceApps: sourceApps.isEmpty ? nil : sourceApps
         ))
         switch response {
         case .ok(let m): if let m { print(m) }
@@ -402,6 +438,8 @@ enum JunctionCLI {
                             (--in <target> | --ask | --block
                              | --incognito <target> | --scheme <name>)
                             [--clean|--no-clean]
+                            [--path-prefix|--path-contains|--path-regex|--path-glob <value>]
+                            [--from <bundleID> ...]
           junction rules remove <host>
           junction targets
           junction ping

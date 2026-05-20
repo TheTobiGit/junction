@@ -22,7 +22,7 @@ struct HintPill: View {
 }
 
 enum PickerShortcutHelp {
-    static let picker: String = [
+    static let pickerEntries: [String] = [
         "␣ preview",
         "↵ open · ⌘↵ open + remember · ⌥↵ open private",
         "← → or 1-9 switch",
@@ -30,13 +30,18 @@ enum PickerShortcutHelp {
         "⌘C copy cleaned URL · ⌘⇧C copy as Markdown",
         "⌥P toggle private",
         "⎋ close",
-    ].joined(separator: " • ")
+        "? shortcuts",
+    ]
 
-    static let preview: String = [
+    static let previewEntries: [String] = [
         "␣ back · ⎋ back",
         "↵ open · ⌘↵ open + remember · ⌥↵ open private",
         "⌘← ⌘→ or ⌘1-9 switch",
         "⌘C copy cleaned URL · ⌘⇧C copy as Markdown",
         "⌥P toggle private",
-    ].joined(separator: " • ")
+        "? shortcuts",
+    ]
+
+    static let picker: String = pickerEntries.joined(separator: " • ")
+    static let preview: String = previewEntries.joined(separator: " • ")
 }

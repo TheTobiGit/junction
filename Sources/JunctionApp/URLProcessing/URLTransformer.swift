@@ -45,12 +45,47 @@ struct URLTransformPipeline {
 }
 
 enum URLTransformers {
+    internal static var settingsProvider: () -> JunctionSettings = { SettingsStore.shared.settings }
+
     static var `default`: URLTransformPipeline {
-        URLTransformPipeline(transformers: [
+        let settings = settingsProvider()
+        return URLTransformPipeline(transformers: [
             OutgoingRedirectUnwrapper(),
-            RedirectTransformer(redirects: SettingsStore.shared.settings.redirects),
+            RedirectTransformer(redirects: settings.redirects),
             AMPCollapser(),
-            TrackerStripper()
+            TrackerStripper(overrides: settings.trackerOverrides)
+        ])
+    }
+
+    /// URL after redirect/AMP normalization but **before** global tracker stripping.
+    /// Rule matching must use this so `queryContains` and per-rule `trackerOverrides`
+    /// are evaluated against the original query string.
+    static func urlForRuleMatching(_ url: URL) -> URL {
+        let settings = settingsProvider()
+        return URLTransformPipeline(transformers: [
+            OutgoingRedirectUnwrapper(),
+            RedirectTransformer(redirects: settings.redirects),
+            AMPCollapser(),
+        ]).run(url)
+    }
+
+    static func pipeline(globalOverrides: TrackerOverrides, ruleOverrides: TrackerOverrides?) -> URLTransformPipeline {
+        let settings = settingsProvider()
+        let trackerStripper: TrackerStripper
+        if let ruleOverrides {
+            let merged = TrackerOverrides(
+                additions: globalOverrides.additions + ruleOverrides.additions,
+                disabled: globalOverrides.disabled + ruleOverrides.disabled
+            )
+            trackerStripper = TrackerStripper(overrides: merged, identifier: "rule-tracker-stripper")
+        } else {
+            trackerStripper = TrackerStripper(overrides: globalOverrides)
+        }
+        return URLTransformPipeline(transformers: [
+            OutgoingRedirectUnwrapper(),
+            RedirectTransformer(redirects: settings.redirects),
+            AMPCollapser(),
+            trackerStripper
         ])
     }
 }

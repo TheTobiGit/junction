@@ -21,12 +21,11 @@ final class RoutingHistory: ObservableObject {
         let originalURL: String
         let cleanedURL: String
         let outcome: Outcome
-        /// Bundle ID of the launched app, when applicable.
         let targetBundleID: String?
-        /// Display label of the rule that fired (if any).
         let ruleLabel: String?
-        /// Identifiers of transformers that modified the URL ("tracker-stripper", …).
         let cleaningSteps: [String]
+        var sourceBundleID: String? = nil
+        var targetStorageKey: String? = nil
 
         var didClean: Bool { originalURL != cleanedURL }
     }
@@ -35,10 +34,13 @@ final class RoutingHistory: ObservableObject {
 
     @Published private(set) var entries: [Entry] = []
 
+    var historyEnabledProvider: () -> Bool = { SettingsStore.shared.settings.historyEnabled }
+
     private let queue = DispatchQueue(label: "dev.gideonsarfo.Junction.history")
+    let persistQueue = DispatchQueue(label: "dev.gideonsarfo.Junction.history.persist")
     private let fileURL: URL
 
-    private init(fileURL: URL? = nil) {
+    init(fileURL: URL? = nil) {
         let fm = FileManager.default
         let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let dir = base.appendingPathComponent("Junction", isDirectory: true)
@@ -53,12 +55,14 @@ final class RoutingHistory: ObservableObject {
         outcome: Outcome,
         targetBundleID: String? = nil,
         ruleLabel: String? = nil,
-        openedURL: URL? = nil
+        openedURL: URL? = nil,
+        sourceBundleID: String? = nil,
+        targetStorageKey: String? = nil
     ) {
         // Honor the user's privacy preference: when history is off we drop new
         // entries on the floor. The on-disk file is left as-is until the user
         // explicitly clears it.
-        guard SettingsStore.shared.settings.historyEnabled else { return }
+        guard historyEnabledProvider() else { return }
 
         // Activity / Recent re-open the URL we record here, so it has to be
         // the URL we *actually* opened. When cleaning was disabled (globally
@@ -73,7 +77,9 @@ final class RoutingHistory: ObservableObject {
             outcome: outcome,
             targetBundleID: targetBundleID,
             ruleLabel: ruleLabel,
-            cleaningSteps: result.steps.map(\.identifier)
+            cleaningSteps: result.steps.map(\.identifier),
+            sourceBundleID: sourceBundleID,
+            targetStorageKey: targetStorageKey
         )
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
@@ -96,7 +102,7 @@ final class RoutingHistory: ObservableObject {
 
     private func persist(_ entries: [Entry]) {
         let url = fileURL
-        queue.async {
+        persistQueue.async {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601

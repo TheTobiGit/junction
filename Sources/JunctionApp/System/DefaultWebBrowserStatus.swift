@@ -1,9 +1,10 @@
 import AppKit
 import Foundation
 
-enum DefaultWebBrowserStatus {
-    /// `true` when this app’s bundle ID is the default handler for both `http` and `https`.
-    static var isJunctionDefaultForHTTPAndHTTPS: Bool {
+struct DefaultWebBrowserStatus {
+    var isJunctionDefaultForHTTPAndHTTPS: Bool
+
+    static var current: DefaultWebBrowserStatus {
         let bid = Bundle.main.bundleIdentifier ?? "dev.gideonsarfo.Junction"
         guard
             let httpsApp = NSWorkspace.shared.urlForApplication(toOpen: URL(string: "https://example.com")!),
@@ -11,8 +12,8 @@ enum DefaultWebBrowserStatus {
             let httpsBID = Bundle(url: httpsApp)?.bundleIdentifier,
             let httpBID = Bundle(url: httpApp)?.bundleIdentifier
         else {
-            return false
+            return DefaultWebBrowserStatus(isJunctionDefaultForHTTPAndHTTPS: false)
         }
-        return httpsBID == bid && httpBID == bid
+        return DefaultWebBrowserStatus(isJunctionDefaultForHTTPAndHTTPS: httpsBID == bid && httpBID == bid)
     }
 }

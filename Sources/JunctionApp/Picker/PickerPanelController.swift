@@ -2,6 +2,10 @@ import AppKit
 import SwiftUI
 import Combine
 
+private extension CGRect {
+    var area: CGFloat { width * height }
+}
+
 final class KeyablePanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
@@ -22,9 +26,11 @@ final class PickerPanelController {
     private var hosting: NSHostingView<PickerView>?
     private var resignMonitor: Any?
     private var globalClickMonitor: Any?
+    private var moveObserver: Any?
     private var previewObserver: AnyCancellable?
     private var pickerSize: CGSize = .zero
     private var isDismissed: Bool = false
+    private var isInPreviewMode: Bool = false
 
     func present(url: URL, context: RouteContext, onOpenPreferences: (() -> Void)? = nil) {
         if panel != nil { dismiss(reason: .userCancelled) }
@@ -33,13 +39,26 @@ final class PickerPanelController {
         let openOnce: (LaunchOption, Bool) -> Void = { option, incognito in
             // Resolve the cleaning flag the same way ``AppDelegate.routeAfterExpansion``
             // does so picker-confirmed opens behave identically to rule-driven
-            // opens. Look up the matching rule for the cleaned URL — that's
-            // what we'd be opening when cleaning is on, so it's the right key.
-            let trace = URLTransformers.default.runTraced(url)
-            let match = RulesStore.shared.match(url: trace.final, context: context)
+            // opens. Match before global tracker stripping so query-scoped rules
+            // and per-rule tracker overrides are found correctly.
+            let globalSettings = SettingsStore.shared.settings
+            let globalTrace = URLTransformers.default.runTraced(url)
+            let match = RulesStore.shared.match(
+                url: URLTransformers.urlForRuleMatching(url),
+                context: context
+            )
+            let trace: URLTransformResult
+            if let ruleOverrides = match.rule?.trackerOverrides {
+                trace = URLTransformers.pipeline(
+                    globalOverrides: globalSettings.trackerOverrides,
+                    ruleOverrides: ruleOverrides
+                ).runTraced(url)
+            } else {
+                trace = globalTrace
+            }
             let shouldClean = DomainRule.resolveCleanFlag(
                 rule: match.rule,
-                globalEnabled: SettingsStore.shared.settings.cleanURLsBeforeOpening
+                globalEnabled: globalSettings.cleanURLsBeforeOpening
             )
             let urlToOpen = shouldClean ? trace.final : url
             URLOpener.open(urlToOpen, with: option, incognito: incognito) { success in
@@ -54,7 +73,9 @@ final class PickerPanelController {
                         outcome: incognito ? .openedIncognito : .opened,
                         targetBundleID: option.browser.bundleID,
                         ruleLabel: "picker",
-                        openedURL: urlToOpen
+                        openedURL: urlToOpen,
+                        sourceBundleID: context.source?.bundleID,
+                        targetStorageKey: option.target.storageKey
                     )
                 }
             }
@@ -115,19 +136,35 @@ final class PickerPanelController {
             ])
         }
 
-        panel.center()
+        let savedFrame = SettingsStore.shared.settings.pickerFrame
+        if let saved = savedFrame {
+            let clamped = clampToScreen(saved)
+            panel.setFrame(clamped, display: true)
+        } else {
+            panel.center()
+        }
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
 
         self.panel = panel
         self.hosting = host
         self.pickerSize = CGSize(width: width, height: PickerView.pickerHeight)
+        self.isInPreviewMode = false
 
         previewObserver = model.$previewMode
             .removeDuplicates()
             .sink { [weak self] inPreview in
+                self?.isInPreviewMode = inPreview
                 self?.resize(forPreview: inPreview)
             }
+
+        moveObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didMoveNotification,
+            object: panel,
+            queue: .main
+        ) { [weak self] _ in
+            self?.persistPickerFrame()
+        }
 
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
@@ -157,10 +194,20 @@ final class PickerPanelController {
         panel.animator().setFrame(clamped, display: true, animate: true)
     }
 
-    private func clampToScreen(_ frame: NSRect) -> NSRect {
-        guard let screen = panel?.screen ?? NSScreen.main else { return frame }
-        let visible = screen.visibleFrame
+    func clampToScreen(_ frame: NSRect, screens: [NSScreen] = NSScreen.screens) -> NSRect {
         let inset = Self.screenInsets
+        let candidates = screens.isEmpty ? [NSScreen.main].compactMap { $0 } : screens
+
+        for screen in candidates where screen.visibleFrame.contains(frame) {
+            return frame
+        }
+
+        let target = candidates.max(by: {
+            $0.visibleFrame.intersection(frame).area < $1.visibleFrame.intersection(frame).area
+        }) ?? candidates.first
+
+        guard let visible = target?.visibleFrame else { return frame }
+
         var out = frame
         if out.width > visible.width { out.size.width = visible.width }
         if out.height > visible.height { out.size.height = visible.height }
@@ -180,6 +227,8 @@ final class PickerPanelController {
         isDismissed = true
         _ = reason
 
+        persistPickerFrame()
+
         previewObserver?.cancel()
         previewObserver = nil
         if let token = globalClickMonitor {
@@ -190,8 +239,18 @@ final class PickerPanelController {
             NotificationCenter.default.removeObserver(token)
             resignMonitor = nil
         }
+        if let token = moveObserver {
+            NotificationCenter.default.removeObserver(token)
+            moveObserver = nil
+        }
         panel?.orderOut(nil)
         panel = nil
         hosting = nil
+    }
+
+    private func persistPickerFrame() {
+        guard !isInPreviewMode, let panel else { return }
+        let frame = CGRect(origin: panel.frame.origin, size: pickerSize)
+        SettingsStore.shared.settings.pickerFrame = frame
     }
 }

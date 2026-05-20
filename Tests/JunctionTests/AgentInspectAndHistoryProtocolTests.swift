@@ -105,11 +105,14 @@ final class AgentInspectAndHistoryProtocolTests: XCTestCase {
                 hostKind: "equals",
                 hostValue: "internal.example.com",
                 target: "app:com.apple.Safari",
-                cleanOverride: value
+                cleanOverride: value,
+                pathKind: nil,
+                pathValue: nil,
+                sourceApps: nil
             )
             let data = try encoder.encode(original)
             let decoded = try decoder.decode(AgentRequest.self, from: data)
-            guard case .addRule(_, _, _, let decodedOverride) = decoded else {
+            guard case .addRule(_, _, _, let decodedOverride, _, _, _) = decoded else {
                 return XCTFail("expected .addRule")
             }
             XCTAssertEqual(decodedOverride, value, "for cleanOverride=\(String(describing: value))")
@@ -121,13 +124,16 @@ final class AgentInspectAndHistoryProtocolTests: XCTestCase {
         {"kind":"addRule","hostKind":"equals","hostValue":"example.com","target":null}
         """#.data(using: .utf8)!
         let decoded = try decoder.decode(AgentRequest.self, from: json)
-        guard case .addRule(let kind, let host, let target, let cleanOverride) = decoded else {
+        guard case .addRule(let kind, let host, let target, let cleanOverride, let pathKind, let pathValue, let sourceApps) = decoded else {
             return XCTFail("expected .addRule")
         }
         XCTAssertEqual(kind, "equals")
         XCTAssertEqual(host, "example.com")
         XCTAssertNil(target)
         XCTAssertNil(cleanOverride)
+        XCTAssertNil(pathKind)
+        XCTAssertNil(pathValue)
+        XCTAssertNil(sourceApps)
     }
 
     // MARK: - AgentRuleSummary cleanOverride forward-compat

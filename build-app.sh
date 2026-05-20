@@ -54,6 +54,7 @@ mkdir -p "${APP_BUNDLE}/Contents/Resources"
 
 cp "${APP_EXEC_SRC}" "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
 cp "Resources/Info.plist" "${APP_BUNDLE}/Contents/Info.plist"
+cp "Resources/Readability.js" "${APP_BUNDLE}/Contents/Resources/Readability.js"
 
 cat > "${APP_BUNDLE}/Contents/PkgInfo" <<EOF
 APPL????
