@@ -147,6 +147,7 @@ final class PickerKeyHandlerTests: XCTestCase {
             XCTAssertTrue(entries.contains(entry), "cheatSheetEntries missing picker entry: \(entry)")
         }
         XCTAssertEqual(entries.count, PickerShortcutHelp.pickerEntries.count)
+        XCTAssertEqual(model.cheatSheetRows.count, PickerShortcutHelp.pickerCheatRows.count)
     }
 
     // MARK: - VAL-M6-CHEAT-007
@@ -159,6 +160,7 @@ final class PickerKeyHandlerTests: XCTestCase {
             XCTAssertTrue(entries.contains(entry), "cheatSheetEntries missing preview entry: \(entry)")
         }
         XCTAssertEqual(entries.count, PickerShortcutHelp.previewEntries.count)
+        XCTAssertEqual(model.cheatSheetRows.count, PickerShortcutHelp.previewCheatRows.count)
     }
 
     // MARK: - VAL-CROSS-006

@@ -391,10 +391,6 @@ struct PreferencesView: View {
                     Toggle("", isOn: $settings.settings.historyEnabled).labelsHidden().toggleStyle(.switch)
                 }
             }
-
-            section("Diagnostics") {
-                URLInspectorCard()
-            }
         }
     }
 

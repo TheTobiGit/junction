@@ -448,13 +448,14 @@ struct PickerView: View {
     }
 
     private var hintSegments: some View {
-        HStack(alignment: .center, spacing: 10) {
-            HintPill(key: "␣", label: "Preview")
-            HintPill(key: "↵", label: "Open")
-            HintPill(key: "⌥", label: "Private")
-            HintPill(key: "1-9", label: "Switch")
-        }
-        .help(PickerShortcutHelp.picker)
+        PickerShortcutFooter(
+            hints: PickerShortcutHelp.pickerFooterHints,
+            fullHelp: PickerShortcutHelp.picker,
+            cheatSheetVisible: Binding(
+                get: { model.cheatSheetVisible },
+                set: { model.cheatSheetVisible = $0 }
+            )
+        )
     }
 }
 
@@ -464,7 +465,10 @@ private extension RiskLevel {
 
 private struct CheatSheetOverlay: View {
     @ObservedObject var model: PickerViewModel
+    @ObservedObject private var appSettings = SettingsStore.shared
 
+    private var accent: Color { appSettings.settings.accentPreset.swiftUIColor }
+    private var theme: ChromeTheme { appSettings.settings.chromeTheme }
     var body: some View {
         ZStack {
             Color.black.opacity(0.55)
@@ -472,29 +476,27 @@ private struct CheatSheetOverlay: View {
                     model.cheatSheetVisible = false
                 }
 
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Keyboard Shortcuts")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.primary)
-                    .padding(.bottom, 2)
+            PickerGlassPanel(theme: theme, accent: accent, cornerRadius: 20, subtle: true) {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Keyboard Shortcuts")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.primary)
 
-                ForEach(model.cheatSheetEntries, id: \.self) { entry in
-                    Text(entry)
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                }
-            }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 18)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color(NSColor.windowBackgroundColor).opacity(0.96))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                    CheatSheetGrid(
+                        rows: model.cheatSheetRows,
+                        keyWidth: 80,
+                        labelWidth: 210,
+                        rowSpacing: 8,
+                        columnGap: 28
                     )
-            )
-            .shadow(color: Color.black.opacity(0.4), radius: 20, x: 0, y: 6)
+                }
+                .padding(.horizontal, 28)
+                .padding(.top, 22)
+                .padding(.bottom, 20)
+                .fixedSize(horizontal: true, vertical: true)
+            }
+            .fixedSize(horizontal: true, vertical: true)
+            .shadow(color: Color.black.opacity(0.45), radius: 24, x: 0, y: 8)
         }
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
@@ -876,11 +878,6 @@ private final class KeyCatcherView: NSView {
                     model.moveSelection(1); return nil
                 default: break
                 }
-                if cmd && shift,
-                   event.charactersIgnoringModifiers?.lowercased() == "c" {
-                    model.copyAsMarkdown()
-                    return nil
-                }
                 if cmd && !shift,
                    event.charactersIgnoringModifiers?.lowercased() == "c" {
                     model.copyCleanedURL()
@@ -929,11 +926,6 @@ private final class KeyCatcherView: NSView {
                 )
                 return nil
             default: break
-            }
-            if modifiers == [.command, .shift],
-               event.charactersIgnoringModifiers?.lowercased() == "c" {
-                model.copyAsMarkdown()
-                return nil
             }
             if modifiers == .command,
                event.charactersIgnoringModifiers?.lowercased() == "c" {
