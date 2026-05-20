@@ -373,6 +373,34 @@ final class LaunchOptionGroupingTests: XCTestCase {
         XCTAssertEqual(idx, 0, "Group header row must fall back to fallback option's index")
     }
 
+    // Using the dragged item as fallback on a group header yields its current index (no-op).
+    func test_resolveDestinationIndex_groupHeaderRow_sourceFallbackIsNoOp() {
+        let chrome = makeBrowser(bundleID: "com.google.Chrome", name: "Chrome")
+        let safari = makeBrowser(bundleID: "com.apple.Safari", name: "Safari")
+
+        let chromeDefault = LaunchOption(browser: chrome, profile: makeProfile("Default", "Default"))
+        let chromeWork = LaunchOption(browser: chrome, profile: makeProfile("Work", "Work"))
+        let safariApp = LaunchOption(browser: safari, profile: nil)
+
+        let flat = [chromeDefault, chromeWork, safariApp]
+        let rowOptions: [LaunchOption?] = [nil, safariApp]
+
+        let wrongIdx = LaunchOptionGrouping.resolveDestinationIndex(
+            destination: 0,
+            rowUnderlyingOptions: rowOptions,
+            flat: flat,
+            fallback: safariApp
+        )
+        let correctIdx = LaunchOptionGrouping.resolveDestinationIndex(
+            destination: 0,
+            rowUnderlyingOptions: rowOptions,
+            flat: flat,
+            fallback: chromeDefault
+        )
+        XCTAssertEqual(wrongIdx, 2, "Source-as-fallback resolves to source index (no move)")
+        XCTAssertEqual(correctIdx, 0, "Group anchor must resolve to first profile in that browser")
+    }
+
     // MARK: - Helpers
 
     private func makeBrowser(bundleID: String, name: String) -> Browser {

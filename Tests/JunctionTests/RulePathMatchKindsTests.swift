@@ -36,6 +36,10 @@ final class RulePathMatchKindsTests: XCTestCase {
         XCTAssertEqual(rule.path, .regex("^/orgs/"))
     }
 
+    func test_invalidPathRegexFailsCompilation() {
+        XCTAssertNil(try? NSRegularExpression(pattern: "[unclosed"))
+    }
+
     func test_builderEmitsGlob_VAL_M1_RULE_PATH_002() {
         let rule = DomainRule(host: .suffix("github.com"), action: .ask, path: .glob("/orgs/*"))
         XCTAssertEqual(rule.path, .glob("/orgs/*"))

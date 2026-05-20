@@ -3,6 +3,7 @@ import Foundation
 struct KeyEvent: Codable {
     let characters: String?
     let keyCode: UInt16
+    var shift: Bool = false
 }
 
 struct KeyHandlerOutcome {
@@ -17,7 +18,7 @@ enum PickerKeyHandler {
     // VAL-M6-CHEAT-004: Escape with sheet hidden signals not-consumed / dismiss-picker
     // VAL-M6-CHEAT-005: Number keys 1-9 pass through (not consumed) so existing logic picks options
     static func handle(event: KeyEvent, model: PickerViewModel) -> KeyHandlerOutcome {
-        if event.characters == "?" {
+        if isCheatSheetToggle(event) {
             model.cheatSheetVisible.toggle()
             return KeyHandlerOutcome(consumed: true, dismiss: false)
         }
@@ -31,5 +32,12 @@ enum PickerKeyHandler {
         }
 
         return KeyHandlerOutcome(consumed: false, dismiss: false)
+    }
+
+    /// US and most layouts: ? is Shift+/ (keyCode 44). `characters` carries "?";
+    /// `charactersIgnoringModifiers` is "/".
+    private static func isCheatSheetToggle(_ event: KeyEvent) -> Bool {
+        if event.characters == "?" { return true }
+        return event.keyCode == 44 && event.shift
     }
 }

@@ -37,6 +37,10 @@ final class PickerKeyHandlerTests: XCTestCase {
         KeyEvent(characters: "?", keyCode: 44)
     }
 
+    private func shiftSlashEvent() -> KeyEvent {
+        KeyEvent(characters: "/", keyCode: 44, shift: true)
+    }
+
     private func escapeEvent() -> KeyEvent {
         KeyEvent(characters: nil, keyCode: 53)
     }
@@ -54,6 +58,25 @@ final class PickerKeyHandlerTests: XCTestCase {
         XCTAssertTrue(model.cheatSheetVisible)
         XCTAssertTrue(outcome.consumed)
         XCTAssertFalse(outcome.dismiss)
+    }
+
+    func test_shiftSlashTogglesCheatSheetOn() {
+        let model = makeModel()
+        XCTAssertFalse(model.cheatSheetVisible)
+        let outcome = PickerKeyHandler.handle(event: shiftSlashEvent(), model: model)
+        XCTAssertTrue(model.cheatSheetVisible)
+        XCTAssertTrue(outcome.consumed)
+        XCTAssertFalse(outcome.dismiss)
+    }
+
+    func test_unshiftedSlashDoesNotToggleCheatSheet() {
+        let model = makeModel()
+        let outcome = PickerKeyHandler.handle(
+            event: KeyEvent(characters: "/", keyCode: 44, shift: false),
+            model: model
+        )
+        XCTAssertFalse(model.cheatSheetVisible)
+        XCTAssertFalse(outcome.consumed)
     }
 
     // MARK: - VAL-M6-CHEAT-002

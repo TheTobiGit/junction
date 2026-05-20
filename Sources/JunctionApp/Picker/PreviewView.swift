@@ -162,7 +162,7 @@ struct PreviewView: View {
     }
 
     private var browserDock: some View {
-        let options = model.filteredOptions
+        let options = model.visibleFlatOptions
         let privateActive = model.incognitoMode || model.optionKeyHeld
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
