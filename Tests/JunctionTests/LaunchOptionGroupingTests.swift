@@ -177,6 +177,21 @@ final class LaunchOptionGroupingTests: XCTestCase {
         XCTAssertEqual(visible[2].id, firefoxApp.id, "Slot 3: Firefox")
     }
 
+    func test_allGroupIDs_includesEveryMultiProfileBrowser() {
+        let chrome = makeBrowser(bundleID: "com.google.Chrome", name: "Chrome")
+        let edge = makeBrowser(bundleID: "com.microsoft.edgemac", name: "Edge")
+
+        let chromeDefault = LaunchOption(browser: chrome, profile: makeProfile("Default", "Default"))
+        let chromeWork = LaunchOption(browser: chrome, profile: makeProfile("Work", "Work"))
+        let edgeDefault = LaunchOption(browser: edge, profile: makeProfile("Default", "Default"))
+        let edgeWork = LaunchOption(browser: edge, profile: makeProfile("Work", "Work"))
+
+        let grouped = LaunchOptionGrouping.group(options: [chromeDefault, chromeWork, edgeDefault, edgeWork])
+        let ids = LaunchOptionGrouping.allGroupIDs(grouped: grouped)
+
+        XCTAssertEqual(ids, ["group:com.google.Chrome", "group:com.microsoft.edgemac"])
+    }
+
     func test_pickByNumber_expandedGroup_exposesChildren_VAL_M5_COLLAPSE_005() {
         let chrome = makeBrowser(bundleID: "com.google.Chrome", name: "Chrome")
         let safari = makeBrowser(bundleID: "com.apple.Safari", name: "Safari")
@@ -352,6 +367,43 @@ final class LaunchOptionGroupingTests: XCTestCase {
     }
 
     // Group header row (nil underlying option) falls back to the provided fallback option.
+    func test_flatMoveSourceIndices_groupHeader_movesAllProfiles() {
+        let chrome = makeBrowser(bundleID: "com.google.Chrome", name: "Chrome")
+        let safari = makeBrowser(bundleID: "com.apple.Safari", name: "Safari")
+
+        let chromeDefault = LaunchOption(browser: chrome, profile: makeProfile("Default", "Default"))
+        let chromeWork = LaunchOption(browser: chrome, profile: makeProfile("Work", "Work"))
+        let safariApp = LaunchOption(browser: safari, profile: nil)
+
+        let flat = [chromeDefault, chromeWork, safariApp]
+        let indices = LaunchOptionGrouping.flatMoveSourceIndices(
+            sourceRowIndices: IndexSet(integer: 0),
+            groupBundleIDAtRow: { $0 == 0 ? chrome.bundleID : nil },
+            optionAtRow: { _ in nil },
+            in: flat
+        )
+
+        XCTAssertEqual(indices, IndexSet([0, 1]))
+    }
+
+    func test_flatMoveSourceIndices_profileRow_movesSingleTarget() {
+        let chrome = makeBrowser(bundleID: "com.google.Chrome", name: "Chrome")
+        let chromeWork = LaunchOption(browser: chrome, profile: makeProfile("Work", "Work"))
+        let flat = [
+            LaunchOption(browser: chrome, profile: makeProfile("Default", "Default")),
+            chromeWork,
+        ]
+
+        let indices = LaunchOptionGrouping.flatMoveSourceIndices(
+            sourceRowIndices: IndexSet(integer: 1),
+            groupBundleIDAtRow: { _ in nil },
+            optionAtRow: { $0 == 1 ? chromeWork : nil },
+            in: flat
+        )
+
+        XCTAssertEqual(indices, IndexSet(integer: 1))
+    }
+
     func test_resolveDestinationIndex_groupHeaderRow_usesFallback() {
         let chrome = makeBrowser(bundleID: "com.google.Chrome", name: "Chrome")
         let safari = makeBrowser(bundleID: "com.apple.Safari", name: "Safari")

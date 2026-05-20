@@ -30,7 +30,6 @@ final class PickerViewModel: ObservableObject {
     @Published var showQRSheet: Bool = false
     @Published private(set) var qrImage: CGImage? = nil
     var qrImageProvider: (String) -> CGImage? = QRCodeGenerator.generate(from:)
-    @Published var expandedGroupIDs: Set<String> = []
     @Published var cheatSheetVisible: Bool = false
 
     private let pickHandler: (LaunchOption, Bool, Bool) -> Void
@@ -88,11 +87,6 @@ final class PickerViewModel: ObservableObject {
         self.pickMultiHandler = onPickMulti
         self.cancelHandler = onCancel
         self.openPreferencesHandler = onOpenPreferences
-        let grouped = LaunchOptionGrouping.group(options: options)
-        self.expandedGroupIDs = LaunchOptionGrouping.defaultExpandedGroupIDs(
-            grouped: grouped,
-            pinnedTargetKey: SettingsStore.shared.settings.pinnedTargetKey
-        )
         loadPreview()
         loadHostFavicon()
     }
@@ -293,16 +287,8 @@ final class PickerViewModel: ObservableObject {
     var visibleFlatOptions: [LaunchOption] {
         LaunchOptionGrouping.visibleOptions(
             grouped: groupedFilteredOptions,
-            expandedGroupIDs: expandedGroupIDs
+            expandedGroupIDs: LaunchOptionGrouping.allGroupIDs(grouped: groupedFilteredOptions)
         )
-    }
-
-    func toggleGroupExpansion(_ groupID: String) {
-        if expandedGroupIDs.contains(groupID) {
-            expandedGroupIDs.remove(groupID)
-        } else {
-            expandedGroupIDs.insert(groupID)
-        }
     }
 
     func selectedOption() -> LaunchOption? {
