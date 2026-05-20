@@ -37,7 +37,8 @@ final class RulePathMatchKindsTests: XCTestCase {
     }
 
     func test_invalidPathRegexFailsCompilation() {
-        XCTAssertNil(try? NSRegularExpression(pattern: "[unclosed"))
+        XCTAssertFalse(URLPathMatch.isValidRegexPattern("[unclosed"))
+        XCTAssertTrue(URLPathMatch.isValidRegexPattern("^/v[0-9]+"))
     }
 
     func test_builderEmitsGlob_VAL_M1_RULE_PATH_002() {
@@ -86,6 +87,32 @@ final class RulePathMatchKindsTests: XCTestCase {
     func test_kindLabel_includesPathKind_VAL_M1_RULE_PATH_004() {
         let rule = DomainRule(host: .suffix("github.com"), action: .ask, path: .prefix("/orgs"))
         XCTAssertTrue(rule.kindLabel.contains("prefix"), "kindLabel '\(rule.kindLabel)' should contain 'prefix'")
+    }
+
+    func test_rulesRowDisplayValue_includesPathAndSourceApp() {
+        let rule = DomainRule(
+            host: .suffix("github.com"),
+            action: .ask,
+            when: RuleCondition(sourceApp: ["com.tinyspeck.slackmacgap"]),
+            path: .prefix("/orgs")
+        )
+        XCTAssertEqual(
+            rule.rulesRowDisplayValue,
+            "github.com · prefix:/orgs · from:com.tinyspeck.slackmacgap"
+        )
+    }
+
+    func test_pathPrefixCoversNarrowerPrefix() {
+        XCTAssertTrue(URLPathMatch.prefix("/orgs").covers(.prefix("/orgs/acme")))
+        XCTAssertFalse(URLPathMatch.prefix("/orgs/acme").covers(.prefix("/orgs")))
+    }
+
+    func test_pathPrefixDoesNotCoverContainsWhenPatternOverlaps() {
+        XCTAssertFalse(URLPathMatch.prefix("/docs").covers(.contains("/docs")))
+    }
+
+    func test_pathContainsCoversNarrowerPrefix() {
+        XCTAssertTrue(URLPathMatch.contains("/docs").covers(.prefix("/docs/guide")))
     }
 
     func test_kindLabel_urlEqualsUnchanged_VAL_M1_RULE_PATH_004() {

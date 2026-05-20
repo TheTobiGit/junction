@@ -846,14 +846,14 @@ struct PreferencesView: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 48, alignment: .leading)
 
-            Text(rule.displayValue)
+            Text(rule.rulesRowDisplayValue)
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundStyle(rule.enabled ? .primary : Color.primary.opacity(0.5))
                 .strikethrough(!rule.enabled, color: .secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .help(rule.displayValue)
+                .help(rule.rulesRowDisplayValue)
 
             actionLabel(rule.action, compact: true)
                 .foregroundStyle(.secondary)

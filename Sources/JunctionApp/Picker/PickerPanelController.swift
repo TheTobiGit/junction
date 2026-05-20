@@ -39,11 +39,14 @@ final class PickerPanelController {
         let openOnce: (LaunchOption, Bool) -> Void = { option, incognito in
             // Resolve the cleaning flag the same way ``AppDelegate.routeAfterExpansion``
             // does so picker-confirmed opens behave identically to rule-driven
-            // opens. Look up the matching rule for the cleaned URL — that's
-            // what we'd be opening when cleaning is on, so it's the right key.
+            // opens. Match before global tracker stripping so query-scoped rules
+            // and per-rule tracker overrides are found correctly.
             let globalSettings = SettingsStore.shared.settings
             let globalTrace = URLTransformers.default.runTraced(url)
-            let match = RulesStore.shared.match(url: globalTrace.final, context: context)
+            let match = RulesStore.shared.match(
+                url: URLTransformers.urlForRuleMatching(url),
+                context: context
+            )
             let trace: URLTransformResult
             if let ruleOverrides = match.rule?.trackerOverrides {
                 trace = URLTransformers.pipeline(

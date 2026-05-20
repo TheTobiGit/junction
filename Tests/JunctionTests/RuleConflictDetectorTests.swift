@@ -255,4 +255,30 @@ final class RuleConflictDetectorTests: XCTestCase {
         let shadowed = RuleConflictDetector.shadowed(rules: [r1, r2])
         XCTAssertTrue(shadowed.contains(r2.id))
     }
+
+    // Additional: nested path prefix — broader prefix shadows narrower prefix
+    func test_nestedPathPrefixEarlier_shadowsNarrowerLater() {
+        let r1 = rule(host: .suffix("github.com"), path: .prefix("/orgs"))
+        let r2 = rule(host: .suffix("github.com"), path: .prefix("/orgs/acme"))
+        let shadowed = RuleConflictDetector.shadowed(rules: [r1, r2])
+        XCTAssertFalse(shadowed.contains(r1.id))
+        XCTAssertTrue(shadowed.contains(r2.id))
+    }
+
+    // Additional: sibling path prefixes — neither shadows the other
+    func test_siblingPathPrefixes_neitherShadowed() {
+        let r1 = rule(host: .suffix("github.com"), path: .prefix("/orgs"))
+        let r2 = rule(host: .suffix("github.com"), path: .prefix("/issues"))
+        let shadowed = RuleConflictDetector.shadowed(rules: [r1, r2])
+        XCTAssertTrue(shadowed.isEmpty)
+    }
+
+    // Earlier prefix does not shadow later contains when patterns overlap
+    // (e.g. /api/docs matches contains /docs but not prefix /docs).
+    func test_prefixEarlier_doesNotShadowContainsLater() {
+        let r1 = rule(host: .suffix("example.com"), path: .prefix("/docs"))
+        let r2 = rule(host: .suffix("example.com"), path: .contains("/docs"))
+        let shadowed = RuleConflictDetector.shadowed(rules: [r1, r2])
+        XCTAssertFalse(shadowed.contains(r2.id))
+    }
 }

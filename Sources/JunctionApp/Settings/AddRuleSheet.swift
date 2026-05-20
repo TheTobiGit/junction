@@ -163,7 +163,7 @@ struct AddRuleSheet: View {
             return "Invalid regular expression"
         }
         if pathKind == .regex, !trimmedPath.isEmpty,
-           (try? NSRegularExpression(pattern: trimmedPath)) == nil {
+           !URLPathMatch.isValidRegexPattern(trimmedPath) {
             return "Invalid path regular expression"
         }
         if hostKind == .urlEquals {

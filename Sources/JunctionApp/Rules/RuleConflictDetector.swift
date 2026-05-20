@@ -41,7 +41,7 @@ enum RuleConflictDetector {
 
         // Path: nil on E means "any path" and therefore dominates.
         if let ePath = e.path {
-            guard let rPath = r.path, ePath == rPath else { return false }
+            guard let rPath = r.path, ePath.covers(rPath) else { return false }
         }
 
         // When: nil on E means "any condition" and therefore dominates.

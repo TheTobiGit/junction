@@ -88,7 +88,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     source: FrontmostTracker.shared.lastNonJunction,
                     focus: FocusTracker.current()
                 )
-                let match = RulesStore.shared.match(url: globalTrace.final, context: context)
+                let match = RulesStore.shared.match(
+                    url: URLTransformers.urlForRuleMatching(target),
+                    context: context
+                )
                 let trace: URLTransformResult
                 if let ruleOverrides = match.rule?.trackerOverrides {
                     trace = URLTransformers.pipeline(
@@ -297,6 +300,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             let pathMatch: URLPathMatch?
             if let pk = pathKind, let pv = pathValue, !pv.isEmpty {
+                if pk == "regex", !URLPathMatch.isValidRegexPattern(pv) {
+                    return .error("invalid path regex: \(pv)")
+                }
                 guard let built = URLPathMatch.from(kind: pk, value: pv) else {
                     return .error("invalid path kind: \(pk) (use prefix, contains, regex, or glob)")
                 }
@@ -377,7 +383,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             source: FrontmostTracker.shared.lastNonJunction,
             focus: FocusTracker.current()
         )
-        let match = RulesStore.shared.match(url: globalTrace.final, context: context)
+        let match = RulesStore.shared.match(
+            url: URLTransformers.urlForRuleMatching(url),
+            context: context
+        )
         let trace: URLTransformResult
         if let ruleOverrides = match.rule?.trackerOverrides {
             trace = URLTransformers.pipeline(
@@ -507,7 +516,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        let match = RulesStore.shared.match(url: normalized, context: context)
+        let match = RulesStore.shared.match(
+            url: URLTransformers.urlForRuleMatching(resolved),
+            context: context
+        )
 
         // If the matched rule carries per-rule tracker overrides, rebuild the
         // pipeline merging global + rule overrides and re-run from the resolved
