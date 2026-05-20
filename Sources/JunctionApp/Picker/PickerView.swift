@@ -333,15 +333,13 @@ struct PickerView: View {
     private struct TileEntry {
         enum Kind {
             case single(LaunchOption)
-            case groupHeader(browser: Browser, options: [LaunchOption], groupID: String)
-            case groupChild(LaunchOption, groupID: String)
+            case groupChild(LaunchOption)
         }
         let kind: Kind
         var tileID: String {
             switch kind {
             case .single(let opt): return opt.id
-            case .groupHeader(_, _, let gid): return gid
-            case .groupChild(let opt, _): return opt.id
+            case .groupChild(let opt): return opt.id
             }
         }
     }
@@ -352,15 +350,9 @@ struct PickerView: View {
             switch item {
             case .single(let opt):
                 entries.append(TileEntry(kind: .single(opt)))
-            case .group(let browser, let opts):
-                let gid = "group:\(browser.bundleID)"
-                let isExpanded = model.expandedGroupIDs.contains(gid)
-                if isExpanded {
-                    for opt in opts {
-                        entries.append(TileEntry(kind: .groupChild(opt, groupID: gid)))
-                    }
-                } else {
-                    entries.append(TileEntry(kind: .groupHeader(browser: browser, options: opts, groupID: gid)))
+            case .group(_, let opts):
+                for opt in opts {
+                    entries.append(TileEntry(kind: .groupChild(opt)))
                 }
             }
         }
@@ -370,37 +362,9 @@ struct PickerView: View {
     @ViewBuilder
     private func tileForEntry(_ entry: TileEntry, visibleIndex: Int) -> some View {
         switch entry.kind {
-        case .single(let opt):
-            tile(idx: visibleIndex, option: opt)
-        case .groupHeader(let browser, let opts, let groupID):
-            groupHeaderTile(browser: browser, options: opts, groupID: groupID, number: visibleIndex + 1, selected: visibleIndex == model.selectedIndex)
-        case .groupChild(let opt, _):
+        case .single(let opt), .groupChild(let opt):
             tile(idx: visibleIndex, option: opt)
         }
-    }
-
-    private func groupHeaderTile(browser: Browser, options: [LaunchOption], groupID: String, number: Int, selected: Bool) -> some View {
-        let privateActive = model.incognitoMode || model.optionKeyHeld
-        return GroupHeaderTile(
-            browser: browser,
-            profileCount: options.count,
-            number: number,
-            selected: selected,
-            appearDelay: Double(number - 1) * 0.018
-        )
-        .help("Expand \(browser.name) profiles")
-        .contentShape(Rectangle())
-        .contextMenu {
-            Button("Expand") {
-                model.toggleGroupExpansion(groupID)
-            }
-        }
-        .onTapGesture {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                model.toggleGroupExpansion(groupID)
-            }
-        }
-        .opacity(privateActive ? 0.55 : 1.0)
     }
 
     private func tile(idx: Int, option: LaunchOption) -> some View {
@@ -581,123 +545,6 @@ private struct QRSheetOverlay: View {
             .shadow(color: Color.black.opacity(0.4), radius: 24, x: 0, y: 8)
         }
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-    }
-}
-
-private struct GroupHeaderTile: View {
-    let browser: Browser
-    let profileCount: Int
-    let number: Int
-    let selected: Bool
-    let appearDelay: Double
-    @State private var hovered: Bool = false
-    @State private var appeared: Bool = false
-
-    var body: some View {
-        VStack(spacing: 10) {
-            ZStack(alignment: .topTrailing) {
-                Image(nsImage: browser.icon)
-                    .resizable()
-                    .interpolation(.high)
-                    .frame(width: 60, height: 60)
-                    .scaleEffect(hovered && !selected ? 1.06 : (selected ? 1.03 : 1.0))
-
-                if number <= 9 {
-                    Text("\(number)")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundColor(.primary.opacity(0.85))
-                        .frame(width: 20, height: 20)
-                        .background(
-                            Circle()
-                                .fill(Color.black.opacity(0.4))
-                                .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 0.5))
-                        )
-                        .offset(x: 8, y: -5)
-                }
-
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(.white.opacity(0.7))
-                    .frame(width: 16, height: 16)
-                    .background(Circle().fill(Color.black.opacity(0.5)))
-                    .offset(x: 8, y: 48)
-            }
-            .frame(height: 68)
-
-            VStack(spacing: 3) {
-                Text(browser.name)
-                    .font(.system(size: 14, weight: selected ? .semibold : .medium))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-
-                Text("\(profileCount) profiles")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 5)
-        }
-        .padding(.vertical, 18)
-        .padding(.horizontal, 10)
-        .frame(width: 144, height: 156)
-        .background(
-            tileFill
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(tileStroke, lineWidth: selected ? 2 : 1)
-        )
-        .shadow(
-            color: selected ? Color.accentColor.opacity(0.35) : Color.black.opacity(hovered ? 0.22 : 0.0),
-            radius: selected ? 14 : 8,
-            x: 0,
-            y: selected ? 6 : 3
-        )
-        .scaleEffect(appeared ? 1.0 : 0.9)
-        .opacity(appeared ? 1.0 : 0.0)
-        .onAppear {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8).delay(appearDelay)) {
-                appeared = true
-            }
-        }
-        .onHover { isHovered in
-            hovered = isHovered
-            if isHovered { NSCursor.pointingHand.push() } else { NSCursor.pop() }
-        }
-        .animation(.easeOut(duration: 0.15), value: hovered)
-        .animation(.easeOut(duration: 0.15), value: selected)
-    }
-
-    @ViewBuilder
-    private var tileFill: some View {
-        if selected {
-            LinearGradient(
-                colors: [Color.accentColor.opacity(0.34), Color.accentColor.opacity(0.14)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        } else if hovered {
-            LinearGradient(
-                colors: [Color.white.opacity(0.12), Color.white.opacity(0.05)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        } else {
-            LinearGradient(
-                colors: [Color.white.opacity(0.06), Color.white.opacity(0.02)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
-    }
-
-    private var tileStroke: Color {
-        if selected { return Color.accentColor.opacity(0.85) }
-        if hovered { return Color.white.opacity(0.18) }
-        return Color.white.opacity(0.06)
     }
 }
 
