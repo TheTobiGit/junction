@@ -210,14 +210,17 @@ struct PreviewView: View {
                 }
             }
 
-            HintPill(key: "␣", label: "Back")
-            HintPill(key: "↵", label: "Open")
-            HintPill(key: "⌥", label: "Private")
-            HintPill(key: "1-9", label: "Switch")
+            PickerShortcutFooter(
+                hints: PickerShortcutHelp.previewFooterHints,
+                fullHelp: PickerShortcutHelp.preview,
+                cheatSheetVisible: Binding(
+                    get: { model.cheatSheetVisible },
+                    set: { model.cheatSheetVisible = $0 }
+                )
+            )
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 9)
-        .help(PickerShortcutHelp.preview)
     }
 
     @ViewBuilder

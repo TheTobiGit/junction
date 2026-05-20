@@ -79,7 +79,7 @@ private struct PostDefaultTourView: View {
                     bullet(
                         icon: "keyboard",
                         title: "Keyboard shortcuts",
-                        detail: "Press 1–9 to open in a specific browser, ↩ to confirm, ⌘↩ to remember the choice, ? for the full cheat sheet."
+                        detail: "The picker footer shows the essentials; click ? Shortcuts (or press ?) for the rest."
                     )
                 }
                 .padding(.horizontal, 32)
