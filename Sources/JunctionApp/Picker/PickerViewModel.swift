@@ -27,6 +27,11 @@ final class PickerViewModel: ObservableObject {
     @Published var previewTitle: String? = nil
     @Published var previewLoading: Bool = false
     @Published var previewProgress: Double = 0
+    @Published var showQRSheet: Bool = false
+    @Published private(set) var qrImage: CGImage? = nil
+    var qrImageProvider: (String) -> CGImage? = QRCodeGenerator.generate(from:)
+    @Published var expandedGroupIDs: Set<String> = []
+    @Published var cheatSheetVisible: Bool = false
 
     private let pickHandler: (LaunchOption, Bool, Bool) -> Void
     private let pickMultiHandler: ([LaunchOption], Bool) -> Void
@@ -43,16 +48,30 @@ final class PickerViewModel: ObservableObject {
         onOpenPreferences: (() -> Void)? = nil
     ) {
         self.url = url
-        let trace = URLTransformers.default.runTraced(url)
+        // Mirror ``AppDelegate.routeAfterExpansion`` and
+        // ``PickerPanelController.openOnce``: match against the URL before
+        // global tracker stripping (so queryContains / per-rule overrides work),
+        // then re-run the pipeline with rule-scoped tracker overrides if needed.
+        let globalSettings = SettingsStore.shared.settings
+        let globalTrace = URLTransformers.default.runTraced(url)
+        let matched = RulesStore.shared.match(
+            url: URLTransformers.urlForRuleMatching(url),
+            context: context
+        ).rule
+        let trace: URLTransformResult
+        if let ruleOverrides = matched?.trackerOverrides {
+            trace = URLTransformers.pipeline(
+                globalOverrides: globalSettings.trackerOverrides,
+                ruleOverrides: ruleOverrides
+            ).runTraced(url)
+        } else {
+            trace = globalTrace
+        }
         self.cleanedURL = trace.final
         self.cleaningTrace = trace
         self.options = options
         self.context = context
-        // Resolve the matching rule once at init — the URL doesn't change for
-        // the picker's lifetime, so we can avoid re-running the rule matcher
-        // on every SwiftUI re-render. The global cleaning toggle is still
-        // read live so user changes mid-presentation take effect.
-        self.matchedRule = RulesStore.shared.match(url: trace.final, context: context).rule
+        self.matchedRule = matched
         // Risk flags follow the URL that's about to open, including the
         // per-rule `cleanOverride`. Otherwise a rule that forces "Always
         // clean" for a host would still warn against the raw URL's trackers.
@@ -69,6 +88,11 @@ final class PickerViewModel: ObservableObject {
         self.pickMultiHandler = onPickMulti
         self.cancelHandler = onCancel
         self.openPreferencesHandler = onOpenPreferences
+        let grouped = LaunchOptionGrouping.group(options: options)
+        self.expandedGroupIDs = LaunchOptionGrouping.defaultExpandedGroupIDs(
+            grouped: grouped,
+            pinnedTargetKey: SettingsStore.shared.settings.pinnedTargetKey
+        )
         loadPreview()
         loadHostFavicon()
     }
@@ -262,8 +286,27 @@ final class PickerViewModel: ObservableObject {
 
     var filteredOptions: [LaunchOption] { options }
 
+    var groupedFilteredOptions: [GroupedLaunchOption] {
+        LaunchOptionGrouping.group(options: filteredOptions)
+    }
+
+    var visibleFlatOptions: [LaunchOption] {
+        LaunchOptionGrouping.visibleOptions(
+            grouped: groupedFilteredOptions,
+            expandedGroupIDs: expandedGroupIDs
+        )
+    }
+
+    func toggleGroupExpansion(_ groupID: String) {
+        if expandedGroupIDs.contains(groupID) {
+            expandedGroupIDs.remove(groupID)
+        } else {
+            expandedGroupIDs.insert(groupID)
+        }
+    }
+
     func selectedOption() -> LaunchOption? {
-        let list = filteredOptions
+        let list = visibleFlatOptions
         guard list.indices.contains(selectedIndex) else { return nil }
         return list[selectedIndex]
     }
@@ -278,7 +321,7 @@ final class PickerViewModel: ObservableObject {
     }
 
     func moveSelection(_ delta: Int) {
-        let count = filteredOptions.count
+        let count = visibleFlatOptions.count
         guard count > 0 else { return }
         let next = (selectedIndex + delta + count) % count
         selectedIndex = next
@@ -289,7 +332,7 @@ final class PickerViewModel: ObservableObject {
             confirmMulti(incognito: incognito ?? incognitoMode)
             return
         }
-        let list = filteredOptions
+        let list = visibleFlatOptions
         guard list.indices.contains(selectedIndex) else { return }
         let shouldRemember = remember ?? rememberChoice
         let option = list[selectedIndex]
@@ -303,11 +346,11 @@ final class PickerViewModel: ObservableObject {
 
     func pickByNumber(_ number: Int, remember: Bool? = nil, incognito: Bool? = nil) {
         let idx = number - 1
-        let list = filteredOptions
-        guard list.indices.contains(idx) else { return }
+        let visible = visibleFlatOptions
+        guard visible.indices.contains(idx) else { return }
+        let option = visible[idx]
         selectedIndex = idx
         let shouldRemember = remember ?? rememberChoice
-        let option = list[idx]
         pickHandler(option, shouldRemember, resolvedIncognito(for: option, requested: incognito))
     }
 
@@ -321,7 +364,7 @@ final class PickerViewModel: ObservableObject {
     }
 
     func toggleMultiAtSelection() {
-        let list = filteredOptions
+        let list = visibleFlatOptions
         guard list.indices.contains(selectedIndex) else { return }
         toggleMulti(list[selectedIndex])
     }
@@ -338,6 +381,19 @@ final class PickerViewModel: ObservableObject {
     private func resolvedIncognito(for option: LaunchOption, requested: Bool?) -> Bool {
         let wantsPrivate = requested ?? incognitoMode
         return wantsPrivate && URLOpener.supportsIncognito(bundleID: option.browser.bundleID)
+    }
+
+    var cheatSheetEntries: [String] {
+        previewMode ? PickerShortcutHelp.previewEntries : PickerShortcutHelp.pickerEntries
+    }
+
+    func openQRSheet() {
+        qrImage = qrImageProvider(previewURL.absoluteString)
+        showQRSheet = true
+    }
+
+    func closeQRSheet() {
+        showQRSheet = false
     }
 
     func cancel() {

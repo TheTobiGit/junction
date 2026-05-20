@@ -1,5 +1,22 @@
 import Foundation
 import Combine
+import CoreGraphics
+
+private struct PickerFrameCodable: Codable {
+    var x: CGFloat
+    var y: CGFloat
+    var width: CGFloat
+    var height: CGFloat
+
+    init(_ rect: CGRect) {
+        x = rect.origin.x
+        y = rect.origin.y
+        width = rect.size.width
+        height = rect.size.height
+    }
+
+    var rect: CGRect { CGRect(x: x, y: y, width: width, height: height) }
+}
 
 struct HotkeyBinding: Codable, Hashable {
     var keyCode: UInt32
@@ -34,6 +51,10 @@ struct JunctionSettings: Codable {
     var chromeTheme: ChromeTheme = .glass
     var accentPreset: AccentPreset = .system
     var historyEnabled: Bool = true
+    var pinnedTargetKey: String? = nil
+    var pickerFrame: CGRect? = nil
+    var trackerOverrides: TrackerOverrides = TrackerOverrides()
+    var toursCompleted: [String: Bool] = [:]
 
     enum CodingKeys: String, CodingKey {
         case cleanURLsBeforeOpening
@@ -48,6 +69,10 @@ struct JunctionSettings: Codable {
         case chromeTheme
         case accentPreset
         case historyEnabled
+        case pinnedTargetKey
+        case pickerFrame
+        case trackerOverrides
+        case toursCompleted
     }
 
     init() {}
@@ -69,6 +94,43 @@ struct JunctionSettings: Codable {
         self.chromeTheme = (try? c.decode(ChromeTheme.self, forKey: .chromeTheme)) ?? .glass
         self.accentPreset = (try? c.decode(AccentPreset.self, forKey: .accentPreset)) ?? .system
         self.historyEnabled = (try? c.decode(Bool.self, forKey: .historyEnabled)) ?? true
+        self.pinnedTargetKey = try? c.decodeIfPresent(String.self, forKey: .pinnedTargetKey)
+        self.pickerFrame = (try? c.decodeIfPresent(PickerFrameCodable.self, forKey: .pickerFrame))?.rect
+        self.trackerOverrides = (try? c.decodeIfPresent(TrackerOverrides.self, forKey: .trackerOverrides)) ?? TrackerOverrides()
+        self.toursCompleted = (try? c.decodeIfPresent([String: Bool].self, forKey: .toursCompleted)) ?? [:]
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(cleanURLsBeforeOpening, forKey: .cleanURLsBeforeOpening)
+        try c.encode(expandShortenedURLs, forKey: .expandShortenedURLs)
+        try c.encode(clipboardWatcherEnabled, forKey: .clipboardWatcherEnabled)
+        try c.encode(redirects, forKey: .redirects)
+        try c.encode(hiddenTargetKeys, forKey: .hiddenTargetKeys)
+        try c.encode(targetOrder, forKey: .targetOrder)
+        try c.encode(appSchemes, forKey: .appSchemes)
+        try c.encode(hotkeys, forKey: .hotkeys)
+        try c.encode(hasCompletedOnboarding, forKey: .hasCompletedOnboarding)
+        try c.encode(chromeTheme, forKey: .chromeTheme)
+        try c.encode(accentPreset, forKey: .accentPreset)
+        try c.encode(historyEnabled, forKey: .historyEnabled)
+        try c.encodeIfPresent(pinnedTargetKey, forKey: .pinnedTargetKey)
+        if let frame = pickerFrame {
+            try c.encode(PickerFrameCodable(frame), forKey: .pickerFrame)
+        }
+        try c.encode(trackerOverrides, forKey: .trackerOverrides)
+        try c.encode(toursCompleted, forKey: .toursCompleted)
+    }
+
+    /// Sets `pinnedTargetKey` and rewrites `targetOrder` so the pinned key is at index 0.
+    /// When `key` is nil, clears the pin without altering `targetOrder`.
+    mutating func setPinnedTargetKey(_ key: String?) {
+        pinnedTargetKey = key
+        guard let key else { return }
+        var order = targetOrder
+        order.removeAll { $0 == key }
+        order.insert(key, at: 0)
+        targetOrder = order
     }
 
     static func mergeAppSchemes(stored: [AppSchemeRewrite]) -> [AppSchemeRewrite] {
@@ -111,14 +173,14 @@ final class SettingsStore: ObservableObject {
 
     private let fileURL: URL
 
-    private init() {
+    init(fileURL: URL? = nil) {
         let fm = FileManager.default
         let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let dir = base.appendingPathComponent("Junction", isDirectory: true)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        self.fileURL = dir.appendingPathComponent("settings.json")
+        self.fileURL = fileURL ?? dir.appendingPathComponent("settings.json")
 
-        if let data = try? Data(contentsOf: fileURL),
+        if let data = try? Data(contentsOf: self.fileURL),
            let decoded = try? JSONDecoder().decode(JunctionSettings.self, from: data) {
             self.settings = decoded
         } else {
@@ -153,6 +215,10 @@ final class SettingsStore: ObservableObject {
 
     func setHotkey(_ binding: HotkeyBinding, for keyPath: WritableKeyPath<HotkeySettings, HotkeyBinding>) {
         settings.hotkeys[keyPath: keyPath] = binding
+    }
+
+    func setPinnedTargetKey(_ key: String?) {
+        settings.setPinnedTargetKey(key)
     }
 
     func markOnboardingComplete() {

@@ -12,6 +12,7 @@ public enum URLPipelineStepLabel {
         case "domain-redirect":             return "Applied domain redirect"
         case "amp-collapser":               return "Collapsed AMP URL"
         case "tracker-stripper":            return "Removed tracking parameters"
+        case "rule-tracker-stripper":       return "Removed rule-scoped tracking parameters"
         default:                            return identifier
         }
     }

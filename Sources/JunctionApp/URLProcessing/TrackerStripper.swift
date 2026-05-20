@@ -1,9 +1,9 @@
 import Foundation
 
 struct TrackerStripper: URLTransformer {
-    let identifier = "tracker-stripper"
+    let identifier: String
 
-    private static let exactParams: Set<String> = [
+    static let defaultExactParams: Set<String> = [
         // Big-ad-tech click IDs
         "fbclid", "fb_action_ids", "fb_action_types", "fb_ref", "fb_source",
         "gclid", "gclsrc", "dclid", "yclid", "msclkid", "twclid",
@@ -37,7 +37,7 @@ struct TrackerStripper: URLTransformer {
         "vero_token", "matomo_campaign", "matomo_kwd", "piwik_campaign", "piwik_kwd",
     ]
 
-    private static let prefixes: [String] = [
+    static let defaultPrefixes: [String] = [
         "utm_",
         "hsa_",
         "oly_",
@@ -47,6 +47,40 @@ struct TrackerStripper: URLTransformer {
         "at_",          // at_medium, at_campaign…
         "ga_",
     ]
+
+    private let effectiveExactParams: Set<String>
+    private let effectivePrefixes: [String]
+    private let preservedByOverride: Set<String>
+
+    init(overrides: TrackerOverrides = TrackerOverrides(), identifier: String = "tracker-stripper") {
+        self.identifier = identifier
+        var exact = Self.defaultExactParams
+        var prefixes = Self.defaultPrefixes
+        var preserved: Set<String> = []
+
+        for entry in overrides.disabled {
+            let lower = entry.lowercased()
+            if lower.hasSuffix("_") {
+                prefixes.removeAll { $0 == lower }
+            } else {
+                exact.remove(lower)
+                preserved.insert(lower)
+            }
+        }
+
+        for entry in overrides.additions {
+            let lower = entry.lowercased()
+            if lower.hasSuffix("_") {
+                if !prefixes.contains(lower) { prefixes.append(lower) }
+            } else {
+                exact.insert(lower)
+            }
+        }
+
+        self.effectiveExactParams = exact
+        self.effectivePrefixes = prefixes
+        self.preservedByOverride = preserved
+    }
 
     /// Hosts where the listed parameters are actually load-bearing and should not be stripped.
     /// Per-host overrides win over the global rules above.
@@ -81,7 +115,7 @@ struct TrackerStripper: URLTransformer {
             let lower = item.name.lowercased()
             if preserved.contains(lower) { return true }
             if extraStrip.contains(lower) { return false }
-            return !Self.shouldStrip(name: item.name)
+            return !shouldStrip(name: item.name)
         }
 
         if cleaned.count == items.count { return url }
@@ -107,10 +141,11 @@ struct TrackerStripper: URLTransformer {
         return out
     }
 
-    private static func shouldStrip(name: String) -> Bool {
+    private func shouldStrip(name: String) -> Bool {
         let lower = name.lowercased()
-        if exactParams.contains(lower) { return true }
-        for prefix in prefixes where lower.hasPrefix(prefix) { return true }
+        if preservedByOverride.contains(lower) { return false }
+        if effectiveExactParams.contains(lower) { return true }
+        for prefix in effectivePrefixes where lower.hasPrefix(prefix) { return true }
         return false
     }
 }

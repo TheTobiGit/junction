@@ -2,135 +2,191 @@ import SwiftUI
 import AppKit
 import JunctionCore
 
-/// Lets the user paste any URL and see exactly how Junction's pipeline would
-/// transform it: which transformer fired, what each one changed, plus the
-/// risk flags that would be raised. Useful for diagnosing "why did Junction
-/// strip ref=…" questions.
+/// Paste any URL and see how Junction's pipeline would transform it: which
+/// transformer fired, what changed, plus risk flags. Flat layout: just a
+/// row of controls and a typographic result panel, no card chrome.
 struct URLInspectorCard: View {
+    @Environment(\.colorScheme) private var colorScheme
     @State private var input: String = ""
     @State private var trace: URLTransformResult? = nil
     @State private var flags: [RiskFlag] = []
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 12) {
-                Image(systemName: "magnifyingglass.circle.fill")
-                    .font(.system(size: 16))
-                    .foregroundColor(.accentColor)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Inspect a URL")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text("Paste any link to see how Junction would clean and assess it.")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
-                if trace != nil {
-                    Button {
-                        clear()
-                    } label: {
-                        Label("Clear", systemImage: "xmark.circle")
-                    }
-                    .controlSize(.small)
-                }
-            }
-
-            HStack(spacing: 8) {
-                TextField("https://…", text: $input, onCommit: inspect)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 12, design: .monospaced))
-                Button {
-                    pasteAndInspect()
-                } label: {
-                    Image(systemName: "doc.on.clipboard")
-                }
-                .help("Paste from clipboard and inspect")
-                .controlSize(.small)
-                Button("Inspect") { inspect() }
-                    .controlSize(.small)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
+        VStack(alignment: .leading, spacing: 14) {
+            inputRow
 
             if let trace {
-                VStack(alignment: .leading, spacing: 10) {
-                    resultRow(label: "Original", value: trace.original.absoluteString, monospaced: true)
-                    resultRow(
-                        label: "Cleaned",
-                        value: trace.final.absoluteString,
-                        monospaced: true,
-                        accent: trace.didChange
+                results(for: trace)
+            }
+        }
+    }
+
+    private var inputRow: some View {
+        HStack(spacing: 8) {
+            TextField("Paste a URL…", text: $input, onCommit: inspect)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13, design: .monospaced))
+                .padding(.horizontal, 10).padding(.vertical, 7)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05))
+                )
+
+            Button {
+                pasteAndInspect()
+            } label: {
+                Image(systemName: "doc.on.clipboard")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 26, height: 26)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Paste & inspect")
+
+            Button {
+                inspect()
+            } label: {
+                Text("Inspect")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .foregroundStyle(.primary)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.07))
                     )
-                    if !trace.steps.isEmpty {
-                        Text("Pipeline steps")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.secondary)
-                            .textCase(.uppercase)
-                        VStack(alignment: .leading, spacing: 6) {
-                            ForEach(Array(trace.steps.enumerated()), id: \.offset) { idx, step in
-                                stepRow(index: idx + 1, step: step)
-                            }
-                        }
-                    } else {
-                        Text("No transformers fired — URL is already clean.")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                    }
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.defaultAction)
+            .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
-                    if !flags.isEmpty {
-                        Text("Risk flags")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.secondary)
-                            .textCase(.uppercase)
-                        VStack(alignment: .leading, spacing: 4) {
-                            ForEach(flags) { flag in
-                                HStack(alignment: .top, spacing: 8) {
-                                    Image(systemName: RiskChip.icon(for: flag.level))
-                                        .foregroundColor(RiskChip.tint(for: flag.level))
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .frame(width: 14)
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(flag.title)
-                                            .font(.system(size: 11, weight: .semibold))
-                                        Text(flag.detail)
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.secondary)
-                                            .fixedSize(horizontal: false, vertical: true)
-                                    }
-                                }
-                            }
-                        }
-                    }
+            if trace != nil {
+                Button(action: clear) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.plain)
+                .help("Clear")
+            }
+        }
+    }
 
-                    let stripped = URLDiff.strippedTrackerParams(in: trace)
-                    if !stripped.isEmpty {
-                        Text("Removed query parameters")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.secondary)
-                            .textCase(.uppercase)
-                        FlowLayout(spacing: 6) {
-                            ForEach(stripped, id: \.self) { name in
-                                Text(name)
+    private func results(for trace: URLTransformResult) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            kvRow("Original", trace.original.absoluteString)
+            kvRow("Cleaned",  trace.final.absoluteString, accent: trace.didChange)
+
+            if !trace.steps.isEmpty {
+                Text("PIPELINE")
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .tracking(0.5)
+                    .foregroundStyle(.secondary.opacity(0.7))
+                    .padding(.top, 6)
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(trace.steps.enumerated()), id: \.offset) { idx, step in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text("\(idx + 1)")
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 16, alignment: .leading)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(URLPipelineStepLabel.label(for: step.identifier))
+                                    .font(.system(size: 11, weight: .medium))
+                                Text(step.after.absoluteString)
                                     .font(.system(size: 10, design: .monospaced))
-                                    .foregroundColor(.accentColor)
-                                    .padding(.horizontal, 6).padding(.vertical, 2)
-                                    .background(Capsule().fill(Color.accentColor.opacity(0.15)))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
                             }
                         }
                     }
                 }
-                .padding(10)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.primary.opacity(0.04))
-                )
+            } else {
+                Text("No transformers fired — URL is already clean.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+
+            if !flags.isEmpty {
+                Text("RISK")
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .tracking(0.5)
+                    .foregroundStyle(.secondary.opacity(0.7))
+                    .padding(.top, 6)
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(flags) { flag in
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: RiskChip.icon(for: flag.level))
+                                .foregroundStyle(RiskChip.tint(for: flag.level))
+                                .font(.system(size: 11, weight: .semibold))
+                                .frame(width: 14)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(flag.title)
+                                    .font(.system(size: 11, weight: .medium))
+                                Text(flag.detail)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+            }
+
+            let stripped = URLDiff.strippedTrackerParams(in: trace)
+            if !stripped.isEmpty {
+                Text("REMOVED PARAMS")
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .tracking(0.5)
+                    .foregroundStyle(.secondary.opacity(0.7))
+                    .padding(.top, 6)
+                FlowLayout(spacing: 6) {
+                    ForEach(stripped, id: \.self) { name in
+                        Text(name)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(Color.accentColor)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(Color.accentColor.opacity(0.12))
+                            )
+                    }
+                }
             }
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.primary.opacity(0.045))
-        )
+        .padding(.top, 4)
+    }
+
+    private func kvRow(_ label: String, _ value: String, accent: Bool = false) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .tracking(0.5)
+                .foregroundStyle(.secondary.opacity(0.7))
+                .frame(width: 60, alignment: .leading)
+                .padding(.top, 1)
+            Text(value)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(accent ? Color.accentColor : Color.primary)
+                .lineLimit(2)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button {
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                pb.setString(value, forType: .string)
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.plain)
+            .help("Copy")
+        }
     }
 
     private func inspect() {
@@ -161,51 +217,5 @@ struct URLInspectorCard: View {
         input = ""
         trace = nil
         flags = []
-    }
-
-    private func resultRow(label: String, value: String, monospaced: Bool, accent: Bool = false) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text(label.uppercased())
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundColor(.secondary)
-                .frame(width: 60, alignment: .leading)
-            Text(value)
-                .font(.system(size: 11, design: monospaced ? .monospaced : .default))
-                .foregroundColor(accent ? .accentColor : .primary)
-                .lineLimit(2)
-                .truncationMode(.middle)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Button {
-                let pb = NSPasteboard.general
-                pb.clearContents()
-                pb.setString(value, forType: .string)
-            } label: {
-                Image(systemName: "doc.on.doc")
-                    .font(.system(size: 10))
-            }
-            .buttonStyle(.plain)
-            .foregroundColor(.secondary)
-            .help("Copy")
-        }
-    }
-
-    private func stepRow(index: Int, step: URLTransformResult.Step) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text("\(index)")
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .foregroundColor(.accentColor)
-                .frame(width: 18, height: 18)
-                .background(Circle().fill(Color.accentColor.opacity(0.18)))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(URLPipelineStepLabel.label(for: step.identifier))
-                    .font(.system(size: 11, weight: .semibold))
-                Text(step.after.absoluteString)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-        }
     }
 }

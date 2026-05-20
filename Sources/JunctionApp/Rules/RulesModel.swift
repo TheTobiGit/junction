@@ -199,6 +199,43 @@ enum URLPathMatch: Codable, Hashable {
         }
     }
 
+    /// True when `pattern` compiles as an `NSRegularExpression` (used by the
+    /// Add Rule sheet and agent/CLI add-rule path before persisting).
+    static func isValidRegexPattern(_ pattern: String) -> Bool {
+        (try? NSRegularExpression(pattern: pattern)) != nil
+    }
+
+    /// True when every path matching `narrower` also matches `broader`.
+    func covers(_ narrower: URLPathMatch) -> Bool {
+        if self == narrower { return true }
+        switch (self, narrower) {
+        case (.prefix(let broader), .prefix(let narrow)):
+            return narrow.hasPrefix(broader)
+        case (.prefix, .contains):
+            // Prefix rules only match at the path start; contains rules can
+            // match in the middle (e.g. /api/docs vs prefix /docs).
+            return false
+        case (.contains(let broader), .contains(let narrow)):
+            return narrow.contains(broader)
+        case (.contains(let broader), .prefix(let narrow)):
+            return narrow.hasPrefix(broader)
+        default:
+            return false
+        }
+    }
+
+    /// Builds a `URLPathMatch` from a kind string and value. Returns `nil`
+    /// for unknown kind strings so callers can surface a clean error.
+    static func from(kind: String, value: String) -> URLPathMatch? {
+        switch kind {
+        case "prefix":   return .prefix(value)
+        case "contains": return .contains(value)
+        case "regex":    return .regex(value)
+        case "glob":     return .glob(value)
+        default:         return nil
+        }
+    }
+
     private static func globMatches(pattern: String, in text: String) -> Bool {
         var regex = "^"
         for ch in pattern {
@@ -240,9 +277,10 @@ struct DomainRule: Codable, Identifiable, Hashable {
     /// all ignored — exact matches by definition specify the full URL.
     /// `enabled` and `when` are still honored.
     var urlEquals: String? = nil
+    var trackerOverrides: TrackerOverrides? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, host, action, enabled, when, schemes, path, queryContains, alsoCopyCleaned, cleanOverride, urlEquals
+        case id, host, action, enabled, when, schemes, path, queryContains, alsoCopyCleaned, cleanOverride, urlEquals, trackerOverrides
     }
 
     init(
@@ -256,7 +294,8 @@ struct DomainRule: Codable, Identifiable, Hashable {
         queryContains: String? = nil,
         alsoCopyCleaned: Bool = false,
         cleanOverride: Bool? = nil,
-        urlEquals: String? = nil
+        urlEquals: String? = nil,
+        trackerOverrides: TrackerOverrides? = nil
     ) {
         self.id = id
         self.host = host
@@ -269,6 +308,7 @@ struct DomainRule: Codable, Identifiable, Hashable {
         self.alsoCopyCleaned = alsoCopyCleaned
         self.cleanOverride = cleanOverride
         self.urlEquals = urlEquals
+        self.trackerOverrides = trackerOverrides
     }
 
     init(from decoder: Decoder) throws {
@@ -284,6 +324,7 @@ struct DomainRule: Codable, Identifiable, Hashable {
         self.alsoCopyCleaned = (try? c.decode(Bool.self, forKey: .alsoCopyCleaned)) ?? false
         self.cleanOverride = try? c.decodeIfPresent(Bool.self, forKey: .cleanOverride)
         self.urlEquals = try? c.decodeIfPresent(String.self, forKey: .urlEquals)
+        self.trackerOverrides = try? c.decodeIfPresent(TrackerOverrides.self, forKey: .trackerOverrides)
     }
 
     func matches(url: URL, host resolvedHost: String?, context: RouteContext) -> Bool {
@@ -375,10 +416,13 @@ struct DomainRule: Codable, Identifiable, Hashable {
     }
 
     /// Human-readable kind label for both Rules UI and CLI/agent summaries.
-    /// `urlEquals` rules report as `url` so the Settings tab and `junction
-    /// rules list` both show the right discriminator at a glance.
+    /// `urlEquals` rules report as `url`; path-bearing rules append the path
+    /// kind so the Settings tab and `junction rules list` render distinct
+    /// labels for path-bearing vs path-less rules.
     var kindLabel: String {
-        urlEquals != nil ? "url" : host.kindLabel
+        if urlEquals != nil { return "url" }
+        if let path { return "\(host.kindLabel)+\(path.kindLabel)" }
+        return host.kindLabel
     }
 
     /// Human-readable value the row should show. For exact-URL rules this
@@ -387,14 +431,50 @@ struct DomainRule: Codable, Identifiable, Hashable {
         urlEquals ?? host.displayValue
     }
 
-    /// Stable key for deduplicating rules when adding. Two exact-URL rules
-    /// with the same target replace each other; two host rules with the
-    /// same `kind:host` replace each other; the two kinds never collide.
-    var dedupKey: String {
-        if let urlEquals {
-            return "url:\(urlEquals.lowercased())"
+    /// Rules-tab row label: host/URL plus path, source-app, and query
+    /// discriminators so same-host rules stay distinguishable.
+    var rulesRowDisplayValue: String {
+        var parts = [displayValue]
+        if let path {
+            parts.append("\(path.kindLabel):\(path.displayValue)")
         }
-        return "\(host.kindLabel):\(host.displayValue.lowercased())"
+        if let queryContains, !queryContains.isEmpty {
+            parts.append("query:\(queryContains)")
+        }
+        if let apps = when?.sourceApp, !apps.isEmpty {
+            parts.append("from:\(apps.joined(separator: ","))")
+        }
+        if let focus = when?.focus, !focus.isEmpty {
+            parts.append("focus:\(focus.joined(separator: ","))")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    /// Stable key for deduplicating rules when adding. Two exact-URL rules
+    /// with the same target replace each other; two host rules with the same
+    /// `kind:host:pathKind:pathValue` replace each other; a path-bearing rule
+    /// and an otherwise-identical path-less rule never collide. Distinct
+    /// `when` conditions (e.g. different source apps) never collide.
+    var dedupKey: String {
+        let whenPart = Self.whenDedupPart(when)
+        if let urlEquals {
+            return "url:\(urlEquals.lowercased())\(whenPart)"
+        }
+        let pathPart = path.map { ":\($0.kindLabel):\($0.displayValue)" } ?? ""
+        return "\(host.kindLabel):\(host.displayValue.lowercased())\(pathPart)\(whenPart)"
+    }
+
+    private static func whenDedupPart(_ when: RuleCondition?) -> String {
+        guard let when else { return "" }
+        var parts: [String] = []
+        if let apps = when.sourceApp, !apps.isEmpty {
+            parts.append("src:" + apps.map { $0.lowercased() }.sorted().joined(separator: ","))
+        }
+        if let focus = when.focus, !focus.isEmpty {
+            parts.append("focus:" + focus.map { $0.lowercased() }.sorted().joined(separator: ","))
+        }
+        guard !parts.isEmpty else { return "" }
+        return ":" + parts.joined(separator: ":")
     }
 }
 

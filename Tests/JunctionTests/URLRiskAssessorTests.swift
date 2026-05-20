@@ -3,6 +3,32 @@ import Foundation
 @testable import JunctionApp
 
 final class URLRiskAssessorTests: XCTestCase {
+    // VAL-M4-IDN-001: Punycode host produces Punycode flag
+    func test_punycodeHostProducesPunycodeFlag_VAL_M4_IDN_001() {
+        let url = URL(string: "https://xn--80akhbyknj4f.example/")!
+        let flags = URLRiskAssessor.assess(url)
+        XCTAssertTrue(flags.contains { $0.title == "Punycode host" })
+        XCTAssertTrue(flags.contains { $0.isIDNRelated })
+    }
+
+    // VAL-M4-IDN-002: Mixed-script host produces Mixed-script flag
+    func test_mixedScriptHostProducesMixedScriptFlag_VAL_M4_IDN_002() {
+        // gооgle.com with Cyrillic 'о' (U+043E) in place of Latin 'o'
+        let url = URL(string: "https://g\u{043E}\u{043E}gle.com")!
+        let flags = URLRiskAssessor.assess(url)
+        XCTAssertTrue(flags.contains { $0.title == "Mixed-script host" })
+        XCTAssertTrue(flags.contains { $0.isIDNRelated })
+    }
+
+    // VAL-M4-IDN-003: ASCII host produces neither IDN flag
+    func test_asciiHostProducesNeitherIDNFlag_VAL_M4_IDN_003() {
+        let url = URL(string: "https://google.com/")!
+        let flags = URLRiskAssessor.assess(url)
+        XCTAssertFalse(flags.contains { $0.title == "Punycode host" })
+        XCTAssertFalse(flags.contains { $0.title == "Mixed-script host" })
+        XCTAssertFalse(flags.contains { $0.isIDNRelated })
+    }
+
     func test_assessCleanedURL_keepsSuspiciousHostFlags() {
         let raw = URL(string: "https://login.example.zip?utm_source=email&fbclid=abc")!
         let cleaned = URLTransformers.default.run(raw)

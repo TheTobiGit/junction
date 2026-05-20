@@ -26,6 +26,10 @@ struct RiskFlag: Identifiable, Hashable {
     let level: RiskLevel
     let title: String
     let detail: String
+
+    var isIDNRelated: Bool {
+        title == "Punycode host" || title == "Mixed-script host"
+    }
 }
 
 enum URLRiskAssessor {

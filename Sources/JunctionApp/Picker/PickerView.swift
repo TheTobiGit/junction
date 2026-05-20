@@ -59,8 +59,14 @@ struct PickerView: View {
                 pickerBody
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
+
+            if model.cheatSheetVisible {
+                CheatSheetOverlay(model: model)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: model.previewMode)
+        .animation(.spring(response: 0.25, dampingFraction: 0.85), value: model.cheatSheetVisible)
         .background(KeyEventCatcher(model: model))
         .tint(appSettings.settings.accentPreset.swiftUIColor)
         .scaleEffect(appeared ? 1.0 : 0.96)
@@ -73,10 +79,17 @@ struct PickerView: View {
     }
 
     private var pickerBody: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-            optionList
-            footer
+        ZStack {
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                optionList
+                footer
+            }
+
+            if model.showQRSheet {
+                QRSheetOverlay(model: model)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            }
         }
         .background(
             JunctionChromeBackground(
@@ -97,6 +110,7 @@ struct PickerView: View {
                 )
         )
         .frame(width: width, height: Self.pickerHeight)
+        .animation(.spring(response: 0.25, dampingFraction: 0.85), value: model.showQRSheet)
     }
 
     private var header: some View {
@@ -111,8 +125,11 @@ struct PickerView: View {
                 if model.incognitoMode {
                     incognitoBadge
                 }
-                if !model.riskFlags.isEmpty {
-                    riskChip(model.riskFlags)
+                if !idnRiskFlags.isEmpty {
+                    RiskChip(flags: idnRiskFlags)
+                }
+                if !otherRiskFlags.isEmpty {
+                    riskChip(otherRiskFlags)
                 }
             }
             .fixedSize(horizontal: true, vertical: false)
@@ -229,6 +246,9 @@ struct PickerView: View {
         .background(Capsule().fill(Color.purple.opacity(0.18)))
     }
 
+    private var idnRiskFlags: [RiskFlag] { model.riskFlags.filter { $0.isIDNRelated } }
+    private var otherRiskFlags: [RiskFlag] { model.riskFlags.filter { !$0.isIDNRelated } }
+
     private func riskChip(_ flags: [RiskFlag]) -> some View {
         RiskChip(flags: flags)
     }
@@ -277,6 +297,8 @@ struct PickerView: View {
 
     private var optionList: some View {
         let list = model.filteredOptions
+        let grouped = model.groupedFilteredOptions
+        let tiles = groupedTiles(grouped)
         return Group {
             if list.isEmpty {
                 Text("No browsers enabled — open Preferences to show some.")
@@ -287,9 +309,9 @@ struct PickerView: View {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: Self.tileSpacing) {
-                            ForEach(Array(list.enumerated()), id: \.element.id) { idx, option in
-                                tile(idx: idx, option: option)
-                                    .id(option.id)
+                            ForEach(Array(tiles.enumerated()), id: \.element.tileID) { idx, entry in
+                                tileForEntry(entry, visibleIndex: idx)
+                                    .id(entry.tileID)
                             }
                         }
                         .padding(.horizontal, Self.listHorizontalPadding)
@@ -298,14 +320,87 @@ struct PickerView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onChange(of: model.selectedIndex) { newIndex in
-                        guard list.indices.contains(newIndex) else { return }
+                        guard tiles.indices.contains(newIndex) else { return }
                         withAnimation(.easeInOut(duration: 0.2)) {
-                            proxy.scrollTo(list[newIndex].id, anchor: .center)
+                            proxy.scrollTo(tiles[newIndex].tileID, anchor: .center)
                         }
                     }
                 }
             }
         }
+    }
+
+    private struct TileEntry {
+        enum Kind {
+            case single(LaunchOption)
+            case groupHeader(browser: Browser, options: [LaunchOption], groupID: String)
+            case groupChild(LaunchOption, groupID: String)
+        }
+        let kind: Kind
+        var tileID: String {
+            switch kind {
+            case .single(let opt): return opt.id
+            case .groupHeader(_, _, let gid): return gid
+            case .groupChild(let opt, _): return opt.id
+            }
+        }
+    }
+
+    private func groupedTiles(_ grouped: [GroupedLaunchOption]) -> [TileEntry] {
+        var entries: [TileEntry] = []
+        for item in grouped {
+            switch item {
+            case .single(let opt):
+                entries.append(TileEntry(kind: .single(opt)))
+            case .group(let browser, let opts):
+                let gid = "group:\(browser.bundleID)"
+                let isExpanded = model.expandedGroupIDs.contains(gid)
+                if isExpanded {
+                    for opt in opts {
+                        entries.append(TileEntry(kind: .groupChild(opt, groupID: gid)))
+                    }
+                } else {
+                    entries.append(TileEntry(kind: .groupHeader(browser: browser, options: opts, groupID: gid)))
+                }
+            }
+        }
+        return entries
+    }
+
+    @ViewBuilder
+    private func tileForEntry(_ entry: TileEntry, visibleIndex: Int) -> some View {
+        switch entry.kind {
+        case .single(let opt):
+            tile(idx: visibleIndex, option: opt)
+        case .groupHeader(let browser, let opts, let groupID):
+            groupHeaderTile(browser: browser, options: opts, groupID: groupID, number: visibleIndex + 1, selected: visibleIndex == model.selectedIndex)
+        case .groupChild(let opt, _):
+            tile(idx: visibleIndex, option: opt)
+        }
+    }
+
+    private func groupHeaderTile(browser: Browser, options: [LaunchOption], groupID: String, number: Int, selected: Bool) -> some View {
+        let privateActive = model.incognitoMode || model.optionKeyHeld
+        return GroupHeaderTile(
+            browser: browser,
+            profileCount: options.count,
+            number: number,
+            selected: selected,
+            appearDelay: Double(number - 1) * 0.018
+        )
+        .help("Expand \(browser.name) profiles")
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button("Expand") {
+                model.toggleGroupExpansion(groupID)
+            }
+        }
+        .onTapGesture {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                model.toggleGroupExpansion(groupID)
+            }
+        }
+        .opacity(privateActive ? 0.55 : 1.0)
     }
 
     private func tile(idx: Int, option: LaunchOption) -> some View {
@@ -325,6 +420,19 @@ struct PickerView: View {
               ? "\(option.browser.name) doesn't support private windows — it will open normally."
               : "Open in \(option.displayName)")
         .contentShape(Rectangle())
+        .contextMenu {
+            let key = option.target.storageKey
+            let isPinned = appSettings.settings.pinnedTargetKey == key
+            if isPinned {
+                Button("Unpin") {
+                    appSettings.setPinnedTargetKey(nil)
+                }
+            } else {
+                Button("Pin to first slot") {
+                    appSettings.setPinnedTargetKey(key)
+                }
+            }
+        }
         .onTapGesture {
             let flags = NSEvent.modifierFlags
             if flags.contains(.shift) {
@@ -352,6 +460,22 @@ struct PickerView: View {
 
             Spacer(minLength: 10)
 
+            Button {
+                model.openQRSheet()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "qrcode")
+                        .font(.system(size: 12, weight: .medium))
+                    Text("QR")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Capsule().fill(Color.white.opacity(0.08)))
+            }
+            .buttonStyle(.plain)
+            .help("Show QR code for this URL")
+
             hintSegments
         }
         .frame(height: 34)
@@ -372,6 +496,209 @@ struct PickerView: View {
 
 private extension RiskLevel {
     var rank: Int { rawValue }
+}
+
+private struct CheatSheetOverlay: View {
+    @ObservedObject var model: PickerViewModel
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.55)
+                .onTapGesture {
+                    model.cheatSheetVisible = false
+                }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Keyboard Shortcuts")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.primary)
+                    .padding(.bottom, 2)
+
+                ForEach(model.cheatSheetEntries, id: \.self) { entry in
+                    Text(entry)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 18)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(NSColor.windowBackgroundColor).opacity(0.96))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                    )
+            )
+            .shadow(color: Color.black.opacity(0.4), radius: 20, x: 0, y: 6)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+}
+
+private struct QRSheetOverlay: View {
+    @ObservedObject var model: PickerViewModel
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.6)
+                .onTapGesture {
+                    model.closeQRSheet()
+                }
+
+            VStack(spacing: 20) {
+                if let cgImage = model.qrImage {
+                    let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+                    Image(nsImage: nsImage)
+                        .interpolation(.none)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 200, height: 200)
+                        .padding(16)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                } else {
+                    ProgressView()
+                        .frame(width: 200, height: 200)
+                }
+
+                Button("Done") {
+                    model.closeQRSheet()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .keyboardShortcut(.defaultAction)
+            }
+            .padding(28)
+            .background(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(Color(NSColor.windowBackgroundColor).opacity(0.96))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                    )
+            )
+            .shadow(color: Color.black.opacity(0.4), radius: 24, x: 0, y: 8)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+}
+
+private struct GroupHeaderTile: View {
+    let browser: Browser
+    let profileCount: Int
+    let number: Int
+    let selected: Bool
+    let appearDelay: Double
+    @State private var hovered: Bool = false
+    @State private var appeared: Bool = false
+
+    var body: some View {
+        VStack(spacing: 10) {
+            ZStack(alignment: .topTrailing) {
+                Image(nsImage: browser.icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 60, height: 60)
+                    .scaleEffect(hovered && !selected ? 1.06 : (selected ? 1.03 : 1.0))
+
+                if number <= 9 {
+                    Text("\(number)")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundColor(.primary.opacity(0.85))
+                        .frame(width: 20, height: 20)
+                        .background(
+                            Circle()
+                                .fill(Color.black.opacity(0.4))
+                                .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 0.5))
+                        )
+                        .offset(x: 8, y: -5)
+                }
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.white.opacity(0.7))
+                    .frame(width: 16, height: 16)
+                    .background(Circle().fill(Color.black.opacity(0.5)))
+                    .offset(x: 8, y: 48)
+            }
+            .frame(height: 68)
+
+            VStack(spacing: 3) {
+                Text(browser.name)
+                    .font(.system(size: 14, weight: selected ? .semibold : .medium))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Text("\(profileCount) profiles")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 5)
+        }
+        .padding(.vertical, 18)
+        .padding(.horizontal, 10)
+        .frame(width: 144, height: 156)
+        .background(
+            tileFill
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(tileStroke, lineWidth: selected ? 2 : 1)
+        )
+        .shadow(
+            color: selected ? Color.accentColor.opacity(0.35) : Color.black.opacity(hovered ? 0.22 : 0.0),
+            radius: selected ? 14 : 8,
+            x: 0,
+            y: selected ? 6 : 3
+        )
+        .scaleEffect(appeared ? 1.0 : 0.9)
+        .opacity(appeared ? 1.0 : 0.0)
+        .onAppear {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8).delay(appearDelay)) {
+                appeared = true
+            }
+        }
+        .onHover { isHovered in
+            hovered = isHovered
+            if isHovered { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
+        .animation(.easeOut(duration: 0.15), value: hovered)
+        .animation(.easeOut(duration: 0.15), value: selected)
+    }
+
+    @ViewBuilder
+    private var tileFill: some View {
+        if selected {
+            LinearGradient(
+                colors: [Color.accentColor.opacity(0.34), Color.accentColor.opacity(0.14)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        } else if hovered {
+            LinearGradient(
+                colors: [Color.white.opacity(0.12), Color.white.opacity(0.05)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        } else {
+            LinearGradient(
+                colors: [Color.white.opacity(0.06), Color.white.opacity(0.02)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+    }
+
+    private var tileStroke: Color {
+        if selected { return Color.accentColor.opacity(0.85) }
+        if hovered { return Color.white.opacity(0.18) }
+        return Color.white.opacity(0.06)
+    }
 }
 
 private struct PickerTile: View {
@@ -606,6 +933,31 @@ private final class KeyCatcherView: NSView {
             let opt = modifiers.contains(.option)
             let shift = modifiers.contains(.shift)
 
+            if model.showQRSheet {
+                if event.keyCode == 53 {
+                    model.closeQRSheet()
+                    return nil
+                }
+                return nil
+            }
+
+            // Cheat sheet key handling: ? toggles overlay; Escape hides it when visible.
+            // Works in both picker and preview modes. dismiss signal is only acted on
+            // in normal picker mode below (preview mode has its own Escape semantics).
+            let cheatChars: String? = {
+                if let chars = event.characters, !chars.isEmpty { return chars }
+                // Shift+/ is ? on US keyboards; charactersIgnoringModifiers is "/".
+                if event.keyCode == 44, shift { return "?" }
+                return event.charactersIgnoringModifiers
+            }()
+            let cheatEvent = KeyEvent(
+                characters: cheatChars,
+                keyCode: event.keyCode,
+                shift: shift
+            )
+            let cheatOutcome = PickerKeyHandler.handle(event: cheatEvent, model: model)
+            if cheatOutcome.consumed { return nil }
+
             if model.previewMode {
                 switch event.keyCode {
                 case 53:
@@ -645,11 +997,17 @@ private final class KeyCatcherView: NSView {
                    let digit = Int(chars),
                    digit >= 1, digit <= 9 {
                     let idx = digit - 1
-                    guard model.filteredOptions.indices.contains(idx) else { return nil }
+                    guard model.visibleFlatOptions.indices.contains(idx) else { return nil }
                     model.selectedIndex = idx
                     return nil
                 }
                 return event
+            }
+
+            // Normal picker mode: act on dismiss signal from PickerKeyHandler (Escape, sheet hidden).
+            if cheatOutcome.dismiss {
+                model.cancel()
+                return nil
             }
 
             switch event.keyCode {
@@ -657,8 +1015,6 @@ private final class KeyCatcherView: NSView {
                 model.moveSelection(1); return nil
             case 123, 126:
                 model.moveSelection(-1); return nil
-            case 53:
-                model.cancel(); return nil
             case 49:
                 if shift {
                     model.toggleMultiAtSelection()
