@@ -76,7 +76,7 @@ enum PrefsSection: String, CaseIterable, Identifiable {
         switch self {
         case .general:    return "Behavior, look, and link cleaning."
         case .rewrites:   return "Replace a URL's host before routing."
-        case .targets:    return "Browsers and profiles Junction can open."
+        case .targets:    return "Drag to reorder. Hide browsers you don't want in the picker."
         case .rules:      return "First match wins. Drag to reorder."
         case .appSchemes: return "Open matching links in a native app."
         case .hotkeys:    return "Global shortcuts that work everywhere."
@@ -523,7 +523,7 @@ struct PreferencesView: View {
                     }
                     .onMove(perform: moveVisibleGrouped)
                 } header: {
-                    subSectionLabel("Visible", count: visibleTargets.count)
+                    subSectionLabel("Visible", count: visibleTargets.count, trailing: visibleTargets.count > 1 ? "Drag to reorder" : nil)
                 }
 
                 if !hiddenTargets.isEmpty {
@@ -537,7 +537,7 @@ struct PreferencesView: View {
                         }
                         .onMove(perform: moveHiddenGrouped)
                     } header: {
-                        subSectionLabel("Hidden", count: hiddenTargets.count)
+                        subSectionLabel("Hidden", count: hiddenTargets.count, trailing: hiddenTargets.count > 1 ? "Drag to reorder" : nil)
                     }
                 }
             }
@@ -569,6 +569,13 @@ struct PreferencesView: View {
             case .groupHeader: return nil
             case .groupChild(let opt, _): return opt
             }
+        }
+
+        var groupBundleIDForMove: String? {
+            if case .groupHeader(let browser, _, _) = kind {
+                return browser.bundleID
+            }
+            return nil
         }
     }
 
@@ -610,6 +617,7 @@ struct PreferencesView: View {
     private func targetGroupHeaderRow(browser: Browser, count: Int, groupID: String) -> some View {
         let isExpanded = expandedTargetGroupIDs.contains(groupID)
         return HStack(spacing: 14) {
+            reorderGrip
             Image(nsImage: browser.icon)
                 .resizable()
                 .interpolation(.high)
@@ -627,22 +635,27 @@ struct PreferencesView: View {
 
             Spacer()
 
-            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 22, height: 22)
+            Button {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    if isExpanded {
+                        expandedTargetGroupIDs.remove(groupID)
+                    } else {
+                        expandedTargetGroupIDs.insert(groupID)
+                    }
+                }
+            } label: {
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(isExpanded ? "Collapse profiles" : "Expand profiles")
         }
         .padding(.vertical, 12)
         .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(.easeOut(duration: 0.18)) {
-                if isExpanded {
-                    expandedTargetGroupIDs.remove(groupID)
-                } else {
-                    expandedTargetGroupIDs.insert(groupID)
-                }
-            }
-        }
+        .help("Drag to reorder this browser and all its profiles")
     }
 
     /// Flat insertion anchor for a grouped row index. Group headers have no
@@ -669,12 +682,14 @@ struct PreferencesView: View {
 
     private func moveVisibleGrouped(from source: IndexSet, to destination: Int) {
         let rows = groupedVisibleRows
-        let underlyingMoved = source.compactMap { rows[$0].underlyingOption }
-        guard !underlyingMoved.isEmpty else { return }
         var visible = visibleTargets
-        let sourceIndices = IndexSet(underlyingMoved.compactMap { moved in
-            visible.firstIndex(where: { $0.id == moved.id })
-        })
+        let sourceIndices = LaunchOptionGrouping.flatMoveSourceIndices(
+            sourceRowIndices: source,
+            groupBundleIDAtRow: { rows[$0].groupBundleIDForMove },
+            optionAtRow: { rows[$0].underlyingOption },
+            in: visible
+        )
+        guard !sourceIndices.isEmpty else { return }
         let destIdx = LaunchOptionGrouping.resolveDestinationIndex(
             destination: destination,
             rowUnderlyingOptions: rows.map { $0.underlyingOption },
@@ -688,12 +703,14 @@ struct PreferencesView: View {
 
     private func moveHiddenGrouped(from source: IndexSet, to destination: Int) {
         let rows = groupedHiddenRows
-        let underlyingMoved = source.compactMap { rows[$0].underlyingOption }
-        guard !underlyingMoved.isEmpty else { return }
         var hidden = hiddenTargets
-        let sourceIndices = IndexSet(underlyingMoved.compactMap { moved in
-            hidden.firstIndex(where: { $0.id == moved.id })
-        })
+        let sourceIndices = LaunchOptionGrouping.flatMoveSourceIndices(
+            sourceRowIndices: source,
+            groupBundleIDAtRow: { rows[$0].groupBundleIDForMove },
+            optionAtRow: { rows[$0].underlyingOption },
+            in: hidden
+        )
+        guard !sourceIndices.isEmpty else { return }
         let destIdx = LaunchOptionGrouping.resolveDestinationIndex(
             destination: destination,
             rowUnderlyingOptions: rows.map { $0.underlyingOption },
@@ -722,6 +739,7 @@ struct PreferencesView: View {
         let isHidden = settings.settings.hiddenTargetKeys.contains(key)
         let isPinned = settings.settings.pinnedTargetKey == key
         return HStack(spacing: 14) {
+            reorderGrip
             Image(nsImage: option.icon)
                 .resizable()
                 .interpolation(.high)
@@ -761,6 +779,15 @@ struct PreferencesView: View {
             .controlSize(.mini)
         }
         .padding(.vertical, 12)
+        .help("Drag to reorder")
+    }
+
+    private var reorderGrip: some View {
+        Image(systemName: "line.3.horizontal")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.tertiary)
+            .frame(width: 12, alignment: .center)
+            .accessibilityLabel("Reorder")
     }
 
     private func moveVisible(from source: IndexSet, to destination: Int) {
@@ -1214,7 +1241,7 @@ struct PreferencesView: View {
     }
 
     /// Sub-heading used inside a List section (Targets/Rules grouping).
-    private func subSectionLabel(_ title: String, count: Int) -> some View {
+    private func subSectionLabel(_ title: String, count: Int, trailing: String? = nil) -> some View {
         HStack(spacing: 6) {
             Text(title.uppercased())
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
@@ -1224,6 +1251,15 @@ struct PreferencesView: View {
                 .font(.system(size: 10, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary.opacity(0.5))
             Spacer()
+            if let trailing {
+                HStack(spacing: 4) {
+                    Image(systemName: "line.3.horizontal")
+                        .font(.system(size: 9, weight: .semibold))
+                    Text(trailing)
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                }
+                .foregroundStyle(.secondary.opacity(0.55))
+            }
         }
         .padding(.top, 8)
         .padding(.bottom, 8)

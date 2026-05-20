@@ -85,6 +85,28 @@ enum LaunchOptionGrouping {
         return result
     }
 
+    /// Maps preferences list-row drag sources to indices in the flat target array.
+    /// Dragging a multi-profile group header moves every profile for that browser.
+    static func flatMoveSourceIndices(
+        sourceRowIndices: IndexSet,
+        groupBundleIDAtRow: (Int) -> String?,
+        optionAtRow: (Int) -> LaunchOption?,
+        in flat: [LaunchOption]
+    ) -> IndexSet {
+        var indices = IndexSet()
+        for row in sourceRowIndices {
+            if let bundleID = groupBundleIDAtRow(row) {
+                for (idx, opt) in flat.enumerated() where opt.browser.bundleID == bundleID {
+                    indices.insert(idx)
+                }
+            } else if let opt = optionAtRow(row),
+                      let idx = flat.firstIndex(where: { $0.id == opt.id }) {
+                indices.insert(idx)
+            }
+        }
+        return indices
+    }
+
     /// Resolves the flat-array insertion index for a drag-to-reorder operation.
     /// When `destination` equals `rowUnderlyingOptions.count` (drop at end of list),
     /// returns `flat.count` so the moved item appends after the last element.
@@ -101,6 +123,16 @@ enum LaunchOptionGrouping {
         }
         let destOption = rowUnderlyingOptions[destination] ?? fallback
         return flat.firstIndex(where: { $0.id == destOption.id }) ?? flat.count
+    }
+
+    /// All multi-profile browser group IDs in `grouped`.
+    static func allGroupIDs(grouped: [GroupedLaunchOption]) -> Set<String> {
+        Set(grouped.compactMap { item in
+            if case .group(let browser, _) = item {
+                return "group:\(browser.bundleID)"
+            }
+            return nil
+        })
     }
 
     /// Returns the set of group IDs that should be expanded by default, based on
