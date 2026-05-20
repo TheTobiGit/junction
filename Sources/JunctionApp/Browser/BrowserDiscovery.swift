@@ -68,7 +68,7 @@ enum BrowserDiscovery {
         "com.vivaldi.Vivaldi",
         "org.chromium.Chromium",
         "com.kagi.kagimacOS",
-        "com.zen-browser.zen",
+        "app.zen-browser.zen",
         "io.orionbrowser.Orion",
         "net.shinyfrog.Orion",
         "app.sigmaos.sigmaos",
