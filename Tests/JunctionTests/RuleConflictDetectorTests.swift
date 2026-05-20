@@ -10,6 +10,7 @@ final class RuleConflictDetectorTests: XCTestCase {
         path: URLPathMatch? = nil,
         when: RuleCondition? = nil,
         schemes: [String]? = nil,
+        queryContains: String? = nil,
         urlEquals: String? = nil,
         enabled: Bool = true
     ) -> DomainRule {
@@ -20,6 +21,7 @@ final class RuleConflictDetectorTests: XCTestCase {
             when: when,
             schemes: schemes,
             path: path,
+            queryContains: queryContains,
             urlEquals: urlEquals
         )
     }
@@ -144,6 +146,23 @@ final class RuleConflictDetectorTests: XCTestCase {
         XCTAssertTrue(shadowed.contains(r2.id))
     }
 
+    // Additional: broader suffix covers narrower suffix
+    func test_broaderSuffixCoversNarrowerSuffix() {
+        let r1 = rule(host: .suffix("example.com"))
+        let r2 = rule(host: .suffix("docs.example.com"))
+        let shadowed = RuleConflictDetector.shadowed(rules: [r1, r2])
+        XCTAssertFalse(shadowed.contains(r1.id))
+        XCTAssertTrue(shadowed.contains(r2.id))
+    }
+
+    // Additional: narrower suffix does not cover broader suffix
+    func test_narrowerSuffixDoesNotCoverBroaderSuffix() {
+        let r1 = rule(host: .suffix("docs.example.com"))
+        let r2 = rule(host: .suffix("example.com"))
+        let shadowed = RuleConflictDetector.shadowed(rules: [r1, r2])
+        XCTAssertFalse(shadowed.contains(r2.id))
+    }
+
     // Additional: equals does NOT cover suffix
     func test_equalsDoesNotCoverSuffix() {
         let r1 = rule(host: .equals("github.com"))
@@ -211,5 +230,29 @@ final class RuleConflictDetectorTests: XCTestCase {
         let r = rule(host: .suffix("github.com"))
         let shadowed = RuleConflictDetector.shadowed(rules: [r])
         XCTAssertTrue(shadowed.isEmpty)
+    }
+
+    // Additional: earlier queryContains does not shadow later host-wide rule
+    func test_queryContainsEarlier_doesNotShadowHostWideLater() {
+        let r1 = rule(host: .suffix("github.com"), queryContains: "utm_source")
+        let r2 = rule(host: .suffix("github.com"))
+        let shadowed = RuleConflictDetector.shadowed(rules: [r1, r2])
+        XCTAssertFalse(shadowed.contains(r2.id))
+    }
+
+    // Additional: nil queryContains earlier shadows restricted later rule
+    func test_nilQueryContainsEarlier_shadowsRestrictedLater() {
+        let r1 = rule(host: .suffix("github.com"))
+        let r2 = rule(host: .suffix("github.com"), queryContains: "utm_source")
+        let shadowed = RuleConflictDetector.shadowed(rules: [r1, r2])
+        XCTAssertTrue(shadowed.contains(r2.id))
+    }
+
+    // Additional: broader query substring earlier shadows narrower later rule
+    func test_broaderQueryContainsEarlier_shadowsNarrowerLater() {
+        let r1 = rule(host: .suffix("github.com"), queryContains: "utm")
+        let r2 = rule(host: .suffix("github.com"), queryContains: "utm_source")
+        let shadowed = RuleConflictDetector.shadowed(rules: [r1, r2])
+        XCTAssertTrue(shadowed.contains(r2.id))
     }
 }

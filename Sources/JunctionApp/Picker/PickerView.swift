@@ -298,6 +298,7 @@ struct PickerView: View {
     private var optionList: some View {
         let list = model.filteredOptions
         let grouped = model.groupedFilteredOptions
+        let tiles = groupedTiles(grouped)
         return Group {
             if list.isEmpty {
                 Text("No browsers enabled — open Preferences to show some.")
@@ -308,11 +309,9 @@ struct PickerView: View {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: Self.tileSpacing) {
-                            ForEach(Array(groupedTiles(grouped).enumerated()), id: \.element.tileID) { idx, entry in
-                                if idx < 9 {
-                                    tileForEntry(entry, visibleIndex: idx)
-                                        .id(entry.tileID)
-                                }
+                            ForEach(Array(tiles.enumerated()), id: \.element.tileID) { idx, entry in
+                                tileForEntry(entry, visibleIndex: idx)
+                                    .id(entry.tileID)
                             }
                         }
                         .padding(.horizontal, Self.listHorizontalPadding)
@@ -321,9 +320,9 @@ struct PickerView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onChange(of: model.selectedIndex) { newIndex in
-                        guard list.indices.contains(newIndex) else { return }
+                        guard tiles.indices.contains(newIndex) else { return }
                         withAnimation(.easeInOut(duration: 0.2)) {
-                            proxy.scrollTo(list[newIndex].id, anchor: .center)
+                            proxy.scrollTo(tiles[newIndex].tileID, anchor: .center)
                         }
                     }
                 }
@@ -374,18 +373,19 @@ struct PickerView: View {
         case .single(let opt):
             tile(idx: visibleIndex, option: opt)
         case .groupHeader(let browser, let opts, let groupID):
-            groupHeaderTile(browser: browser, options: opts, groupID: groupID, number: visibleIndex + 1)
+            groupHeaderTile(browser: browser, options: opts, groupID: groupID, number: visibleIndex + 1, selected: visibleIndex == model.selectedIndex)
         case .groupChild(let opt, _):
             tile(idx: visibleIndex, option: opt)
         }
     }
 
-    private func groupHeaderTile(browser: Browser, options: [LaunchOption], groupID: String, number: Int) -> some View {
+    private func groupHeaderTile(browser: Browser, options: [LaunchOption], groupID: String, number: Int, selected: Bool) -> some View {
         let privateActive = model.incognitoMode || model.optionKeyHeld
         return GroupHeaderTile(
             browser: browser,
             profileCount: options.count,
             number: number,
+            selected: selected,
             appearDelay: Double(number - 1) * 0.018
         )
         .help("Expand \(browser.name) profiles")
@@ -588,6 +588,7 @@ private struct GroupHeaderTile: View {
     let browser: Browser
     let profileCount: Int
     let number: Int
+    let selected: Bool
     let appearDelay: Double
     @State private var hovered: Bool = false
     @State private var appeared: Bool = false
@@ -599,7 +600,7 @@ private struct GroupHeaderTile: View {
                     .resizable()
                     .interpolation(.high)
                     .frame(width: 60, height: 60)
-                    .scaleEffect(hovered ? 1.06 : 1.0)
+                    .scaleEffect(hovered && !selected ? 1.06 : (selected ? 1.03 : 1.0))
 
                 if number <= 9 {
                     Text("\(number)")
@@ -625,7 +626,7 @@ private struct GroupHeaderTile: View {
 
             VStack(spacing: 3) {
                 Text(browser.name)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: 14, weight: selected ? .semibold : .medium))
                     .foregroundColor(.primary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -642,16 +643,18 @@ private struct GroupHeaderTile: View {
         .padding(.horizontal, 10)
         .frame(width: 144, height: 156)
         .background(
-            LinearGradient(
-                colors: [Color.white.opacity(hovered ? 0.12 : 0.06), Color.white.opacity(hovered ? 0.05 : 0.02)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            tileFill
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(hovered ? Color.white.opacity(0.18) : Color.white.opacity(0.06), lineWidth: 1)
+                .strokeBorder(tileStroke, lineWidth: selected ? 2 : 1)
+        )
+        .shadow(
+            color: selected ? Color.accentColor.opacity(0.35) : Color.black.opacity(hovered ? 0.22 : 0.0),
+            radius: selected ? 14 : 8,
+            x: 0,
+            y: selected ? 6 : 3
         )
         .scaleEffect(appeared ? 1.0 : 0.9)
         .opacity(appeared ? 1.0 : 0.0)
@@ -665,6 +668,36 @@ private struct GroupHeaderTile: View {
             if isHovered { NSCursor.pointingHand.push() } else { NSCursor.pop() }
         }
         .animation(.easeOut(duration: 0.15), value: hovered)
+        .animation(.easeOut(duration: 0.15), value: selected)
+    }
+
+    @ViewBuilder
+    private var tileFill: some View {
+        if selected {
+            LinearGradient(
+                colors: [Color.accentColor.opacity(0.34), Color.accentColor.opacity(0.14)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        } else if hovered {
+            LinearGradient(
+                colors: [Color.white.opacity(0.12), Color.white.opacity(0.05)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        } else {
+            LinearGradient(
+                colors: [Color.white.opacity(0.06), Color.white.opacity(0.02)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+    }
+
+    private var tileStroke: Color {
+        if selected { return Color.accentColor.opacity(0.85) }
+        if hovered { return Color.white.opacity(0.18) }
+        return Color.white.opacity(0.06)
     }
 }
 
@@ -911,9 +944,16 @@ private final class KeyCatcherView: NSView {
             // Cheat sheet key handling: ? toggles overlay; Escape hides it when visible.
             // Works in both picker and preview modes. dismiss signal is only acted on
             // in normal picker mode below (preview mode has its own Escape semantics).
+            let cheatChars: String? = {
+                if let chars = event.characters, !chars.isEmpty { return chars }
+                // Shift+/ is ? on US keyboards; charactersIgnoringModifiers is "/".
+                if event.keyCode == 44, shift { return "?" }
+                return event.charactersIgnoringModifiers
+            }()
             let cheatEvent = KeyEvent(
-                characters: event.charactersIgnoringModifiers,
-                keyCode: event.keyCode
+                characters: cheatChars,
+                keyCode: event.keyCode,
+                shift: shift
             )
             let cheatOutcome = PickerKeyHandler.handle(event: cheatEvent, model: model)
             if cheatOutcome.consumed { return nil }
@@ -957,7 +997,7 @@ private final class KeyCatcherView: NSView {
                    let digit = Int(chars),
                    digit >= 1, digit <= 9 {
                     let idx = digit - 1
-                    guard model.filteredOptions.indices.contains(idx) else { return nil }
+                    guard model.visibleFlatOptions.indices.contains(idx) else { return nil }
                     model.selectedIndex = idx
                     return nil
                 }

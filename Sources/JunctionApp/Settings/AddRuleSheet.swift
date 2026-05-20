@@ -35,17 +35,20 @@ struct AddRuleSheet: View {
     }
 
     private static func resolvedAction(for entry: RoutingHistory.Entry, options: [LaunchOption]) -> RuleAction? {
+        func action(for target: LaunchTarget) -> RuleAction {
+            entry.outcome == .openedIncognito ? .openIncognito(target) : .open(target)
+        }
         if let storageKey = entry.targetStorageKey {
             if let target = resolvedTarget(from: storageKey, in: options) {
-                return .open(target)
+                return action(for: target)
             }
             if let bundleID = entry.targetBundleID {
-                return .open(.app(bundleID: bundleID))
+                return action(for: .app(bundleID: bundleID))
             }
             return nil
         }
         if let bundleID = entry.targetBundleID {
-            return .open(.app(bundleID: bundleID))
+            return action(for: .app(bundleID: bundleID))
         }
         return nil
     }
@@ -148,12 +151,20 @@ struct AddRuleSheet: View {
         schemeValue.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private var trimmedPath: String {
+        pathValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private var validationError: String? {
         if trimmedHost.isEmpty {
             return hostKind == .urlEquals ? "URL can't be empty" : "Host can't be empty"
         }
         if hostKind == .regex, (try? NSRegularExpression(pattern: trimmedHost)) == nil {
             return "Invalid regular expression"
+        }
+        if pathKind == .regex, !trimmedPath.isEmpty,
+           (try? NSRegularExpression(pattern: trimmedPath)) == nil {
+            return "Invalid path regular expression"
         }
         if hostKind == .urlEquals {
             guard let parsed = URL(string: trimmedHost),
@@ -415,7 +426,6 @@ struct AddRuleSheet: View {
             }
         }()
 
-        let trimmedPath = pathValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let pathMatch: URLPathMatch? = (!hostKind.isExactURL && !trimmedPath.isEmpty) ? {
             switch pathKind {
             case .prefix:   return .prefix(trimmedPath)

@@ -48,16 +48,29 @@ final class PickerViewModel: ObservableObject {
         onOpenPreferences: (() -> Void)? = nil
     ) {
         self.url = url
-        let trace = URLTransformers.default.runTraced(url)
+        // Mirror ``AppDelegate.routeAfterExpansion`` and
+        // ``PickerPanelController.openOnce``: pick the matching rule against
+        // the globally-cleaned URL, then re-run the pipeline with rule-scoped
+        // tracker overrides if the rule has any. Without this, the picker's
+        // displayed/preview/copy-cleaned URL could strip or preserve different
+        // params than the URL the user actually opens.
+        let globalSettings = SettingsStore.shared.settings
+        let globalTrace = URLTransformers.default.runTraced(url)
+        let matched = RulesStore.shared.match(url: globalTrace.final, context: context).rule
+        let trace: URLTransformResult
+        if let ruleOverrides = matched?.trackerOverrides {
+            trace = URLTransformers.pipeline(
+                globalOverrides: globalSettings.trackerOverrides,
+                ruleOverrides: ruleOverrides
+            ).runTraced(url)
+        } else {
+            trace = globalTrace
+        }
         self.cleanedURL = trace.final
         self.cleaningTrace = trace
         self.options = options
         self.context = context
-        // Resolve the matching rule once at init — the URL doesn't change for
-        // the picker's lifetime, so we can avoid re-running the rule matcher
-        // on every SwiftUI re-render. The global cleaning toggle is still
-        // read live so user changes mid-presentation take effect.
-        self.matchedRule = RulesStore.shared.match(url: trace.final, context: context).rule
+        self.matchedRule = matched
         // Risk flags follow the URL that's about to open, including the
         // per-rule `cleanOverride`. Otherwise a rule that forces "Always
         // clean" for a host would still warn against the raw URL's trackers.
@@ -292,7 +305,7 @@ final class PickerViewModel: ObservableObject {
     }
 
     func selectedOption() -> LaunchOption? {
-        let list = filteredOptions
+        let list = visibleFlatOptions
         guard list.indices.contains(selectedIndex) else { return nil }
         return list[selectedIndex]
     }
@@ -307,7 +320,7 @@ final class PickerViewModel: ObservableObject {
     }
 
     func moveSelection(_ delta: Int) {
-        let count = filteredOptions.count
+        let count = visibleFlatOptions.count
         guard count > 0 else { return }
         let next = (selectedIndex + delta + count) % count
         selectedIndex = next
@@ -318,7 +331,7 @@ final class PickerViewModel: ObservableObject {
             confirmMulti(incognito: incognito ?? incognitoMode)
             return
         }
-        let list = filteredOptions
+        let list = visibleFlatOptions
         guard list.indices.contains(selectedIndex) else { return }
         let shouldRemember = remember ?? rememberChoice
         let option = list[selectedIndex]
@@ -335,9 +348,7 @@ final class PickerViewModel: ObservableObject {
         let visible = visibleFlatOptions
         guard visible.indices.contains(idx) else { return }
         let option = visible[idx]
-        if let flatIdx = filteredOptions.firstIndex(where: { $0.id == option.id }) {
-            selectedIndex = flatIdx
-        }
+        selectedIndex = idx
         let shouldRemember = remember ?? rememberChoice
         pickHandler(option, shouldRemember, resolvedIncognito(for: option, requested: incognito))
     }
@@ -352,7 +363,7 @@ final class PickerViewModel: ObservableObject {
     }
 
     func toggleMultiAtSelection() {
-        let list = filteredOptions
+        let list = visibleFlatOptions
         guard list.indices.contains(selectedIndex) else { return }
         toggleMulti(list[selectedIndex])
     }

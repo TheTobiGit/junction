@@ -409,13 +409,28 @@ struct DomainRule: Codable, Identifiable, Hashable {
     /// Stable key for deduplicating rules when adding. Two exact-URL rules
     /// with the same target replace each other; two host rules with the same
     /// `kind:host:pathKind:pathValue` replace each other; a path-bearing rule
-    /// and an otherwise-identical path-less rule never collide.
+    /// and an otherwise-identical path-less rule never collide. Distinct
+    /// `when` conditions (e.g. different source apps) never collide.
     var dedupKey: String {
+        let whenPart = Self.whenDedupPart(when)
         if let urlEquals {
-            return "url:\(urlEquals.lowercased())"
+            return "url:\(urlEquals.lowercased())\(whenPart)"
         }
         let pathPart = path.map { ":\($0.kindLabel):\($0.displayValue)" } ?? ""
-        return "\(host.kindLabel):\(host.displayValue.lowercased())\(pathPart)"
+        return "\(host.kindLabel):\(host.displayValue.lowercased())\(pathPart)\(whenPart)"
+    }
+
+    private static func whenDedupPart(_ when: RuleCondition?) -> String {
+        guard let when else { return "" }
+        var parts: [String] = []
+        if let apps = when.sourceApp, !apps.isEmpty {
+            parts.append("src:" + apps.map { $0.lowercased() }.sorted().joined(separator: ","))
+        }
+        if let focus = when.focus, !focus.isEmpty {
+            parts.append("focus:" + focus.map { $0.lowercased() }.sorted().joined(separator: ","))
+        }
+        guard !parts.isEmpty else { return "" }
+        return ":" + parts.joined(separator: ":")
     }
 }
 

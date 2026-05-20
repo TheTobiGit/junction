@@ -645,6 +645,28 @@ struct PreferencesView: View {
         }
     }
 
+    /// Flat insertion anchor for a grouped row index. Group headers have no
+    /// underlying option; use the first target in that browser group so drops
+    /// before a collapsed header resolve to the group's position, not the
+    /// dragged item's current index.
+    private func destinationInsertionOption(
+        at destination: Int,
+        in rows: [TargetGroupRow],
+        flat: [LaunchOption]
+    ) -> LaunchOption {
+        guard destination < rows.count else {
+            return flat.last ?? flat.first!
+        }
+        if let opt = rows[destination].underlyingOption {
+            return opt
+        }
+        if case .groupHeader(let browser, _, _) = rows[destination].kind,
+           let first = flat.first(where: { $0.browser.bundleID == browser.bundleID }) {
+            return first
+        }
+        return flat.first!
+    }
+
     private func moveVisibleGrouped(from source: IndexSet, to destination: Int) {
         let rows = groupedVisibleRows
         let underlyingMoved = source.compactMap { rows[$0].underlyingOption }
@@ -657,7 +679,7 @@ struct PreferencesView: View {
             destination: destination,
             rowUnderlyingOptions: rows.map { $0.underlyingOption },
             flat: visible,
-            fallback: underlyingMoved.first!
+            fallback: destinationInsertionOption(at: destination, in: rows, flat: visible)
         )
         visible.move(fromOffsets: sourceIndices, toOffset: destIdx)
         options = visible + hiddenTargets
@@ -676,7 +698,7 @@ struct PreferencesView: View {
             destination: destination,
             rowUnderlyingOptions: rows.map { $0.underlyingOption },
             flat: hidden,
-            fallback: underlyingMoved.first!
+            fallback: destinationInsertionOption(at: destination, in: rows, flat: hidden)
         )
         hidden.move(fromOffsets: sourceIndices, toOffset: destIdx)
         options = visibleTargets + hidden

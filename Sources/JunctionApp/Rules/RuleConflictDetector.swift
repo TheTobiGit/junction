@@ -11,7 +11,8 @@ enum RuleConflictDetector {
     /// 2. E's path covers R's path (E.path == nil dominates any R.path).
     /// 3. E's `when` is nil-or-superset of R's `when`.
     /// 4. E's schemes are nil-or-superset of R's schemes.
-    /// 5. R's `urlEquals` is not strictly different from E's.
+    /// 5. E's `queryContains` is nil-or-superset of R's `queryContains`.
+    /// 6. R's `urlEquals` is not strictly different from E's.
     static func shadowed(rules: [DomainRule]) -> Set<UUID> {
         var result = Set<UUID>()
         for rIdx in rules.indices {
@@ -57,6 +58,13 @@ enum RuleConflictDetector {
             guard rSet.isSubset(of: eSet) else { return false }
         }
 
+        // Query: nil on E means "any query" and therefore dominates. A restricted
+        // earlier rule cannot shadow a later host-wide rule.
+        if let eQuery = e.queryContains, !eQuery.isEmpty {
+            guard let rQuery = r.queryContains, !rQuery.isEmpty else { return false }
+            guard rQuery.lowercased().contains(eQuery.lowercased()) else { return false }
+        }
+
         return true
     }
 
@@ -65,16 +73,21 @@ enum RuleConflictDetector {
         case (.equals(let ev), .equals(let rv)):
             return ev.lowercased() == rv.lowercased()
         case (.suffix(let ev), .suffix(let rv)):
-            return ev.lowercased() == rv.lowercased()
+            return suffixPatternCovers(ev, rv)
         case (.suffix(let ev), .equals(let rv)):
-            let needle = ev.lowercased()
-            let target = rv.lowercased()
-            return target == needle || target.hasSuffix("." + needle)
+            return suffixPatternCovers(ev, rv)
         case (.regex(let ep), .regex(let rp)):
             return ep == rp
         default:
             return false
         }
+    }
+
+    /// True when every host matching suffix pattern `narrower` also matches `broader`.
+    private static func suffixPatternCovers(_ broader: String, _ narrower: String) -> Bool {
+        let needle = broader.lowercased()
+        let target = narrower.lowercased()
+        return target == needle || target.hasSuffix("." + needle)
     }
 
     private static func whenCovers(_ e: RuleCondition, _ r: RuleCondition) -> Bool {

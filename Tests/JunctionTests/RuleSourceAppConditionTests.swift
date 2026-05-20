@@ -115,6 +115,37 @@ final class RuleSourceAppConditionTests: XCTestCase {
         XCTAssertEqual(decoded.when?.sourceApp, ["com.tinyspeck.slackmacgap"])
     }
 
+    func test_dedupKey_sameHostDifferentSourceAppsDoNotCollide() {
+        let slack = DomainRule(
+            host: .suffix("github.com"),
+            action: .ask,
+            when: RuleCondition(sourceApp: ["com.tinyspeck.slackmacgap"])
+        )
+        let mail = DomainRule(
+            host: .suffix("github.com"),
+            action: .block,
+            when: RuleCondition(sourceApp: ["com.apple.mail"])
+        )
+        XCTAssertNotEqual(slack.dedupKey, mail.dedupKey)
+    }
+
+    func test_dedupKey_sameHostSameSourceAppCollides() {
+        let condition = RuleCondition(sourceApp: ["com.tinyspeck.slackmacgap"])
+        let r1 = DomainRule(host: .suffix("github.com"), action: .ask, when: condition)
+        let r2 = DomainRule(host: .suffix("github.com"), action: .block, when: condition)
+        XCTAssertEqual(r1.dedupKey, r2.dedupKey)
+    }
+
+    func test_dedupKey_unconstrainedHostDiffersFromSourceAppRule() {
+        let unconstrained = DomainRule(host: .suffix("github.com"), action: .ask, when: nil)
+        let slackOnly = DomainRule(
+            host: .suffix("github.com"),
+            action: .ask,
+            when: RuleCondition(sourceApp: ["com.tinyspeck.slackmacgap"])
+        )
+        XCTAssertNotEqual(unconstrained.dedupKey, slackOnly.dedupKey)
+    }
+
     // MARK: - VAL-M1-CLI-003
 
     func test_singleFromFlagProducesSourceAppCondition_VAL_M1_CLI_003() throws {

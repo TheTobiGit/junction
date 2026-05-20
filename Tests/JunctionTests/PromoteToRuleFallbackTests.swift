@@ -12,13 +12,14 @@ final class PromoteToRuleFallbackTests: XCTestCase {
     private func makeEntry(
         cleanedURL: String = "https://brave.com/",
         targetStorageKey: String? = nil,
-        targetBundleID: String? = nil
+        targetBundleID: String? = nil,
+        outcome: RoutingHistory.Outcome = .opened
     ) -> RoutingHistory.Entry {
         RoutingHistory.Entry(
             timestamp: Date(),
             originalURL: cleanedURL,
             cleanedURL: cleanedURL,
-            outcome: .opened,
+            outcome: outcome,
             targetBundleID: targetBundleID,
             ruleLabel: nil,
             cleaningSteps: [],
@@ -50,6 +51,16 @@ final class PromoteToRuleFallbackTests: XCTestCase {
         XCTAssertEqual(store.rules.rules.count, before + 1)
         XCTAssertEqual(store.rules.rules.first?.host, .equals("brave.com"))
         XCTAssertEqual(store.rules.rules.first?.action, .open(.app(bundleID: "com.brave.Browser")))
+    }
+
+    func test_prefillPreservesIncognitoOutcome() {
+        let entry = makeEntry(
+            targetStorageKey: "app:com.brave.Browser",
+            targetBundleID: "com.brave.Browser",
+            outcome: .openedIncognito
+        )
+        let prefill = AddRuleSheet.prefill(for: entry, options: [])!
+        XCTAssertEqual(prefill.action, .openIncognito(.app(bundleID: "com.brave.Browser")))
     }
 
     // VAL-CROSS-014: nil storageKey + non-nil targetBundleID → .open(.app(bundleID:));

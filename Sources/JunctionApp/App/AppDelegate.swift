@@ -163,7 +163,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
+        ) { [weak self] notification in
+            let activated = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            guard activated?.bundleIdentifier == Bundle.main.bundleIdentifier else { return }
             self?.maybeShowPostDefaultTour()
         }
     }
