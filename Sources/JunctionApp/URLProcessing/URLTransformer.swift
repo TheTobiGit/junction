@@ -57,6 +57,18 @@ enum URLTransformers {
         ])
     }
 
+    /// URL after redirect/AMP normalization but **before** global tracker stripping.
+    /// Rule matching must use this so `queryContains` and per-rule `trackerOverrides`
+    /// are evaluated against the original query string.
+    static func urlForRuleMatching(_ url: URL) -> URL {
+        let settings = settingsProvider()
+        return URLTransformPipeline(transformers: [
+            OutgoingRedirectUnwrapper(),
+            RedirectTransformer(redirects: settings.redirects),
+            AMPCollapser(),
+        ]).run(url)
+    }
+
     static func pipeline(globalOverrides: TrackerOverrides, ruleOverrides: TrackerOverrides?) -> URLTransformPipeline {
         let settings = settingsProvider()
         let trackerStripper: TrackerStripper

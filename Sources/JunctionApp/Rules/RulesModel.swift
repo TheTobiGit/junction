@@ -199,6 +199,31 @@ enum URLPathMatch: Codable, Hashable {
         }
     }
 
+    /// True when `pattern` compiles as an `NSRegularExpression` (used by the
+    /// Add Rule sheet and agent/CLI add-rule path before persisting).
+    static func isValidRegexPattern(_ pattern: String) -> Bool {
+        (try? NSRegularExpression(pattern: pattern)) != nil
+    }
+
+    /// True when every path matching `narrower` also matches `broader`.
+    func covers(_ narrower: URLPathMatch) -> Bool {
+        if self == narrower { return true }
+        switch (self, narrower) {
+        case (.prefix(let broader), .prefix(let narrow)):
+            return narrow.hasPrefix(broader)
+        case (.prefix, .contains):
+            // Prefix rules only match at the path start; contains rules can
+            // match in the middle (e.g. /api/docs vs prefix /docs).
+            return false
+        case (.contains(let broader), .contains(let narrow)):
+            return narrow.contains(broader)
+        case (.contains(let broader), .prefix(let narrow)):
+            return narrow.hasPrefix(broader)
+        default:
+            return false
+        }
+    }
+
     /// Builds a `URLPathMatch` from a kind string and value. Returns `nil`
     /// for unknown kind strings so callers can surface a clean error.
     static func from(kind: String, value: String) -> URLPathMatch? {
@@ -404,6 +429,25 @@ struct DomainRule: Codable, Identifiable, Hashable {
     /// is the full URL; otherwise it's the host pattern.
     var displayValue: String {
         urlEquals ?? host.displayValue
+    }
+
+    /// Rules-tab row label: host/URL plus path, source-app, and query
+    /// discriminators so same-host rules stay distinguishable.
+    var rulesRowDisplayValue: String {
+        var parts = [displayValue]
+        if let path {
+            parts.append("\(path.kindLabel):\(path.displayValue)")
+        }
+        if let queryContains, !queryContains.isEmpty {
+            parts.append("query:\(queryContains)")
+        }
+        if let apps = when?.sourceApp, !apps.isEmpty {
+            parts.append("from:\(apps.joined(separator: ","))")
+        }
+        if let focus = when?.focus, !focus.isEmpty {
+            parts.append("focus:\(focus.joined(separator: ","))")
+        }
+        return parts.joined(separator: " · ")
     }
 
     /// Stable key for deduplicating rules when adding. Two exact-URL rules

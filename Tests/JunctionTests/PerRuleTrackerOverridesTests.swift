@@ -162,6 +162,35 @@ final class PerRuleTrackerOverridesTests: XCTestCase {
         )
     }
 
+    // queryContains rules must match before global tracker stripping so
+    // per-rule disabled entries can preserve params the global pipeline removes.
+    func test_queryContainsRuleMatchesBeforeGlobalTrackerStrip() {
+        let rule = DomainRule(
+            host: .suffix("example.com"),
+            action: .ask,
+            queryContains: "utm_source",
+            trackerOverrides: TrackerOverrides(additions: [], disabled: ["utm_source"])
+        )
+        let store = RulesStore(fileURL: FileManager.default.temporaryDirectory
+            .appendingPathComponent("rules-\(UUID().uuidString).json"))
+        store.addRule(rule)
+
+        let incoming = URL(string: "https://example.com/page?utm_source=newsletter&keep=1")!
+        let forMatching = URLTransformers.urlForRuleMatching(incoming)
+        let match = store.match(url: forMatching, context: emptyContext)
+
+        XCTAssertEqual(match.rule?.id, rule.id)
+
+        let trace = URLTransformers.pipeline(
+            globalOverrides: TrackerOverrides(),
+            ruleOverrides: rule.trackerOverrides
+        ).runTraced(incoming)
+        let names = URLComponents(url: trace.final, resolvingAgainstBaseURL: false)?
+            .queryItems?.map(\.name) ?? []
+        XCTAssertTrue(names.contains("utm_source"))
+        XCTAssertTrue(names.contains("keep"))
+    }
+
     // When no rule overrides, the step identifier is "tracker-stripper" (not rule-scoped).
     func test_pipelineRecordsGlobalTrackerStepWhenNoRuleOverrides_VAL_M4_TRACKER_RULE_005() {
         let globalOverrides = TrackerOverrides()

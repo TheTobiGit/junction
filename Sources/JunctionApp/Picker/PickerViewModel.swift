@@ -49,14 +49,15 @@ final class PickerViewModel: ObservableObject {
     ) {
         self.url = url
         // Mirror ``AppDelegate.routeAfterExpansion`` and
-        // ``PickerPanelController.openOnce``: pick the matching rule against
-        // the globally-cleaned URL, then re-run the pipeline with rule-scoped
-        // tracker overrides if the rule has any. Without this, the picker's
-        // displayed/preview/copy-cleaned URL could strip or preserve different
-        // params than the URL the user actually opens.
+        // ``PickerPanelController.openOnce``: match against the URL before
+        // global tracker stripping (so queryContains / per-rule overrides work),
+        // then re-run the pipeline with rule-scoped tracker overrides if needed.
         let globalSettings = SettingsStore.shared.settings
         let globalTrace = URLTransformers.default.runTraced(url)
-        let matched = RulesStore.shared.match(url: globalTrace.final, context: context).rule
+        let matched = RulesStore.shared.match(
+            url: URLTransformers.urlForRuleMatching(url),
+            context: context
+        ).rule
         let trace: URLTransformResult
         if let ruleOverrides = matched?.trackerOverrides {
             trace = URLTransformers.pipeline(
