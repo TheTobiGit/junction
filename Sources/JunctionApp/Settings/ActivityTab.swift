@@ -507,7 +507,7 @@ private struct ActivityRow: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Copy cleaned URL")
+            .help("Copy URL")
 
             Button {
                 if let url = URL(string: entry.cleanedURL) {

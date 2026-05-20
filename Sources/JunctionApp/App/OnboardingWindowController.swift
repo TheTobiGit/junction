@@ -333,8 +333,8 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 12) {
             bullet(icon: "command", title: "Menu bar",
                    detail: "Preferences (including rules) are available from the menu bar arrow icon.")
-            bullet(icon: "questionmark.circle", title: "Picker tips",
-                   detail: "↩ opens, ⌘↩ remembers the choice, ⌥↩ opens private, ⌘C copies the cleaned URL, 1-9 opens a specific tile.")
+            bullet(icon: "questionmark.circle", title: "Picker shortcuts",
+                   detail: "The picker footer shows common keys; click ? Shortcuts (or press ?) for the rest.")
             bullet(icon: "terminal", title: "CLI",
                    detail: "Install the junction CLI and run junction open <url> from scripts or shortcuts.")
         }

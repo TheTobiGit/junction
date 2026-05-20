@@ -373,6 +373,14 @@ final class PickerViewModel: ObservableObject {
         previewMode ? PickerShortcutHelp.previewEntries : PickerShortcutHelp.pickerEntries
     }
 
+    var cheatSheetRows: [PickerShortcutHelp.CheatRow] {
+        previewMode ? PickerShortcutHelp.previewCheatRows : PickerShortcutHelp.pickerCheatRows
+    }
+
+    func toggleCheatSheet() {
+        cheatSheetVisible.toggle()
+    }
+
     func openQRSheet() {
         qrImage = qrImageProvider(previewURL.absoluteString)
         showQRSheet = true
@@ -394,26 +402,6 @@ final class PickerViewModel: ObservableObject {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(cleanedURL.absoluteString, forType: .string)
-    }
-
-    /// Copies the cleaned URL plus the page title (if known) as Markdown:
-    /// `[Title](https://…)`. Falls back to the host when no title is loaded.
-    func copyAsMarkdown() {
-        let title = preview?.title?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let label: String
-        if let title, !title.isEmpty {
-            label = title
-        } else {
-            label = displayHost
-        }
-        let escaped = label
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "[", with: "\\[")
-            .replacingOccurrences(of: "]", with: "\\]")
-        let markdown = "[\(escaped)](\(cleanedURL.absoluteString))"
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(markdown, forType: .string)
     }
 }
 
