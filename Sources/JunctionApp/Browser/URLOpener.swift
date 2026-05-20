@@ -65,14 +65,74 @@ enum URLOpener {
                 return
             }
 
-            // Non-Chromium profile path (e.g. Firefox with a profile) — keep
-            // NSWorkspace so Firefox-specific behaviour is unchanged.
+            // Firefox-family profile path (Firefox, Zen, …). Launch via
+            // `--profile <abs-profile-path> --new-tab <url>`, with
+            // `--new-instance` added ONLY when the target profile is not
+            // already running.
+            //
+            // Why the conditional `--new-instance`:
+            // - When the target profile is already running, omitting
+            //   `--new-instance` lets Zen/Firefox IPC into the existing
+            //   process and deliver the URL to that profile's window —
+            //   exactly what the user wants on every link click.
+            // - When the target profile is NOT running but a different
+            //   profile is, `--new-instance` is required to spawn a fresh
+            //   process bound to the target profile. Without it, the URL
+            //   would be IPC'd into whichever profile is currently
+            //   foregrounded.
+            // - When no Firefox/Zen instance is running at all, either
+            //   works; we add `--new-instance` for consistency.
+            //
+            // `--profile <path>` is preferred over `-P <name>` because the
+            // path is stable (profiles.ini) and survives profile renames.
+            //
+            // `--private-window` takes over when incognito is requested.
+            //
+            // Note on Zen Spaces (workspaces within a profile): Zen exposes
+            // no public API to switch the active workspace at launch — not a
+            // CLI flag, not a URL scheme, and not the `zen.workspaces.active`
+            // pref (Zen reconstructs the active workspace from tab focus
+            // recorded in `zen-sessions.jsonlz4`, which we don't write). For
+            // now Junction routes to the profile and lets Zen pick the
+            // workspace per its own session-restore logic.
+            if isFirefoxBundleID(option.browser.bundleID) {
+                let absProfilePath = resolveFirefoxFamilyProfilePath(
+                    bundleID: option.browser.bundleID,
+                    relativePath: dirName
+                )
+                let profileFlag = incognito ? "--private-window" : "--new-tab"
+                let alreadyRunning = isFirefoxFamilyProfileRunning(
+                    bundleID: option.browser.bundleID,
+                    absProfilePath: absProfilePath
+                )
+
+                var args: [String] = []
+                if !alreadyRunning {
+                    args.append("--new-instance")
+                }
+                args.append(contentsOf: ["--profile", absProfilePath, profileFlag, url.absoluteString])
+
+                let config = NSWorkspace.OpenConfiguration()
+                config.activates = true
+                config.arguments = args
+                config.createsNewApplicationInstance = !alreadyRunning
+                NSWorkspace.shared.openApplication(
+                    at: option.browser.url,
+                    configuration: config
+                ) { _, error in
+                    DispatchQueue.main.async { completion?(error == nil) }
+                }
+                return
+            }
+
+            // Unknown vendor with a profile — fall back to plain open. Drops
+            // the profile selection rather than passing a flag the browser
+            // doesn't understand.
             let config = NSWorkspace.OpenConfiguration()
             config.activates = true
-            config.arguments = ["--profile-directory=\(dirName)", url.absoluteString]
-            config.createsNewApplicationInstance = false
-            NSWorkspace.shared.openApplication(
-                at: option.browser.url,
+            NSWorkspace.shared.open(
+                [url],
+                withApplicationAt: option.browser.url,
                 configuration: config
             ) { _, error in
                 DispatchQueue.main.async { completion?(error == nil) }
@@ -189,7 +249,7 @@ enum URLOpener {
     private static func isFirefoxBundleID(_ bundleID: String) -> Bool {
         let firefoxes = [
             "org.mozilla.firefox", "org.mozilla.firefoxdeveloperedition",
-            "org.mozilla.nightly", "com.zen-browser.zen",
+            "org.mozilla.nightly", "app.zen-browser.zen",
         ]
         return firefoxes.contains(bundleID)
     }
@@ -423,5 +483,74 @@ enum URLOpener {
             return (dir, space)
         }
         return (raw, nil)
+    }
+
+    /// Returns true when at least one Firefox-family process for `bundleID`
+    /// is currently bound to the profile at `absProfilePath`. Used to decide
+    /// whether `--new-instance` is needed on launch — if the target profile
+    /// is already running, omitting `--new-instance` lets the new URL IPC
+    /// into the existing window for that profile.
+    ///
+    /// NSRunningApplication only reports each app's main process (not the
+    /// plugin-container / GPU helper subprocesses), which is exactly what we
+    /// want. We then read each main process's argv via `ps -p <pid> -o
+    /// command=` and check for `--profile <absPath>`. `ps` is in the base
+    /// system, so this works in any sandbox configuration.
+    ///
+    /// Best-effort: on any failure we return `false` (i.e. assume not
+    /// running, which falls back to spawning `--new-instance`). That's
+    /// strictly safer than the alternative (false positive → URL routed to
+    /// the wrong profile).
+    private static func isFirefoxFamilyProfileRunning(
+        bundleID: String,
+        absProfilePath: String
+    ) -> Bool {
+        let pids = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            .map { Int($0.processIdentifier) }
+            .filter { $0 > 0 }
+        guard !pids.isEmpty else { return false }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = ["-p", pids.map(String.init).joined(separator: ","), "-o", "command="]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+        } catch {
+            return false
+        }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0,
+              let text = String(data: data, encoding: .utf8)
+        else { return false }
+
+        let needle = "--profile \(absProfilePath)"
+        return text.split(separator: "\n").contains { line in
+            String(line).contains(needle)
+        }
+    }
+
+    /// Maps a Firefox-family relative profile path (from `profiles.ini`) to
+    /// an absolute on-disk path under `~/Library/Application Support/<vendor>/`.
+    /// Single source of truth for the bundleID→config-dir mapping lives in
+    /// `FirefoxProfileDiscovery.vendors`.
+    private static func resolveFirefoxFamilyProfilePath(
+        bundleID: String,
+        relativePath: String
+    ) -> String {
+        let configDir = FirefoxProfileDiscovery.configRelativePath(forBundleID: bundleID) ?? "Firefox"
+        let fm = FileManager.default
+        guard let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return relativePath
+        }
+        return appSupport
+            .appendingPathComponent(configDir, isDirectory: true)
+            .appendingPathComponent(relativePath, isDirectory: true)
+            .path
     }
 }
