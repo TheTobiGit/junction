@@ -43,7 +43,6 @@ final class HistorySchemaUpgradeTests: XCTestCase {
             .appendingPathComponent(UUID().uuidString + ".json")
         try legacyJSON.data(using: .utf8)!.write(to: tmpURL)
         let history = RoutingHistory(fileURL: tmpURL)
-        history.historyEnabledProvider = { true }
         return (history, tmpURL)
     }
 

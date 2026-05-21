@@ -50,7 +50,6 @@ struct JunctionSettings: Codable {
     var hasCompletedOnboarding: Bool = false
     var chromeTheme: ChromeTheme = .glass
     var accentPreset: AccentPreset = .system
-    var historyEnabled: Bool = true
     var pinnedTargetKey: String? = nil
     var pickerFrame: CGRect? = nil
     var trackerOverrides: TrackerOverrides = TrackerOverrides()
@@ -68,8 +67,8 @@ struct JunctionSettings: Codable {
         case hasCompletedOnboarding
         case chromeTheme
         case accentPreset
-        case historyEnabled
         case pinnedTargetKey
+        case historyEnabled // legacy; ignored on read, not written
         case pickerFrame
         case trackerOverrides
         case toursCompleted
@@ -93,7 +92,7 @@ struct JunctionSettings: Codable {
         self.hasCompletedOnboarding = (try? c.decode(Bool.self, forKey: .hasCompletedOnboarding)) ?? false
         self.chromeTheme = (try? c.decode(ChromeTheme.self, forKey: .chromeTheme)) ?? .glass
         self.accentPreset = (try? c.decode(AccentPreset.self, forKey: .accentPreset)) ?? .system
-        self.historyEnabled = (try? c.decode(Bool.self, forKey: .historyEnabled)) ?? true
+        _ = try? c.decode(Bool.self, forKey: .historyEnabled)
         self.pinnedTargetKey = try? c.decodeIfPresent(String.self, forKey: .pinnedTargetKey)
         self.pickerFrame = (try? c.decodeIfPresent(PickerFrameCodable.self, forKey: .pickerFrame))?.rect
         self.trackerOverrides = (try? c.decodeIfPresent(TrackerOverrides.self, forKey: .trackerOverrides)) ?? TrackerOverrides()
@@ -113,7 +112,6 @@ struct JunctionSettings: Codable {
         try c.encode(hasCompletedOnboarding, forKey: .hasCompletedOnboarding)
         try c.encode(chromeTheme, forKey: .chromeTheme)
         try c.encode(accentPreset, forKey: .accentPreset)
-        try c.encode(historyEnabled, forKey: .historyEnabled)
         try c.encodeIfPresent(pinnedTargetKey, forKey: .pinnedTargetKey)
         if let frame = pickerFrame {
             try c.encode(PickerFrameCodable(frame), forKey: .pickerFrame)
