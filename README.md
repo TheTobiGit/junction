@@ -61,7 +61,7 @@ The picker flags Punycode and mixed-script hosts as a homograph warning. Press `
 
 ### Activity
 
-The Activity tab logs every route. Filter by host, source app, or browser; the per-host card on top summarises count, last route, dominant browser, and tracker hits. Export the filtered view to JSON or CSV from the toolbar.
+The History tab logs recent routes. Search the list and promote any entry to a rule from the row actions.
 
 ## Build from source
 

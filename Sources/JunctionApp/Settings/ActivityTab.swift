@@ -1,87 +1,22 @@
 import SwiftUI
 import AppKit
-import UniformTypeIdentifiers
 
 struct ActivityTab: View {
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var history = RoutingHistory.shared
-    @ObservedObject private var settings = SettingsStore.shared
     @State private var query: String = ""
-    @State private var showCleanedOnly: Bool = false
-    @State private var selectedOutcomes: Set<RoutingHistory.Outcome> = []
-    @State private var selectedHost: String? = nil
-    @State private var selectedSourceBundleID: String? = nil
-    @State private var selectedTargetBundleID: String? = nil
     @State private var confirmingClear: Bool = false
 
     private var filteredEntries: [RoutingHistory.Entry] {
-        ActivityFilter.filter(history.entries, criteria: .init(
-            query: query,
-            showCleanedOnly: showCleanedOnly,
-            outcomes: selectedOutcomes,
-            host: selectedHost,
-            sourceBundleID: selectedSourceBundleID,
-            targetBundleID: selectedTargetBundleID
-        ))
-    }
-
-    private var distinctHosts: [String] {
-        var seen = Set<String>()
-        var result: [String] = []
-        for entry in history.entries {
-            if let h = URL(string: entry.cleanedURL)?.host?.lowercased(), seen.insert(h).inserted {
-                result.append(h)
-            }
-        }
-        return result.sorted()
-    }
-
-    private var distinctSourceBundleIDs: [String] {
-        var seen = Set<String>()
-        var result: [String] = []
-        for entry in history.entries {
-            if let s = entry.sourceBundleID, seen.insert(s).inserted {
-                result.append(s)
-            }
-        }
-        return result.sorted()
-    }
-
-    private var distinctTargetBundleIDs: [String] {
-        var seen = Set<String>()
-        var result: [String] = []
-        for entry in history.entries {
-            if let t = entry.targetBundleID, seen.insert(t).inserted {
-                result.append(t)
-            }
-        }
-        return result.sorted()
-    }
-
-    private var outcomeCounts: [RoutingHistory.Outcome: Int] {
-        ActivityFilter.outcomeCounts(history.entries)
+        ActivityFilter.filter(history.entries, criteria: .init(query: query))
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            PrefsBlock {
-                PrefsToggleRow(
-                    title: "Save recent links",
-                    isOn: Binding(
-                        get: { settings.settings.historyEnabled },
-                        set: { settings.settings.historyEnabled = $0 }
-                    )
-                )
-            }
-
             if !history.entries.isEmpty {
                 PrefsBlock {
-                    VStack(alignment: .leading, spacing: 14) {
-                        filterBar
-                        outcomePills
-                    }
+                    searchBar
                 }
-                statsCard
             }
 
             PrefsBlock {
@@ -90,309 +25,67 @@ struct ActivityTab: View {
         }
     }
 
-    // MARK: - Filters
-
-    private var filterBar: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 12) {
-                HStack(spacing: 7) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
-                    TextField("Search links…", text: $query)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 12))
-                }
-                .padding(.horizontal, 10).padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05))
-                )
-                .frame(maxWidth: 260)
-
-                Toggle(isOn: $showCleanedOnly) {
-                    Text("Cleaned only").font(.system(size: 11, weight: .medium))
-                }
-                .toggleStyle(.checkbox)
-
-                Spacer()
-
-                Text("\(filteredEntries.count) of \(history.entries.count)")
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
+    private var searchBar: some View {
+        HStack(alignment: .center, spacing: 12) {
+            HStack(spacing: 7) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
-
-                Button {
-                    exportEntries()
-                } label: {
-                    Text("Export")
-                        .font(.system(size: 11, weight: .semibold))
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .foregroundStyle(.primary)
-                        .background(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-                        )
-                }
-                .buttonStyle(.plain)
-                .help("Export filtered entries to JSON or CSV")
-
-                Button(role: .destructive) {
-                    confirmingClear = true
-                } label: {
-                    Text("Clear")
-                        .font(.system(size: 11, weight: .semibold))
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .foregroundStyle(.primary)
-                        .background(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-                        )
-                }
-                .buttonStyle(.plain)
-                .disabled(history.entries.isEmpty)
-                .confirmationDialog(
-                    "Clear all \(history.entries.count) entries?",
-                    isPresented: $confirmingClear,
-                    titleVisibility: .visible
-                ) {
-                    Button("Clear", role: .destructive) { history.clear() }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("This permanently removes Junction's local activity log.")
-                }
+                TextField("Search links…", text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12))
             }
-
-            if !distinctHosts.isEmpty || !distinctSourceBundleIDs.isEmpty || !distinctTargetBundleIDs.isEmpty {
-                dropdownFilterRow
-            }
-        }
-    }
-
-    private var dropdownFilterRow: some View {
-        HStack(spacing: 10) {
-            if !distinctHosts.isEmpty {
-                Picker(selection: $selectedHost) {
-                    Text("All hosts").tag(String?.none)
-                    ForEach(distinctHosts, id: \.self) { h in
-                        Text(h).tag(String?.some(h))
-                    }
-                } label: {
-                    Text("Host").font(.system(size: 11, weight: .medium))
-                }
-                .pickerStyle(.menu)
-                .controlSize(.small)
-                .help("Filter by host")
-            }
-
-            if !distinctSourceBundleIDs.isEmpty {
-                Picker(selection: $selectedSourceBundleID) {
-                    Text("All sources").tag(String?.none)
-                    ForEach(distinctSourceBundleIDs, id: \.self) { s in
-                        Text(prettyBundleIDLabel(s)).tag(String?.some(s))
-                    }
-                } label: {
-                    Text("Source app").font(.system(size: 11, weight: .medium))
-                }
-                .pickerStyle(.menu)
-                .controlSize(.small)
-                .help("Filter by source app")
-            }
-
-            if !distinctTargetBundleIDs.isEmpty {
-                Picker(selection: $selectedTargetBundleID) {
-                    Text("All browsers").tag(String?.none)
-                    ForEach(distinctTargetBundleIDs, id: \.self) { t in
-                        Text(prettyBundleIDLabel(t)).tag(String?.some(t))
-                    }
-                } label: {
-                    Text("Browser").font(.system(size: 11, weight: .medium))
-                }
-                .pickerStyle(.menu)
-                .controlSize(.small)
-                .help("Filter by target browser")
-            }
-
-            if selectedHost != nil || selectedSourceBundleID != nil || selectedTargetBundleID != nil {
-                Button("Reset") {
-                    selectedHost = nil
-                    selectedSourceBundleID = nil
-                    selectedTargetBundleID = nil
-                }
-                .buttonStyle(.borderless)
-                .controlSize(.mini)
-                .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-        }
-    }
-
-    private func prettyBundleIDLabel(_ id: String) -> String {
-        if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id),
-           let bundle = Bundle(url: app),
-           let name = bundle.infoDictionary?["CFBundleName"] as? String {
-            return name
-        }
-        return id
-    }
-
-    private func exportEntries() {
-        let entries = filteredEntries
-        let panel = NSSavePanel()
-        panel.title = "Export Activity"
-        panel.nameFieldStringValue = "junction-activity"
-        panel.allowedContentTypes = [UTType.json, UTType.commaSeparatedText]
-        panel.begin { response in
-            guard response == .OK, let url = panel.url else { return }
-            if url.pathExtension.lowercased() == "csv" {
-                let content = ActivityExporter.csv(entries: entries)
-                try? content.write(to: url, atomically: true, encoding: .utf8)
-            } else {
-                let data = ActivityExporter.json(entries: entries)
-                try? data.write(to: url, options: .atomic)
-            }
-        }
-    }
-
-    private var outcomePills: some View {
-        HStack(spacing: 6) {
-            outcomePill(.opened,           title: "Opened",     color: .accentColor)
-            outcomePill(.openedIncognito,  title: "Private",    color: .indigo)
-            outcomePill(.opened_appScheme, title: "Native app", color: .pink)
-            outcomePill(.picker,           title: "Picker",     color: .orange)
-            outcomePill(.blocked,          title: "Blocked",    color: .red)
-
-            if !selectedOutcomes.isEmpty {
-                Button("Reset") { selectedOutcomes.removeAll() }
-                    .buttonStyle(.borderless)
-                    .controlSize(.mini)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-        }
-    }
-
-    private func outcomePill(
-        _ outcome: RoutingHistory.Outcome,
-        title: String,
-        color: Color
-    ) -> some View {
-        let count = outcomeCounts[outcome] ?? 0
-        let isSelected = selectedOutcomes.contains(outcome)
-        let isAvailable = count > 0
-        return Button {
-            if isSelected { selectedOutcomes.remove(outcome) }
-            else { selectedOutcomes.insert(outcome) }
-        } label: {
-            HStack(spacing: 5) {
-                Circle().fill(color).frame(width: 6, height: 6)
-                Text(title).font(.system(size: 11, weight: .medium))
-                if count > 0 {
-                    Text("\(count)")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .foregroundStyle(isSelected ? Color.primary : .secondary.opacity(isAvailable ? 1.0 : 0.5))
-            .padding(.horizontal, 10).padding(.vertical, 5)
+            .padding(.horizontal, 10).padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(
-                        isSelected
-                        ? Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.07)
-                        : Color.primary.opacity(0.03)
-                    )
+                    .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05))
             )
-        }
-        .buttonStyle(.plain)
-        .disabled(!isAvailable)
-        .help(isAvailable ? "Filter by \(title.lowercased())" : "No \(title.lowercased()) entries yet")
-    }
 
-    // MARK: - Stats card
+            Spacer()
 
-    private var statsCard: some View {
-        let stats = ActivityStats.byHost(entries: history.entries)
-        return PrefsBlock(title: "By website") {
-            VStack(spacing: 0) {
-                ForEach(Array(stats.enumerated()), id: \.element.host) { idx, stat in
-                    hostStatRow(stat)
-                    if idx < stats.count - 1 { PrefsHairline() }
-                }
+            Button(role: .destructive) {
+                confirmingClear = true
+            } label: {
+                Text("Clear")
+                    .font(.system(size: 11, weight: .semibold))
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .foregroundStyle(.primary)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                    )
+            }
+            .buttonStyle(.plain)
+            .confirmationDialog(
+                "Clear all \(history.entries.count) entries?",
+                isPresented: $confirmingClear,
+                titleVisibility: .visible
+            ) {
+                Button("Clear", role: .destructive) { history.clear() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This permanently removes Junction's local activity log.")
             }
         }
     }
-
-    private func hostStatRow(_ stat: ActivityStats.HostStat) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            Text(stat.host)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(minWidth: 120, alignment: .leading)
-
-            Spacer(minLength: 8)
-
-            HStack(spacing: 16) {
-                statCell(label: "routes", value: "\(stat.count)")
-
-                statCell(label: "last", value: relativeTime(stat.lastRoute))
-
-                if let browser = stat.dominantBrowser {
-                    statCell(label: "browser", value: prettyBundleIDLabel(browser))
-                }
-
-                if stat.trackerHits > 0 {
-                    statCell(label: "cleaned", value: "\(stat.trackerHits)")
-                }
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-    }
-
-    private func statCell(label: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(label.uppercased())
-                .font(.system(size: 8, weight: .semibold, design: .rounded))
-                .tracking(0.4)
-                .foregroundStyle(.secondary.opacity(0.6))
-            Text(value)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-        }
-    }
-
-    private func relativeTime(_ date: Date) -> String {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .short
-        return f.localizedString(for: date, relativeTo: Date())
-    }
-
-    // MARK: - Content
 
     @ViewBuilder
     private var content: some View {
-        if !settings.settings.historyEnabled && history.entries.isEmpty {
-            PrefsEmptyState(
-                title: "History is off",
-                message: "Turn on saving above, then open links through Junction.",
-                actionTitle: nil,
-                action: nil
-            )
-        } else if history.entries.isEmpty {
+        if history.entries.isEmpty {
             PrefsEmptyState(
                 title: "Nothing here yet",
                 message: "Links you open through Junction will appear in this list.",
+                actionTitle: nil,
+                action: nil
+            )
+        } else if filteredEntries.isEmpty {
+            PrefsEmptyState(
+                title: "No matches",
+                message: "Try a different search term.",
                 actionTitle: nil,
                 action: nil
             )
@@ -426,19 +119,13 @@ private struct ActivityRow: View {
                 .frame(width: 7, height: 7)
 
             VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 8) {
-                    Text(entry.cleanedURL)
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(linkColor)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .textSelection(.enabled)
-                    if entry.didClean {
-                        Text("cleaned")
-                            .font(.system(size: 9, weight: .semibold, design: .rounded))
-                            .foregroundStyle(Color.accentColor)
-                    }
-                }
+                Text(entry.cleanedURL)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(linkColor)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+
                 HStack(spacing: 8) {
                     Text(relativeTime)
                         .font(.system(size: 10, weight: .medium))
