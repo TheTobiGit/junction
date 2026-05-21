@@ -15,7 +15,6 @@ final class RoutingHistoryTests: XCTestCase {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-history-\(UUID().uuidString).json")
         let history = RoutingHistory(fileURL: url)
-        history.historyEnabledProvider = { true }
         return (history, url)
     }
 

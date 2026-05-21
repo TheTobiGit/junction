@@ -18,8 +18,6 @@ final class SourceAppEndToEndTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: tmpURL) }
 
         let history = RoutingHistory(fileURL: tmpURL)
-        history.historyEnabledProvider = { true }
-
         let url = URL(string: "https://github.com/")!
         let result = URLTransformResult(original: url, `final`: url, steps: [])
         history.record(
@@ -54,8 +52,6 @@ final class SourceAppEndToEndTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: tmpURL) }
 
         let history = RoutingHistory(fileURL: tmpURL)
-        history.historyEnabledProvider = { true }
-
         let url = URL(string: "https://github.com/")!
         let result = URLTransformResult(original: url, `final`: url, steps: [])
         history.record(
@@ -136,8 +132,6 @@ final class SourceAppEndToEndTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: tmpURL) }
 
         let history = RoutingHistory(fileURL: tmpURL)
-        history.historyEnabledProvider = { true }
-
         let url = URL(string: "https://github.com/")!
         let result = URLTransformResult(original: url, `final`: url, steps: [])
         history.record(

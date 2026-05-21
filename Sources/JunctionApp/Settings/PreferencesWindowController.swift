@@ -245,8 +245,6 @@ struct PreferencesView: View {
                 PrefsToggleRow(title: "Expand shortened links", isOn: $settings.settings.expandShortenedURLs)
                 PrefsHairline()
                 PrefsToggleRow(title: "Watch clipboard for links", isOn: $settings.settings.clipboardWatcherEnabled)
-                PrefsHairline()
-                PrefsToggleRow(title: "Keep recent link history", isOn: $settings.settings.historyEnabled)
             }
         }
     }

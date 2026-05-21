@@ -7,3 +7,4 @@ build-artifacts/
 *.d
 *.dia
 *.swiftdeps
+.claude/settings.local.json

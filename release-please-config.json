@@ -10,7 +10,10 @@
   "packages": {
     ".": {
       "package-name": "junction",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        "Resources/Info.plist"
+      ]
     }
   }
 }
