@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/TheTobiGit/junction/compare/v0.3.0...v0.4.0) (2026-05-21)
+
+
+### Features
+
+* **picker:** make keyboard shortcuts discoverable ([37bfa22](https://github.com/TheTobiGit/junction/commit/37bfa22975da17bf7f3b889712f66c6a5a36c74b))
+* **picker:** make keyboard shortcuts discoverable ([1c9f2a0](https://github.com/TheTobiGit/junction/commit/1c9f2a0cbe6321f8ab42e0df397b89edb4f3f1b6))
+
 ## [0.3.0](https://github.com/TheTobiGit/junction/compare/v0.2.0...v0.3.0) (2026-05-20)
 
 
