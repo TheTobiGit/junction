@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/TheTobiGit/junction/compare/v0.4.0...v0.4.1) (2026-05-21)
+
+
+### Bug Fixes
+
+* **release:** sync Info.plist version with release-please ([e22dcda](https://github.com/TheTobiGit/junction/commit/e22dcdadaa64306171df4507c3a1eb016d789dc5))
+* **release:** sync Preferences version, simplify History tab ([3a7548a](https://github.com/TheTobiGit/junction/commit/3a7548a5ad9d3f9f63df736df273745cfed993a3))
+
 ## [0.4.0](https://github.com/TheTobiGit/junction/compare/v0.3.0...v0.4.0) (2026-05-21)
 
 
