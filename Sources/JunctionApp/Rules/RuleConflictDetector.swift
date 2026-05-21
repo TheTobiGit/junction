@@ -91,12 +91,6 @@ enum RuleConflictDetector {
     }
 
     private static func whenCovers(_ e: RuleCondition, _ r: RuleCondition) -> Bool {
-        if let eApps = e.sourceApp, !eApps.isEmpty {
-            guard let rApps = r.sourceApp, !rApps.isEmpty else { return false }
-            let eSet = Set(eApps.map { $0.lowercased() })
-            let rSet = Set(rApps.map { $0.lowercased() })
-            guard rSet.isSubset(of: eSet) else { return false }
-        }
         if let eFocus = e.focus, !eFocus.isEmpty {
             guard let rFocus = r.focus, !rFocus.isEmpty else { return false }
             let eSet = Set(eFocus.map { $0.lowercased() })
