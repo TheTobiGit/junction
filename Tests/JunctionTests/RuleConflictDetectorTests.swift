@@ -64,26 +64,6 @@ final class RuleConflictDetectorTests: XCTestCase {
         XCTAssertTrue(shadowed.isEmpty)
     }
 
-    // VAL-M2-CONFLICT-005: Earlier rule with when.sourceApp == [Slack], later
-    // same-host rule with when == nil — later is NOT flagged.
-    func test_sourceAppConditionDisambiguates_laterNotFlagged_VAL_M2_CONFLICT_005() {
-        let r1 = rule(host: .suffix("github.com"), when: RuleCondition(sourceApp: ["com.tinyspeck.slackmacgap"]))
-        let r2 = rule(host: .suffix("github.com"))
-        let shadowed = RuleConflictDetector.shadowed(rules: [r1, r2])
-        XCTAssertFalse(shadowed.contains(r2.id))
-    }
-
-    // VAL-M2-CONFLICT-006: Two rules with same host and identical when.sourceApp
-    // arrays — second is flagged.
-    func test_identicalSourceApp_secondIsShadowed_VAL_M2_CONFLICT_006() {
-        let condition = RuleCondition(sourceApp: ["com.tinyspeck.slackmacgap"])
-        let r1 = rule(host: .suffix("github.com"), when: condition)
-        let r2 = rule(host: .suffix("github.com"), when: condition)
-        let shadowed = RuleConflictDetector.shadowed(rules: [r1, r2])
-        XCTAssertFalse(shadowed.contains(r1.id))
-        XCTAssertTrue(shadowed.contains(r2.id))
-    }
-
     // VAL-M2-CONFLICT-007: Earlier restricted to schemes: ["https"], later same-host
     // restricted to schemes: ["http"] — later is NOT flagged.
     func test_schemeDivergence_laterNotFlagged_VAL_M2_CONFLICT_007() {
@@ -110,24 +90,6 @@ final class RuleConflictDetectorTests: XCTestCase {
         let shadowed = RuleConflictDetector.shadowed(rules: [r1, r2])
         XCTAssertFalse(shadowed.contains(r1.id))
         XCTAssertTrue(shadowed.contains(r2.id))
-    }
-
-    // VAL-CROSS-004 (part 1): [ruleA(sourceApp=Slack), ruleB(no sourceApp)] for same
-    // host — conflict pass does NOT mark ruleB as shadowed.
-    func test_sourceAppFirst_unconstrainedSecond_notShadowed_VAL_CROSS_004a() {
-        let rA = rule(host: .suffix("github.com"), when: RuleCondition(sourceApp: ["com.tinyspeck.slackmacgap"]))
-        let rB = rule(host: .suffix("github.com"))
-        let shadowed = RuleConflictDetector.shadowed(rules: [rA, rB])
-        XCTAssertFalse(shadowed.contains(rB.id))
-    }
-
-    // VAL-CROSS-004 (part 2): Reversed order — ruleA IS shadowed because unconstrained
-    // earlier rule subsumes the Slack-conditioned one.
-    func test_unconstrainedFirst_sourceAppSecond_secondIsShadowed_VAL_CROSS_004b() {
-        let rB = rule(host: .suffix("github.com"))
-        let rA = rule(host: .suffix("github.com"), when: RuleCondition(sourceApp: ["com.tinyspeck.slackmacgap"]))
-        let shadowed = RuleConflictDetector.shadowed(rules: [rB, rA])
-        XCTAssertTrue(shadowed.contains(rA.id))
     }
 
     // Additional: suffix covers equals for same apex host

@@ -63,39 +63,31 @@ struct ActivityTab: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 32) {
-            recordRow
+        VStack(alignment: .leading, spacing: 20) {
+            PrefsBlock {
+                PrefsToggleRow(
+                    title: "Save recent links",
+                    isOn: Binding(
+                        get: { settings.settings.historyEnabled },
+                        set: { settings.settings.historyEnabled = $0 }
+                    )
+                )
+            }
 
             if !history.entries.isEmpty {
-                filterBar
-                outcomePills
+                PrefsBlock {
+                    VStack(alignment: .leading, spacing: 14) {
+                        filterBar
+                        outcomePills
+                    }
+                }
                 statsCard
             }
 
-            content
-        }
-    }
-
-    // MARK: - Record toggle
-
-    private var recordRow: some View {
-        HStack(alignment: .center, spacing: 24) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Record activity")
-                    .font(.system(size: 13, weight: .medium))
-                Text("Stored on this Mac only, up to \(RoutingHistory.maxEntries) entries.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+            PrefsBlock {
+                content
             }
-            Spacer(minLength: 24)
-            Toggle("", isOn: Binding(
-                get: { settings.settings.historyEnabled },
-                set: { settings.settings.historyEnabled = $0 }
-            ))
-            .labelsHidden()
-            .toggleStyle(.switch)
         }
-        .padding(.vertical, 4)
     }
 
     // MARK: - Filters
@@ -107,7 +99,7 @@ struct ActivityTab: View {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
-                    TextField("Filter", text: $query)
+                    TextField("Search links…", text: $query)
                         .textFieldStyle(.plain)
                         .font(.system(size: 12))
                 }
@@ -329,30 +321,13 @@ struct ActivityTab: View {
 
     private var statsCard: some View {
         let stats = ActivityStats.byHost(entries: history.entries)
-        return VStack(alignment: .leading, spacing: 10) {
-            Text("PER-HOST STATS")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .tracking(0.6)
-                .foregroundStyle(.secondary.opacity(0.7))
-
+        return PrefsBlock(title: "By website") {
             VStack(spacing: 0) {
                 ForEach(Array(stats.enumerated()), id: \.element.host) { idx, stat in
                     hostStatRow(stat)
-                    if idx < stats.count - 1 {
-                        Rectangle()
-                            .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.06))
-                            .frame(height: 0.5)
-                    }
+                    if idx < stats.count - 1 { PrefsHairline() }
                 }
             }
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.primary.opacity(colorScheme == .dark ? 0.05 : 0.03))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-            )
         }
     }
 
@@ -408,39 +383,27 @@ struct ActivityTab: View {
     @ViewBuilder
     private var content: some View {
         if !settings.settings.historyEnabled && history.entries.isEmpty {
-            VStack(alignment: .leading, spacing: 16) {
-                ActivityEmptyIllustration()
-                emptyText("Recording is off.", detail: "Enable it above to start collecting recent links.")
-            }
+            PrefsEmptyState(
+                title: "History is off",
+                message: "Turn on saving above, then open links through Junction.",
+                actionTitle: nil,
+                action: nil
+            )
         } else if history.entries.isEmpty {
-            VStack(alignment: .leading, spacing: 16) {
-                ActivityEmptyIllustration()
-                emptyText("No activity yet.", detail: "Open a link through Junction and it'll show up here.")
-            }
+            PrefsEmptyState(
+                title: "Nothing here yet",
+                message: "Links you open through Junction will appear in this list.",
+                actionTitle: nil,
+                action: nil
+            )
         } else {
             VStack(spacing: 0) {
                 ForEach(Array(filteredEntries.enumerated()), id: \.element.id) { idx, entry in
                     ActivityRow(entry: entry, colorScheme: colorScheme)
-                    if idx < filteredEntries.count - 1 {
-                        Rectangle()
-                            .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.06))
-                            .frame(height: 0.5)
-                    }
+                    if idx < filteredEntries.count - 1 { PrefsHairline() }
                 }
             }
         }
-    }
-
-    private func emptyText(_ title: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.system(size: 15, weight: .semibold))
-            Text(detail)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 28)
     }
 }
 

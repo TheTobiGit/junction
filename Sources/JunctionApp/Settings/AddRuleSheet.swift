@@ -1,12 +1,11 @@
 import SwiftUI
-import AppKit
 
 struct AddRuleSheet: View {
     let options: [LaunchOption]
     let prefill: Prefill?
 
+    @ObservedObject private var settings = SettingsStore.shared
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) private var colorScheme
 
     @State private var hostKind: HostKind = .suffix
     @State private var hostValue: String = ""
@@ -15,8 +14,6 @@ struct AddRuleSheet: View {
     @State private var schemeValue: String = ""
     @State private var pathKind: PathKind = .prefix
     @State private var pathValue: String = ""
-    @State private var runningApps: [RunningAppEntry] = []
-    @State private var selectedSourceApps: Set<String> = []
 
     init(options: [LaunchOption], prefill: Prefill? = nil) {
         self.options = options
@@ -71,28 +68,36 @@ struct AddRuleSheet: View {
         return nil
     }
 
-    private struct RunningAppEntry: Identifiable {
-        let id: String
-        let name: String
-    }
-
     enum PathKind: String, CaseIterable, Identifiable {
         case prefix, contains, regex, glob
         var id: String { rawValue }
+
+        static var displayCases: [PathKind] { [.prefix, .contains, .glob, .regex] }
+
         var label: String {
             switch self {
-            case .prefix:   return "Prefix"
-            case .contains: return "Contains"
-            case .regex:    return "Regex"
-            case .glob:     return "Glob"
+            case .prefix:   return "Starts with"
+            case .contains: return "Includes"
+            case .regex:    return "Pattern"
+            case .glob:     return "Wildcard"
             }
         }
+
         var placeholder: String {
             switch self {
-            case .prefix:   return "/orgs/acme"
+            case .prefix:   return "/docs"
             case .contains: return "/issues"
             case .regex:    return "^/v[0-9]+/"
-            case .glob:     return "/files/*.swift"
+            case .glob:     return "/files/*.pdf"
+            }
+        }
+
+        var help: String {
+            switch self {
+            case .prefix:   return "Only pages whose address starts with this text."
+            case .contains: return "Only pages whose address includes this text."
+            case .regex:    return "Advanced: match page addresses with a custom pattern."
+            case .glob:     return "Use * as a wildcard, like /files/*.pdf."
             }
         }
     }
@@ -100,39 +105,58 @@ struct AddRuleSheet: View {
     enum HostKind: String, CaseIterable, Identifiable {
         case equals, suffix, regex, urlEquals
         var id: String { rawValue }
+
+        static var displayCases: [HostKind] { [.suffix, .equals, .urlEquals, .regex] }
+
         var label: String {
             switch self {
-            case .equals:    return "Equals"
-            case .suffix:    return "Suffix"
-            case .regex:     return "Regex"
-            case .urlEquals: return "URL"
+            case .equals:    return "Subdomain"
+            case .suffix:    return "Website"
+            case .regex:     return "Pattern"
+            case .urlEquals: return "Exact link"
             }
         }
+
         var placeholder: String {
             switch self {
-            case .equals:    return "api.github.com"
+            case .equals:    return "mail.google.com"
             case .suffix:    return "github.com"
             case .regex:     return "^.*\\.slack\\.com$"
             case .urlEquals: return "https://github.com/orgs/acme/people"
             }
         }
+
         var isExactURL: Bool { self == .urlEquals }
+
+        var help: String {
+            switch self {
+            case .equals:    return "One hostname only, like mail.google.com."
+            case .suffix:    return "The whole site and its subdomains, like docs.github.com."
+            case .regex:     return "Advanced: match websites with a custom pattern."
+            case .urlEquals: return "One specific link only. Junction removes tracking first."
+            }
+        }
     }
 
     enum ActionKind: String, CaseIterable, Identifiable {
         case open, incognito, ask, block, appScheme
         var id: String { rawValue }
+
         var label: String {
             switch self {
-            case .open:      return "Open in"
-            case .incognito: return "Open privately in"
-            case .ask:       return "Always ask"
-            case .block:     return "Block"
-            case .appScheme: return "Open via app scheme"
+            case .open:      return "Open in a browser"
+            case .incognito: return "Open privately"
+            case .ask:       return "Ask me each time"
+            case .block:     return "Don't open"
+            case .appScheme: return "Open in another app"
             }
         }
+
         var needsTarget: Bool { self == .open || self == .incognito }
     }
+
+    private var accent: Color { settings.settings.accentPreset.swiftUIColor }
+    private var theme: ChromeTheme { settings.settings.chromeTheme }
 
     private var pickableTargets: [LaunchOption] {
         switch actionKind {
@@ -157,187 +181,275 @@ struct AddRuleSheet: View {
 
     private var validationError: String? {
         if trimmedHost.isEmpty {
-            return hostKind == .urlEquals ? "URL can't be empty" : "Host can't be empty"
+            return hostKind == .urlEquals
+                ? "Paste the full link you want to match."
+                : "Enter a website to match."
         }
         if hostKind == .regex, (try? NSRegularExpression(pattern: trimmedHost)) == nil {
-            return "Invalid regular expression"
+            return "That website pattern isn't valid."
         }
         if pathKind == .regex, !trimmedPath.isEmpty,
            !URLPathMatch.isValidRegexPattern(trimmedPath) {
-            return "Invalid path regular expression"
+            return "That page pattern isn't valid."
         }
         if hostKind == .urlEquals {
             guard let parsed = URL(string: trimmedHost),
                   let scheme = parsed.scheme, !scheme.isEmpty,
                   parsed.host?.isEmpty == false
             else {
-                return "Enter a full URL including scheme (https://…)"
+                return "Include the full link, starting with https://"
             }
         }
         if actionKind.needsTarget, selectedTarget == nil {
-            return "Pick a target browser"
+            return "Choose a browser."
         }
         if actionKind == .appScheme, trimmedScheme.isEmpty {
-            return "Scheme can't be empty (e.g. slack, zoommtg)"
+            return "Enter the app name or scheme, like slack or zoommtg."
         }
         return nil
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            Text("New rule")
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+        VStack(alignment: .leading, spacing: 0) {
+            header
+                .padding(.horizontal, 28)
+                .padding(.top, 24)
+                .padding(.bottom, 16)
 
-            VStack(alignment: .leading, spacing: 10) {
-                Text("MATCH")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .tracking(0.6)
-                    .foregroundStyle(.secondary.opacity(0.75))
+            PrefsHairline()
 
-                Picker("Match by", selection: $hostKind) {
-                    ForEach(HostKind.allCases) { kind in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    if let summary = ruleSummaryText {
+                        rulePreview(summary)
+                    }
+
+                    matchBlock
+
+                    if !hostKind.isExactURL {
+                        pathBlock
+                    }
+
+                    actionBlock
+
+                    if !trimmedHost.isEmpty, let validationError {
+                        Label(validationError, systemImage: "exclamationmark.triangle.fill")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.orange)
+                    }
+                }
+                .padding(.horizontal, 28)
+                .padding(.top, 20)
+                .padding(.bottom, 16)
+            }
+
+            PrefsHairline()
+
+            footer
+                .padding(.horizontal, 28)
+                .padding(.vertical, 16)
+        }
+        .frame(width: 500, height: 520)
+        .background {
+            JunctionChromeBackground(theme: theme, accent: accent)
+                .ignoresSafeArea()
+        }
+        .tint(accent)
+        .onAppear {
+            if let p = prefill { applyPrefill(p) }
+            seedDefaultTarget()
+        }
+        .onChange(of: actionKind) { _ in seedDefaultTarget() }
+    }
+
+    // MARK: - Sections
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Add a rule")
+                .font(.system(size: 17, weight: .semibold))
+            Text("Tell Junction which links to catch and what to do with them.")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func rulePreview(_ summary: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Preview")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+            Text(summary)
+                .font(.system(size: 13))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(accent.opacity(0.10))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(accent.opacity(0.22), lineWidth: 0.5)
+        )
+    }
+
+    private var matchBlock: some View {
+        PrefsBlock(title: "When the link is from") {
+            VStack(alignment: .leading, spacing: 12) {
+                Picker("Match type", selection: $hostKind) {
+                    ForEach(HostKind.displayCases) { kind in
                         Text(kind.label).tag(kind)
                     }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
 
-                TextField(hostKind.placeholder, text: $hostValue)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 13, design: .monospaced))
-                    .disableAutocorrection(true)
+                prefsTextField(hostKind.placeholder, text: $hostValue, monospaced: hostKind == .regex)
 
-                Text(hostKindHelp)
+                Text(hostKind.help)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .padding(.vertical, 6)
+        }
+    }
 
-            if !hostKind.isExactURL {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("PATH (OPTIONAL)")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .tracking(0.6)
-                        .foregroundStyle(.secondary.opacity(0.75))
-
-                    Picker("Path match", selection: $pathKind) {
-                        ForEach(PathKind.allCases) { kind in
-                            Text(kind.label).tag(kind)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-
-                    TextField(pathKind.placeholder, text: $pathValue)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 13, design: .monospaced))
-                        .disableAutocorrection(true)
-
-                    Text("Leave empty to match any path.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            if !hostKind.isExactURL {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("SOURCE APP (OPTIONAL)")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .tracking(0.6)
-                        .foregroundStyle(.secondary.opacity(0.75))
-                        .help("Best-effort attribution via FrontmostTracker — the most recent non-Junction frontmost app. May be inaccurate when links are opened from background apps.")
-
-                    if runningApps.isEmpty {
-                        Text("No regular apps running.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 4) {
-                                ForEach(runningApps) { app in
-                                    Toggle(isOn: Binding(
-                                        get: { selectedSourceApps.contains(app.id) },
-                                        set: { checked in
-                                            if checked { selectedSourceApps.insert(app.id) }
-                                            else { selectedSourceApps.remove(app.id) }
-                                        }
-                                    )) {
-                                        VStack(alignment: .leading, spacing: 1) {
-                                            Text(app.name)
-                                                .font(.system(size: 12))
-                                            Text(app.id)
-                                                .font(.system(size: 10, design: .monospaced))
-                                                .foregroundStyle(.secondary)
-                                        }
-                                    }
-                                    .toggleStyle(.checkbox)
-                                }
-                            }
-                            .padding(.horizontal, 2)
-                        }
-                        .frame(maxHeight: 120)
-                    }
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 10) {
-                Text("ACTION")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .tracking(0.6)
-                    .foregroundStyle(.secondary.opacity(0.75))
-
-                Picker("Action", selection: $actionKind) {
-                    ForEach(ActionKind.allCases) { kind in
+    private var pathBlock: some View {
+        PrefsBlock(title: "And only on pages that (optional)") {
+            VStack(alignment: .leading, spacing: 12) {
+                Picker("Page match", selection: $pathKind) {
+                    ForEach(PathKind.displayCases) { kind in
                         Text(kind.label).tag(kind)
                     }
                 }
+                .pickerStyle(.segmented)
                 .labelsHidden()
 
+                prefsTextField(pathKind.placeholder, text: $pathValue, monospaced: pathKind == .regex || pathKind == .glob)
+
+                Text(trimmedPath.isEmpty ? "Leave blank to match every page on the site." : pathKind.help)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, 6)
+        }
+    }
+
+    private var actionBlock: some View {
+        PrefsBlock(title: "Then") {
+            VStack(alignment: .leading, spacing: 12) {
+                PrefsRow(title: "Do this") {
+                    Picker("", selection: $actionKind) {
+                        ForEach(ActionKind.allCases) { kind in
+                            Text(kind.label).tag(kind)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 220)
+                }
+
                 if actionKind.needsTarget {
+                    PrefsHairline()
                     targetPicker
                 } else if actionKind == .appScheme {
-                    VStack(alignment: .leading, spacing: 6) {
-                        TextField("slack", text: $schemeValue)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 13, design: .monospaced))
-                            .disableAutocorrection(true)
-                        Text("Junction hands matching URLs to the app registered for this scheme.")
+                    PrefsHairline()
+                    VStack(alignment: .leading, spacing: 8) {
+                        prefsTextField("slack", text: $schemeValue, monospaced: true)
+                        Text("Junction sends matching links to the app registered for this name.")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+                    .padding(.vertical, 2)
                 }
             }
+        }
+    }
 
-            if !trimmedHost.isEmpty, let validationError {
-                Label(validationError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.orange)
-            }
+    private var footer: some View {
+        HStack {
+            Spacer()
+            PrefsButton(title: "Cancel", action: { dismiss() })
+                .keyboardShortcut(.cancelAction)
+            Button("Add rule") { submit() }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(validationError != nil)
+        }
+    }
 
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button("Add rule") { submit() }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(validationError != nil)
+    // MARK: - Helpers
+
+    private func prefsTextField(_ placeholder: String, text: Binding<String>, monospaced: Bool = false) -> some View {
+        TextField(placeholder, text: text)
+            .textFieldStyle(.plain)
+            .font(.system(size: 13, design: monospaced ? .monospaced : .default))
+            .disableAutocorrection(true)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(PrefsFieldBackground())
+    }
+
+    private var ruleSummaryText: String? {
+        guard !trimmedHost.isEmpty else { return nil }
+
+        var whenParts: [String] = []
+
+        switch hostKind {
+        case .equals:
+            whenParts.append("a link from \(trimmedHost)")
+        case .suffix:
+            whenParts.append("a link from \(trimmedHost) or any page on that site")
+        case .regex:
+            whenParts.append("a link matching the website pattern you entered")
+        case .urlEquals:
+            whenParts.append("this exact link")
+        }
+
+        if !hostKind.isExactURL, !trimmedPath.isEmpty {
+            switch pathKind {
+            case .prefix:
+                whenParts.append("on pages starting with \(trimmedPath)")
+            case .contains:
+                whenParts.append("on pages that include \(trimmedPath)")
+            case .glob:
+                whenParts.append("on pages matching \(trimmedPath)")
+            case .regex:
+                whenParts.append("on pages matching your page pattern")
             }
         }
-        .padding(26)
-        .frame(minWidth: 460)
-        .onAppear {
-            if let p = prefill { applyPrefill(p) }
-            seedDefaultTarget()
-            runningApps = NSWorkspace.shared.runningApplications
-                .filter { $0.activationPolicy == .regular }
-                .compactMap { app in
-                    guard let bid = app.bundleIdentifier else { return nil }
-                    return RunningAppEntry(id: bid, name: app.localizedName ?? bid)
-                }
-                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        }
-        .onChange(of: actionKind) { _ in seedDefaultTarget() }
+
+        let whenClause = whenParts.joined(separator: ", ")
+
+        let thenClause: String = {
+            switch actionKind {
+            case .open:
+                let name = selectedTarget.flatMap { target in
+                    options.first { $0.target == target }?.displayName
+                } ?? "your browser"
+                return "Junction will open it in \(name)."
+            case .incognito:
+                let name = selectedTarget.flatMap { target in
+                    options.first { $0.target == target }?.displayName
+                } ?? "your browser"
+                return "Junction will open it privately in \(name)."
+            case .ask:
+                return "Junction will ask which browser to use."
+            case .block:
+                return "Junction will block the link."
+            case .appScheme:
+                let scheme = trimmedScheme.isEmpty ? "the app" : trimmedScheme
+                return "Junction will open it in \(scheme)."
+            }
+        }()
+
+        return "When someone opens \(whenClause), \(thenClause)"
     }
 
     private func applyPrefill(_ p: Prefill) {
@@ -370,33 +482,28 @@ struct AddRuleSheet: View {
         }
     }
 
-    private var hostKindHelp: String {
-        switch hostKind {
-        case .equals:    return "Matches one host exactly (api.github.com)."
-        case .suffix:    return "Matches that host and all subdomains."
-        case .regex:     return "NSRegularExpression syntax, case-insensitive."
-        case .urlEquals: return "Matches only this exact URL. Junction strips trackers first."
-        }
-    }
-
     private var targetPicker: some View {
         let targets = pickableTargets
         return Group {
             if targets.isEmpty {
-                Text("No browsers support this action.")
-                    .font(.system(size: 11))
+                Text("None of your browsers support private browsing.")
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
+                    .padding(.vertical, 2)
             } else {
-                Picker("Target", selection: Binding(
-                    get: { selectedTarget },
-                    set: { selectedTarget = $0 }
-                )) {
-                    Text("Select a browser…").tag(LaunchTarget?.none)
-                    ForEach(targets) { option in
-                        Text(option.displayName).tag(LaunchTarget?.some(option.target))
+                PrefsRow(title: "Browser") {
+                    Picker("", selection: Binding(
+                        get: { selectedTarget },
+                        set: { selectedTarget = $0 }
+                    )) {
+                        Text("Choose…").tag(LaunchTarget?.none)
+                        ForEach(targets) { option in
+                            Text(option.displayName).tag(LaunchTarget?.some(option.target))
+                        }
                     }
+                    .labelsHidden()
+                    .frame(width: 220)
                 }
-                .labelsHidden()
             }
         }
     }
@@ -449,9 +556,7 @@ struct AddRuleSheet: View {
                 case .urlEquals: return .equals(trimmedHost)
                 }
             }()
-            let condition: RuleCondition? = selectedSourceApps.isEmpty ? nil :
-                RuleCondition(sourceApp: Array(selectedSourceApps).sorted())
-            rule = DomainRule(host: host, action: action, when: condition, path: pathMatch)
+            rule = DomainRule(host: host, action: action, path: pathMatch)
         }
 
         RulesStore.shared.addRule(rule)
