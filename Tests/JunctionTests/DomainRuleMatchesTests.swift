@@ -193,24 +193,6 @@ final class DomainRuleMatchesTests: XCTestCase {
 
     // MARK: - when (source app / focus)
 
-    func test_whenSourceApp_requiresMatchingBundle() {
-        let rule = DomainRule(
-            host: .suffix("example.com"),
-            action: .ask,
-            when: RuleCondition(sourceApp: ["com.tinyspeck.slackmacgap"])
-        )
-        XCTAssertTrue(rule.matches(
-            url: url("https://example.com/"),
-            host: "example.com",
-            context: context(sourceBundleID: "com.tinyspeck.slackmacgap")
-        ))
-        XCTAssertFalse(rule.matches(
-            url: url("https://example.com/"),
-            host: "example.com",
-            context: context(sourceBundleID: "com.apple.mail")
-        ))
-    }
-
     func test_whenFocus_substringMatch() {
         let rule = DomainRule(
             host: .suffix("example.com"),
@@ -414,21 +396,6 @@ final class DomainRuleMatchesTests: XCTestCase {
             url: url("https://example.com/foo"),
             host: "example.com",
             context: emptyContext
-        ))
-    }
-
-    func test_urlEquals_whenSourceAppStillRespected() {
-        var rule = exactRule("https://example.com/foo")
-        rule.when = RuleCondition(sourceApp: ["com.tinyspeck.slackmacgap"])
-        XCTAssertFalse(rule.matches(
-            url: url("https://example.com/foo"),
-            host: "example.com",
-            context: context(sourceBundleID: "com.apple.mail")
-        ))
-        XCTAssertTrue(rule.matches(
-            url: url("https://example.com/foo"),
-            host: "example.com",
-            context: context(sourceBundleID: "com.tinyspeck.slackmacgap")
         ))
     }
 

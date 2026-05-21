@@ -267,7 +267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 AgentTargetSummary(key: $0.target.storageKey, displayName: $0.displayName)
             }
             return .targets(targets)
-        case .addRule(let kind, let value, let targetKey, let cleanOverride, let pathKind, let pathValue, let sourceApps):
+        case .addRule(let kind, let value, let targetKey, let cleanOverride, let pathKind, let pathValue, _):
             let hostMatch: HostMatch
             switch kind {
             case "equals": hostMatch = .equals(value)
@@ -312,9 +312,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             var rule = DomainRule(host: hostMatch, action: action, cleanOverride: cleanOverride)
             rule.path = pathMatch
-            if let apps = sourceApps, !apps.isEmpty {
-                rule.when = RuleCondition(sourceApp: apps)
-            }
             RulesStore.shared.addRule(rule)
             return .ok(message: "added rule for \(value)")
         case .removeRule(let value):

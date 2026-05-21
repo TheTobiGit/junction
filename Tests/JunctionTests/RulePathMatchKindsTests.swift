@@ -89,16 +89,15 @@ final class RulePathMatchKindsTests: XCTestCase {
         XCTAssertTrue(rule.kindLabel.contains("prefix"), "kindLabel '\(rule.kindLabel)' should contain 'prefix'")
     }
 
-    func test_rulesRowDisplayValue_includesPathAndSourceApp() {
+    func test_rulesRowDisplayValue_includesPath() {
         let rule = DomainRule(
             host: .suffix("github.com"),
             action: .ask,
-            when: RuleCondition(sourceApp: ["com.tinyspeck.slackmacgap"]),
             path: .prefix("/orgs")
         )
         XCTAssertEqual(
             rule.rulesRowDisplayValue,
-            "github.com · prefix:/orgs · from:com.tinyspeck.slackmacgap"
+            "github.com · prefix:/orgs"
         )
     }
 

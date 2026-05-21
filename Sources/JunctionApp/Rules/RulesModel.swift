@@ -441,9 +441,6 @@ struct DomainRule: Codable, Identifiable, Hashable {
         if let queryContains, !queryContains.isEmpty {
             parts.append("query:\(queryContains)")
         }
-        if let apps = when?.sourceApp, !apps.isEmpty {
-            parts.append("from:\(apps.joined(separator: ","))")
-        }
         if let focus = when?.focus, !focus.isEmpty {
             parts.append("focus:\(focus.joined(separator: ","))")
         }
@@ -467,9 +464,6 @@ struct DomainRule: Codable, Identifiable, Hashable {
     private static func whenDedupPart(_ when: RuleCondition?) -> String {
         guard let when else { return "" }
         var parts: [String] = []
-        if let apps = when.sourceApp, !apps.isEmpty {
-            parts.append("src:" + apps.map { $0.lowercased() }.sorted().joined(separator: ","))
-        }
         if let focus = when.focus, !focus.isEmpty {
             parts.append("focus:" + focus.map { $0.lowercased() }.sorted().joined(separator: ","))
         }
@@ -483,11 +477,6 @@ struct RuleCondition: Codable, Hashable {
     var focus: [String]? = nil
 
     func matches(context: RouteContext) -> Bool {
-        if let expected = sourceApp, !expected.isEmpty {
-            guard let bid = context.source?.bundleID,
-                  expected.contains(where: { $0.lowercased() == bid.lowercased() })
-            else { return false }
-        }
         if let expected = focus, !expected.isEmpty {
             guard let mode = context.focus.modeIdentifier,
                   expected.contains(where: {
