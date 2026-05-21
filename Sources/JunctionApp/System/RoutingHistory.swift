@@ -34,8 +34,6 @@ final class RoutingHistory: ObservableObject {
 
     @Published private(set) var entries: [Entry] = []
 
-    var historyEnabledProvider: () -> Bool = { SettingsStore.shared.settings.historyEnabled }
-
     private let queue = DispatchQueue(label: "dev.gideonsarfo.Junction.history")
     let persistQueue = DispatchQueue(label: "dev.gideonsarfo.Junction.history.persist")
     private let fileURL: URL
@@ -59,11 +57,6 @@ final class RoutingHistory: ObservableObject {
         sourceBundleID: String? = nil,
         targetStorageKey: String? = nil
     ) {
-        // Honor the user's privacy preference: when history is off we drop new
-        // entries on the floor. The on-disk file is left as-is until the user
-        // explicitly clears it.
-        guard historyEnabledProvider() else { return }
-
         // Activity / Recent re-open the URL we record here, so it has to be
         // the URL we *actually* opened. When cleaning was disabled (globally
         // or via a rule's cleanOverride), `result.final` differs from what
