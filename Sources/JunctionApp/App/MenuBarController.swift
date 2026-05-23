@@ -6,6 +6,8 @@ final class MenuBarController: NSObject {
         case setDefaultBrowser = 71001
         case preferences = 71002
         case recent = 71003
+        case onboarding = 71004
+        case checkForUpdates = 71005
     }
 
     private let statusItem: NSStatusItem
@@ -20,8 +22,7 @@ final class MenuBarController: NSObject {
         super.init()
 
         if let button = statusItem.button {
-            let image = NSImage(systemSymbolName: "arrow.triangle.branch", accessibilityDescription: "Junction")
-            image?.isTemplate = true
+            let image = Self.menuBarImage()
             button.image = image
             button.toolTip = "Junction — drop a link to route it"
 
@@ -85,6 +86,24 @@ final class MenuBarController: NSObject {
         prefs.tag = MenuTags.preferences.rawValue
         prefs.target = self
         menu.addItem(prefs)
+
+        let onboarding = NSMenuItem(
+            title: "Run Onboarding Again…",
+            action: #selector(runOnboarding),
+            keyEquivalent: ""
+        )
+        onboarding.tag = MenuTags.onboarding.rawValue
+        onboarding.target = self
+        menu.addItem(onboarding)
+
+        let updates = NSMenuItem(
+            title: "Check for Updates…",
+            action: #selector(checkForUpdates),
+            keyEquivalent: ""
+        )
+        updates.tag = MenuTags.checkForUpdates.rawValue
+        updates.target = self
+        menu.addItem(updates)
 
         menu.addItem(.separator())
 
@@ -203,6 +222,35 @@ final class MenuBarController: NSObject {
         alert.addButton(withTitle: "OK")
         alert.runModal()
         rebuildMenu()
+    }
+
+    @objc private func runOnboarding() {
+        NotificationCenter.default.post(name: .junctionShowOnboarding, object: nil)
+    }
+
+    @objc private func checkForUpdates() {
+        NotificationCenter.default.post(name: .junctionCheckForUpdates, object: nil)
+    }
+
+    private static func menuBarImage() -> NSImage? {
+        let height: CGFloat = 28
+        if let url = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png"),
+           let custom = NSImage(contentsOf: url) {
+            let size = custom.size
+            guard size.height > 0 else { return custom }
+            let scaled = NSImage(size: NSSize(width: height * size.width / size.height, height: height))
+            scaled.lockFocus()
+            custom.draw(in: NSRect(origin: .zero, size: scaled.size),
+                        from: NSRect(origin: .zero, size: size),
+                        operation: .copy,
+                        fraction: 1.0)
+            scaled.unlockFocus()
+            scaled.isTemplate = false
+            return scaled
+        }
+        let fallback = NSImage(systemSymbolName: "arrow.triangle.branch", accessibilityDescription: "Junction")
+        fallback?.isTemplate = true
+        return fallback
     }
 }
 

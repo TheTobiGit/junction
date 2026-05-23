@@ -5,14 +5,15 @@ final class UndoNotifier: NSObject {
     static let shared = UndoNotifier()
 
     private var pending: (url: URL, option: LaunchOption, id: String)?
+    private var didRequestAuthorization = false
 
     private override init() {
         super.init()
         UNUserNotificationCenter.current().delegate = self
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
     func announce(url: URL, option: LaunchOption, alternatives: [LaunchOption]) {
+        ensureAuthorizationRequested()
         let id = UUID().uuidString
         pending = (url, option, id)
 
@@ -69,5 +70,13 @@ extension UndoNotifier: UNUserNotificationCenterDelegate {
             }
         }
         self.pending = nil
+    }
+}
+
+private extension UndoNotifier {
+    func ensureAuthorizationRequested() {
+        guard !didRequestAuthorization else { return }
+        didRequestAuthorization = true
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 }
