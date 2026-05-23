@@ -15,6 +15,7 @@ on:
       - 'Package.swift'
       - 'Package.resolved'
       - 'build-app.sh'
+      - 'LICENSE'
       - 'CHANGELOG.md'
       - '.release-please-manifest.json'
       - 'release-please-config.json'
@@ -95,19 +96,74 @@ jobs:
       # CI run cannot influence a release artifact this way. Trade
       # 1-2 minutes of build time for zero cache-poisoning surface.
 
+      - name: Import Developer ID signing certificate
+        env:
+          CERT_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}
+        run: |
+          if [[ -z "${CERT_P12_BASE64}" || -z "${CERT_PASSWORD}" ]]; then
+            echo "::error::APPLE_DEVELOPER_ID_CERT_P12_BASE64 / APPLE_DEVELOPER_ID_CERT_PASSWORD secrets are required for notarized releases."
+            exit 1
+          fi
+          CERT_PATH="$RUNNER_TEMP/developer_id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          echo "$CERT_P12_BASE64" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | xargs)
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -n1)"
+          if [[ -z "$IDENTITY" ]]; then
+            echo "::error::No Developer ID Application identity found in imported keychain."
+            security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+            exit 1
+          fi
+          echo "JUNCTION_CODESIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+          echo "Imported $IDENTITY"
+
       - name: Build release artifacts
         run: ./build-app.sh release
 
-      - name: Verify artifacts
+      - name: Verify signatures
         run: |
           test -d "build/${APP_NAME}.app"
           test -x "build/${CLI_NAME}"
-          # build-app.sh swallows codesign errors with `|| true` so we
-          # verify the signature explicitly here. Ad-hoc signature ('-')
-          # is acceptable for unsigned dev builds; this still rejects a
-          # completely missing/corrupt signature.
           codesign --verify --strict --verbose=2 "build/${APP_NAME}.app"
           codesign --verify --strict --verbose=2 "build/${CLI_NAME}"
+          codesign --display --verbose=4 "build/${APP_NAME}.app" 2>&1 | grep -q "Developer ID Application"
+          codesign --display --entitlements :- "build/${APP_NAME}.app" | grep -q "com.apple.security.automation.apple-events"
+
+      - name: Notarize app and CLI
+        env:
+          APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [[ -z "${APPLE_ID}" || -z "${APPLE_APP_PASSWORD}" || -z "${APPLE_TEAM_ID}" ]]; then
+            echo "::error::APPLE_NOTARY_APPLE_ID / APPLE_NOTARY_PASSWORD / APPLE_TEAM_ID secrets are required."
+            exit 1
+          fi
+          xcrun notarytool store-credentials "junction-notary" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" >/dev/null
+
+          APP_NOTARY_ZIP="$RUNNER_TEMP/${APP_NAME}-notary.zip"
+          ditto -c -k --sequesterRsrc --keepParent "build/${APP_NAME}.app" "$APP_NOTARY_ZIP"
+          xcrun notarytool submit "$APP_NOTARY_ZIP" --keychain-profile "junction-notary" --wait
+          xcrun stapler staple "build/${APP_NAME}.app"
+          xcrun stapler validate "build/${APP_NAME}.app"
+          spctl --assess --type execute --verbose=4 "build/${APP_NAME}.app" || {
+            echo "::error::Gatekeeper assessment failed for ${APP_NAME}.app"
+            exit 1
+          }
+
+          CLI_NOTARY_ZIP="$RUNNER_TEMP/${CLI_NAME}-notary.zip"
+          ditto -c -k --sequesterRsrc "build/${CLI_NAME}" "$CLI_NOTARY_ZIP"
+          xcrun notarytool submit "$CLI_NOTARY_ZIP" --keychain-profile "junction-notary" --wait
 
       - name: Package artifacts
         run: |
@@ -126,3 +182,9 @@ jobs:
             "build/${CLI_NAME}-cli-${VERSION}-macos.zip" \
             "build/checksums-${VERSION}.txt" \
             --clobber
+
+      - name: Clean up keychain
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/build.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/developer_id.p12"
