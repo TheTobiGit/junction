@@ -20,8 +20,7 @@ final class MenuBarController: NSObject {
         super.init()
 
         if let button = statusItem.button {
-            let image = NSImage(systemSymbolName: "arrow.triangle.branch", accessibilityDescription: "Junction")
-            image?.isTemplate = true
+            let image = Self.menuBarImage()
             button.image = image
             button.toolTip = "Junction — drop a link to route it"
 
@@ -203,6 +202,27 @@ final class MenuBarController: NSObject {
         alert.addButton(withTitle: "OK")
         alert.runModal()
         rebuildMenu()
+    }
+
+    private static func menuBarImage() -> NSImage? {
+        let height: CGFloat = 22
+        if let url = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png"),
+           let custom = NSImage(contentsOf: url) {
+            let size = custom.size
+            guard size.height > 0 else { return custom }
+            let scaled = NSImage(size: NSSize(width: height * size.width / size.height, height: height))
+            scaled.lockFocus()
+            custom.draw(in: NSRect(origin: .zero, size: scaled.size),
+                        from: NSRect(origin: .zero, size: size),
+                        operation: .copy,
+                        fraction: 1.0)
+            scaled.unlockFocus()
+            scaled.isTemplate = false
+            return scaled
+        }
+        let fallback = NSImage(systemSymbolName: "arrow.triangle.branch", accessibilityDescription: "Junction")
+        fallback?.isTemplate = true
+        return fallback
     }
 }
 

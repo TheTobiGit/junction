@@ -80,6 +80,10 @@ cp "${APP_EXEC_SRC}" "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
 cp "Resources/Info.plist" "${APP_BUNDLE}/Contents/Info.plist"
 cp "Resources/Readability.js" "${APP_BUNDLE}/Contents/Resources/Readability.js"
 
+if [[ -f "Resources/MenuBarIcon.png" ]]; then
+    cp "Resources/MenuBarIcon.png" "${APP_BUNDLE}/Contents/Resources/MenuBarIcon.png"
+fi
+
 if [[ -f "Resources/AppIcon.icns" ]]; then
     cp "Resources/AppIcon.icns" "${APP_BUNDLE}/Contents/Resources/AppIcon.icns"
 else
