@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0](https://github.com/TheTobiGit/junction/compare/v0.4.1...v0.5.0) (2026-05-23)
+
+
+### Features
+
+* **ci:** notarize and staple release artifacts ([427fed6](https://github.com/TheTobiGit/junction/commit/427fed61bfdc23eab5ec8b68fa4a18f1d2d67264))
+* **menubar:** bump status icon to 28pt for visibility ([aa6f0d2](https://github.com/TheTobiGit/junction/commit/aa6f0d2192e1d8069df3c9e4d80168495d066de8))
+* **menubar:** use custom MenuBarIcon.png in status bar ([aeec7df](https://github.com/TheTobiGit/junction/commit/aeec7df9d2d5189e23632243d96d6fa3fe15345d))
+* **onboarding:** live permission + default-browser status ([2961bf4](https://github.com/TheTobiGit/junction/commit/2961bf412762c1f1c7ae96288fa76e2690833923))
+* **release:** generate AppIcon.icns and embed in app bundle ([849c855](https://github.com/TheTobiGit/junction/commit/849c8553b0b6f8e539b5cc99ed64232a8c5237f4))
+* **release:** hardened-runtime signing for Developer ID builds ([1611b74](https://github.com/TheTobiGit/junction/commit/1611b74f5788a0c01cf2791486c12fc88e266efc))
+* **updates:** in-app update checker and onboarding rerun ([5f36920](https://github.com/TheTobiGit/junction/commit/5f369205176aa219aff042aa1215555cd7407a95))
+
 ## [0.4.1](https://github.com/TheTobiGit/junction/compare/v0.4.0...v0.4.1) (2026-05-21)
 
 
