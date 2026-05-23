@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/TheTobiGit/junction/compare/v0.5.0...v0.6.0) (2026-05-23)
+
+
+### Features
+
+* **release:** build and notarize a DMG alongside the zip ([a81e216](https://github.com/TheTobiGit/junction/commit/a81e21685e700d1cdff4f4d84cbbed9d882ecd46))
+* **release:** build and notarize a DMG alongside the zip ([f0c14c1](https://github.com/TheTobiGit/junction/commit/f0c14c1e61aefb630ae8c9d784e22515a591fc00))
+
 ## [0.5.0](https://github.com/TheTobiGit/junction/compare/v0.4.1...v0.5.0) (2026-05-23)
 
 
