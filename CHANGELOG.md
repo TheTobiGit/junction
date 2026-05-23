@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0](https://github.com/TheTobiGit/junction/compare/v0.6.1...v0.7.0) (2026-05-23)
+
+
+### Features
+
+* **release:** build and notarize a DMG alongside the zip ([81b74a9](https://github.com/TheTobiGit/junction/commit/81b74a993870eca971e4d9c19420d3b631ffed4b))
+* **release:** restore DMG packaging ([cce2baf](https://github.com/TheTobiGit/junction/commit/cce2baf5fb8d36a7aca6ac8cf0a4c52ac4345eff))
+
 ## [0.6.1](https://github.com/TheTobiGit/junction/compare/v0.6.0...v0.6.1) (2026-05-23)
 
 
