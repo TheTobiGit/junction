@@ -6,6 +6,8 @@ final class MenuBarController: NSObject {
         case setDefaultBrowser = 71001
         case preferences = 71002
         case recent = 71003
+        case onboarding = 71004
+        case checkForUpdates = 71005
     }
 
     private let statusItem: NSStatusItem
@@ -84,6 +86,24 @@ final class MenuBarController: NSObject {
         prefs.tag = MenuTags.preferences.rawValue
         prefs.target = self
         menu.addItem(prefs)
+
+        let onboarding = NSMenuItem(
+            title: "Run Onboarding Again…",
+            action: #selector(runOnboarding),
+            keyEquivalent: ""
+        )
+        onboarding.tag = MenuTags.onboarding.rawValue
+        onboarding.target = self
+        menu.addItem(onboarding)
+
+        let updates = NSMenuItem(
+            title: "Check for Updates…",
+            action: #selector(checkForUpdates),
+            keyEquivalent: ""
+        )
+        updates.tag = MenuTags.checkForUpdates.rawValue
+        updates.target = self
+        menu.addItem(updates)
 
         menu.addItem(.separator())
 
@@ -202,6 +222,14 @@ final class MenuBarController: NSObject {
         alert.addButton(withTitle: "OK")
         alert.runModal()
         rebuildMenu()
+    }
+
+    @objc private func runOnboarding() {
+        NotificationCenter.default.post(name: .junctionShowOnboarding, object: nil)
+    }
+
+    @objc private func checkForUpdates() {
+        NotificationCenter.default.post(name: .junctionCheckForUpdates, object: nil)
     }
 
     private static func menuBarImage() -> NSImage? {

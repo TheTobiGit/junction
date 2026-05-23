@@ -30,8 +30,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureHotkeys()
         observeWorkspaceForAppSchemeCache()
         observeWorkspaceForPostDefaultTour()
+        observeOnboardingAndUpdateRequests()
         flushPendingURLs()
         maybeShowOnboarding()
+        Task { @MainActor in UpdateChecker.shared.check(silent: true) }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -728,6 +730,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let controller = onboarding ?? OnboardingWindowController()
         onboarding = controller
         controller.show()
+    }
+
+    private func observeOnboardingAndUpdateRequests() {
+        NotificationCenter.default.addObserver(
+            forName: .junctionShowOnboarding,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.showOnboarding()
+        }
+        NotificationCenter.default.addObserver(
+            forName: .junctionCheckForUpdates,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                UpdateChecker.shared.check(silent: false)
+                self?.showPreferences(focus: .general)
+            }
+        }
     }
 
     private func maybeShowOnboarding() {
