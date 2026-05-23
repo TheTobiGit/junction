@@ -205,7 +205,7 @@ final class MenuBarController: NSObject {
     }
 
     private static func menuBarImage() -> NSImage? {
-        let height: CGFloat = 22
+        let height: CGFloat = 28
         if let url = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png"),
            let custom = NSImage(contentsOf: url) {
             let size = custom.size
