@@ -18,8 +18,16 @@ APP_NAME="Junction"
 APP_BUNDLE="build/${APP_NAME}.app"
 CLI_NAME="junction"
 CLI_OUT="build/${CLI_NAME}"
+ENTITLEMENTS="Resources/Junction.entitlements"
 CODE_SIGN_IDENTITY="${JUNCTION_CODESIGN_IDENTITY:-}"
 
+if [[ -z "${CODE_SIGN_IDENTITY}" ]]; then
+    CODE_SIGN_IDENTITY="$(
+        security find-identity -v -p codesigning 2>/dev/null \
+            | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' \
+            | head -n 1
+    )"
+fi
 if [[ -z "${CODE_SIGN_IDENTITY}" ]]; then
     CODE_SIGN_IDENTITY="$(
         security find-identity -v -p codesigning 2>/dev/null \
@@ -29,6 +37,22 @@ if [[ -z "${CODE_SIGN_IDENTITY}" ]]; then
 fi
 if [[ -z "${CODE_SIGN_IDENTITY}" ]]; then
     CODE_SIGN_IDENTITY="-"
+fi
+
+# Distribution-grade signing (hardened runtime + entitlements + secure
+# timestamp) is only required for Developer ID identities used in
+# notarized public releases. Local dev keeps lightweight ad-hoc signing.
+SIGN_FLAGS=(--force --sign "${CODE_SIGN_IDENTITY}")
+if [[ "${CODE_SIGN_IDENTITY}" == Developer\ ID\ Application:* ]]; then
+    SIGN_FLAGS+=(--options runtime --timestamp)
+    if [[ -f "${ENTITLEMENTS}" ]]; then
+        APP_SIGN_FLAGS=("${SIGN_FLAGS[@]}" --entitlements "${ENTITLEMENTS}")
+    else
+        APP_SIGN_FLAGS=("${SIGN_FLAGS[@]}")
+    fi
+else
+    SIGN_FLAGS+=(--deep)
+    APP_SIGN_FLAGS=("${SIGN_FLAGS[@]}")
 fi
 
 echo "Building Junction (${CONFIG})..."
@@ -56,15 +80,21 @@ cp "${APP_EXEC_SRC}" "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
 cp "Resources/Info.plist" "${APP_BUNDLE}/Contents/Info.plist"
 cp "Resources/Readability.js" "${APP_BUNDLE}/Contents/Resources/Readability.js"
 
+if [[ -f "Resources/AppIcon.icns" ]]; then
+    cp "Resources/AppIcon.icns" "${APP_BUNDLE}/Contents/Resources/AppIcon.icns"
+else
+    printf '\033[33m⚠ Resources/AppIcon.icns missing — bundle will use the generic macOS icon.\033[0m\n' >&2
+fi
+
 cat > "${APP_BUNDLE}/Contents/PkgInfo" <<EOF
 APPL????
 EOF
 
-codesign --force --deep --sign "${CODE_SIGN_IDENTITY}" "${APP_BUNDLE}" >/dev/null 2>&1 || true
+codesign "${APP_SIGN_FLAGS[@]}" "${APP_BUNDLE}"
 
 cp "${CLI_EXEC_SRC}" "${CLI_OUT}"
 chmod +x "${CLI_OUT}"
-codesign --force --sign "${CODE_SIGN_IDENTITY}" "${CLI_OUT}" >/dev/null 2>&1 || true
+codesign "${SIGN_FLAGS[@]}" "${CLI_OUT}"
 
 echo "Built ${APP_BUNDLE}"
 echo "Built ${CLI_OUT}"
