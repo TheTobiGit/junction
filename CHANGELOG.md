@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/TheTobiGit/junction/compare/v0.6.0...v0.6.1) (2026-05-23)
+
+
+### Reverts
+
+* drop DMG packaging from release pipeline ([f3ab37e](https://github.com/TheTobiGit/junction/commit/f3ab37eea78829bae223da4d6518dcfdc97ad7f3))
+
 ## [0.6.0](https://github.com/TheTobiGit/junction/compare/v0.5.0...v0.6.0) (2026-05-23)
 
 
