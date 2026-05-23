@@ -15,6 +15,7 @@ on:
       - 'Package.swift'
       - 'Package.resolved'
       - 'build-app.sh'
+      - 'scripts/make-dmg.sh'
       - 'LICENSE'
       - 'CHANGELOG.md'
       - '.release-please-manifest.json'
@@ -165,12 +166,31 @@ jobs:
           ditto -c -k --sequesterRsrc "build/${CLI_NAME}" "$CLI_NOTARY_ZIP"
           xcrun notarytool submit "$CLI_NOTARY_ZIP" --keychain-profile "junction-notary" --wait
 
+      - name: Build and notarize DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          DMG_PATH="build/${APP_NAME}-${VERSION}.dmg"
+          ./scripts/make-dmg.sh "build/${APP_NAME}.app" "$DMG_PATH" "${APP_NAME} ${VERSION}"
+          xcrun notarytool submit "$DMG_PATH" --keychain-profile "junction-notary" --wait
+          xcrun stapler staple "$DMG_PATH"
+          xcrun stapler validate "$DMG_PATH"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG_PATH" || {
+            echo "::error::Gatekeeper assessment failed for ${DMG_PATH}"
+            exit 1
+          }
+
       - name: Package artifacts
         run: |
           cd build
           ditto -c -k --sequesterRsrc --keepParent "${APP_NAME}.app" "${APP_NAME}-${VERSION}-macos.zip"
           ditto -c -k --sequesterRsrc "${CLI_NAME}" "${CLI_NAME}-cli-${VERSION}-macos.zip"
-          shasum -a 256 "${APP_NAME}-${VERSION}-macos.zip" "${CLI_NAME}-cli-${VERSION}-macos.zip" \
+          shasum -a 256 \
+            "${APP_NAME}-${VERSION}-macos.zip" \
+            "${APP_NAME}-${VERSION}.dmg" \
+            "${CLI_NAME}-cli-${VERSION}-macos.zip" \
             > "checksums-${VERSION}.txt"
 
       - name: Upload assets to release
@@ -179,6 +199,7 @@ jobs:
         run: |
           gh release upload "$TAG" \
             "build/${APP_NAME}-${VERSION}-macos.zip" \
+            "build/${APP_NAME}-${VERSION}.dmg" \
             "build/${CLI_NAME}-cli-${VERSION}-macos.zip" \
             "build/checksums-${VERSION}.txt" \
             --clobber
