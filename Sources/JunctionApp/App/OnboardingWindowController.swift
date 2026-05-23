@@ -71,9 +71,10 @@ struct OnboardingView: View {
     let onFinish: () -> Void
     @State private var step: OnboardingStep = .welcome
     @ObservedObject private var settings = SettingsStore.shared
+    @StateObject private var permissions = PermissionStatusModel()
 
     private var visibleSteps: [OnboardingStep] {
-        if DefaultWebBrowserStatus.current.isJunctionDefaultForHTTPAndHTTPS {
+        if permissions.isJunctionDefaultBrowser {
             OnboardingStep.allCases.filter { $0 != .defaultBrowser }
         } else {
             Array(OnboardingStep.allCases)
@@ -100,6 +101,8 @@ struct OnboardingView: View {
         .background(
             VisualEffectView(material: .underWindowBackground, blendingMode: .behindWindow)
         )
+        .onAppear { permissions.startObserving() }
+        .onDisappear { permissions.stopObserving() }
     }
 
     private var header: some View {
@@ -214,6 +217,15 @@ struct OnboardingView: View {
 
     private var defaultBrowserStep: some View {
         VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                statusPill(
+                    granted: permissions.isJunctionDefaultBrowser,
+                    grantedLabel: "Junction is the default browser",
+                    pendingLabel: "Not yet set"
+                )
+                Spacer()
+            }
+
             Text("Click the button below. macOS will ask you to confirm the change.")
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
@@ -221,11 +233,18 @@ struct OnboardingView: View {
                 let bid = Bundle.main.bundleIdentifier ?? "dev.gideonsarfo.Junction"
                 LSSetDefaultHandlerForURLScheme("http" as CFString, bid as CFString)
                 LSSetDefaultHandlerForURLScheme("https" as CFString, bid as CFString)
+                permissions.refresh()
             } label: {
-                Label("Set Junction as default browser", systemImage: "checkmark.circle.fill")
+                Label(
+                    permissions.isJunctionDefaultBrowser
+                        ? "Junction is your default browser"
+                        : "Set Junction as default browser",
+                    systemImage: permissions.isJunctionDefaultBrowser ? "checkmark.circle.fill" : "checkmark.circle"
+                )
             }
             .controlSize(.large)
             .buttonStyle(.borderedProminent)
+            .disabled(permissions.isJunctionDefaultBrowser)
 
             Text("If nothing happens, open System Settings > Desktop & Dock > Default web browser and choose Junction.")
                 .font(.system(size: 11))
@@ -239,18 +258,26 @@ struct OnboardingView: View {
             permissionRow(
                 title: "Accessibility",
                 detail: "Needed to detect the frontmost app so Junction can route links differently based on where they came from.",
-                action: {
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
-                },
-                actionLabel: "Open Privacy > Accessibility"
+                granted: permissions.isAccessibilityTrusted,
+                primaryAction: { permissions.requestAccessibility() },
+                primaryLabel: "Request access",
+                secondaryAction: { permissions.openAccessibilitySettings() },
+                secondaryLabel: "Open Settings"
             )
             permissionRow(
                 title: "Notifications",
                 detail: "Used for the Undo banner after opening a link so you can switch browsers quickly.",
-                action: {
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.notifications")!)
+                granted: permissions.notificationStatus == .granted,
+                primaryAction: {
+                    if permissions.notificationStatus == .notDetermined {
+                        permissions.requestNotificationAuthorization()
+                    } else {
+                        permissions.openNotificationSettings()
+                    }
                 },
-                actionLabel: "Open Notifications settings"
+                primaryLabel: permissions.notificationStatus == .notDetermined ? "Request access" : "Open Settings",
+                secondaryAction: nil,
+                secondaryLabel: nil
             )
             Text("These are optional. Junction still works without them.")
                 .font(.system(size: 11))
@@ -368,25 +395,71 @@ struct OnboardingView: View {
         }
     }
 
-    private func permissionRow(title: String, detail: String, action: @escaping () -> Void, actionLabel: String) -> some View {
+    private func permissionRow(
+        title: String,
+        detail: String,
+        granted: Bool,
+        primaryAction: @escaping () -> Void,
+        primaryLabel: String,
+        secondaryAction: (() -> Void)?,
+        secondaryLabel: String?
+    ) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .semibold))
+                    statusPill(
+                        granted: granted,
+                        grantedLabel: "Granted",
+                        pendingLabel: "Not granted"
+                    )
+                }
                 Text(detail)
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12)
-            Button(actionLabel, action: action)
-                .controlSize(.small)
+            VStack(alignment: .trailing, spacing: 6) {
+                if granted {
+                    Image(systemName: "checkmark.seal.fill")
+                        .foregroundColor(.green)
+                        .font(.system(size: 18, weight: .semibold))
+                } else {
+                    Button(primaryLabel, action: primaryAction)
+                        .controlSize(.small)
+                    if let secondaryAction, let secondaryLabel {
+                        Button(secondaryLabel, action: secondaryAction)
+                            .controlSize(.small)
+                            .buttonStyle(.borderless)
+                            .font(.system(size: 11))
+                    }
+                }
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(Color.primary.opacity(0.04))
+        )
+    }
+
+    private func statusPill(granted: Bool, grantedLabel: String, pendingLabel: String) -> some View {
+        let label = granted ? grantedLabel : pendingLabel
+        let color = granted ? Color.green : Color.orange
+        return HStack(spacing: 4) {
+            Image(systemName: granted ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                .font(.system(size: 9, weight: .semibold))
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+        }
+        .foregroundColor(color)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(
+            Capsule().fill(color.opacity(0.15))
         )
     }
 }
