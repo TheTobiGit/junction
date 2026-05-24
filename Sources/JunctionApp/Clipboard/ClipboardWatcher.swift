@@ -11,8 +11,15 @@ final class ClipboardWatcher {
 
     private init() {}
 
+    func configure(handlers: ClipboardHUDHandlers) {
+        hud.configure(handlers: handlers)
+    }
+
     func updateEnabledState() {
-        if SettingsStore.shared.settings.clipboardWatcherEnabled {
+        let enabled = FeatureFlags.clipboardLinkHUDEnabled(
+            userPreference: SettingsStore.shared.settings.clipboardWatcherEnabled
+        )
+        if enabled {
             start()
         } else {
             stop()
