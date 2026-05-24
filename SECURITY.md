@@ -11,10 +11,8 @@ backports.
 Please report security issues privately. Do **not** open a public GitHub issue
 for anything you suspect is exploitable.
 
-- Preferred: use GitHub's private vulnerability reporting at
-  <https://github.com/TheTobiGit/junction/security/advisories/new>.
-- Alternative: email **aemonsarfo@outlook.com** with the subject line
-  `[junction] security report`.
+Use GitHub's private vulnerability reporting:
+<https://github.com/TheTobiGit/junction/security/advisories/new>.
 
 When reporting, include:
 
