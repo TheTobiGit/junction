@@ -484,8 +484,13 @@ struct PickerView: View {
                 )
                 .padding(.horizontal, Self.dialPanelHorizontalPadding)
 
-            dialBoard(tiles: tiles)
-                .frame(width: Self.dialDiameter, height: Self.dialDiameter)
+            if tiles.isEmpty {
+                dialEmptyBoard
+                    .frame(width: Self.dialDiameter, height: Self.dialDiameter)
+            } else {
+                dialBoard(tiles: tiles)
+                    .frame(width: Self.dialDiameter, height: Self.dialDiameter)
+            }
 
             shortcutDock
                 .fixedSize(horizontal: true, vertical: false)
@@ -500,6 +505,50 @@ struct PickerView: View {
                 QRSheetOverlay(model: model)
                     .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
+        }
+    }
+
+    private var dialEmptyBoard: some View {
+        ZStack {
+            Circle()
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    Circle()
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.20), Color.white.opacity(0.04)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(color: Color.black.opacity(0.35), radius: 22, x: 0, y: 10)
+
+            VStack(spacing: 8) {
+                Image(systemName: "globe")
+                    .font(.system(size: 32, weight: .regular))
+                    .foregroundColor(.secondary)
+                Text("No browsers enabled")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.primary)
+                Text("Open Preferences to show some.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                Button {
+                    model.openPreferences()
+                } label: {
+                    Text("Open Preferences")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(Color.white.opacity(0.10)))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 32)
         }
     }
 
@@ -1758,7 +1807,7 @@ private final class KeyCatcherView: NSView {
     }
 }
 
-struct CircularWedge: Shape {
+private struct CircularWedge: Shape {
     let startAngle: Double
     let endAngle: Double
     let innerRadius: CGFloat
