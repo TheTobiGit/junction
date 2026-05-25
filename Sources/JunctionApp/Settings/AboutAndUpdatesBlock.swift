@@ -17,7 +17,7 @@ struct AboutAndUpdatesBlock: View {
                         }
                     }
                     .controlSize(.regular)
-                    .disabled(isChecking)
+                    .disabled(isCheckDisabled)
                 }
                 PrefsHairline()
                 statusRow
@@ -36,6 +36,15 @@ struct AboutAndUpdatesBlock: View {
     private var isChecking: Bool {
         if case .checking = updater.state { return true }
         return false
+    }
+
+    private var isCheckDisabled: Bool {
+        switch updater.state {
+        case .checking, .downloading, .readyToInstall:
+            return true
+        default:
+            return false
+        }
     }
 
     @ViewBuilder
@@ -62,7 +71,7 @@ struct AboutAndUpdatesBlock: View {
                 title: "You're on the latest version (\(v))",
                 detail: lastCheckedDetail
             )
-        case .updateAvailable(let latest, _, _):
+        case .updateAvailable(let latest, _, let downloadURL):
             VStack(alignment: .leading, spacing: 8) {
                 statusLine(
                     icon: "arrow.down.circle.fill",
@@ -71,8 +80,54 @@ struct AboutAndUpdatesBlock: View {
                     detail: "A newer release is on GitHub."
                 )
                 HStack(spacing: 8) {
-                    Button("Download Update") {
+                    if downloadURL != nil {
+                        Button("Download Update") {
+                            updater.downloadUpdate()
+                        }
+                        .buttonStyle(.borderedProminent)
+                    } else {
+                        Button("Download on GitHub") {
+                            updater.openLatestRelease()
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    Button("View Release Notes") {
                         updater.openLatestRelease()
+                    }
+                }
+                .padding(.leading, 28)
+            }
+        case .downloading(let latest, _, let progress):
+            VStack(alignment: .leading, spacing: 8) {
+                statusLine(
+                    icon: "arrow.down.circle",
+                    tint: .accentColor,
+                    title: "Downloading \(latest)…",
+                    detail: progressDetail(progress)
+                )
+                VStack(alignment: .leading, spacing: 6) {
+                    ProgressView(value: progress)
+                        .progressViewStyle(.linear)
+                    HStack {
+                        Spacer()
+                        Button("Cancel") {
+                            updater.cancelDownload()
+                        }
+                    }
+                }
+                .padding(.leading, 28)
+            }
+        case .readyToInstall(let latest, _, _):
+            VStack(alignment: .leading, spacing: 8) {
+                statusLine(
+                    icon: "checkmark.circle.fill",
+                    tint: .green,
+                    title: "Junction \(latest) is ready to install",
+                    detail: "Junction will quit, swap in the new version, and relaunch."
+                )
+                HStack(spacing: 8) {
+                    Button("Restart & Install") {
+                        updater.installAndRelaunch()
                     }
                     .buttonStyle(.borderedProminent)
                     Button("View Release Notes") {
@@ -96,6 +151,12 @@ struct AboutAndUpdatesBlock: View {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
         return "Checked \(formatter.localizedString(for: date, relativeTo: Date()))"
+    }
+
+    private func progressDetail(_ value: Double) -> String {
+        let clamped = max(0, min(1, value))
+        let percent = Int((clamped * 100).rounded())
+        return "\(percent)% downloaded"
     }
 
     private func statusLine(icon: String, tint: Color, title: String, detail: String?) -> some View {
