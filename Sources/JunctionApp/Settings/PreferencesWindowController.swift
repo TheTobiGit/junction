@@ -4,7 +4,6 @@ import SwiftUI
 extension Notification.Name {
     static let junctionPreferencesFocusSection = Notification.Name("junctionPreferencesFocusSection")
     static let junctionShowOnboarding = Notification.Name("junctionShowOnboarding")
-    static let junctionCheckForUpdates = Notification.Name("junctionCheckForUpdates")
 }
 
 enum PreferencesFocusTarget: String {

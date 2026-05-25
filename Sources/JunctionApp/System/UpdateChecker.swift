@@ -16,7 +16,6 @@ final class UpdateChecker: NSObject, ObservableObject {
     @Published private(set) var canCheckForUpdates = false
 
     private let updaterController: SPUStandardUpdaterController
-    private var cancellables: Set<AnyCancellable> = []
     private var hasStarted = false
 
     override private init() {
