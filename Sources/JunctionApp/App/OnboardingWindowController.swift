@@ -25,8 +25,8 @@ final class OnboardingWindowController {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = true
-        window.setContentSize(NSSize(width: 640, height: 520))
-        window.minSize = NSSize(width: 640, height: 520)
+        window.setContentSize(NSSize(width: 720, height: 620))
+        window.minSize = NSSize(width: 720, height: 620)
         window.center()
         window.isReleasedWhenClosed = false
         self.window = window
@@ -38,31 +38,25 @@ final class OnboardingWindowController {
 private enum OnboardingStep: Int, CaseIterable {
     case welcome, defaultBrowser, permissions, appSchemes, hotkeys, done
 
-    var title: String {
+    var headline: String {
         switch self {
-        case .welcome: return "Route links to the right browser"
-        case .defaultBrowser: return "Make Junction your default"
-        case .permissions: return "Grant permissions"
-        case .appSchemes: return "Open native apps instead of web"
-        case .hotkeys: return "Set up a hotkey (optional)"
-        case .done: return "You're ready"
+        case .welcome: return "Every link.\nRight place."
+        case .defaultBrowser: return "Make Junction\nyour default."
+        case .permissions: return "A couple of\nquick permissions."
+        case .appSchemes: return "Skip the browser\nwhen you can."
+        case .hotkeys: return "Summon the picker\nfrom anywhere."
+        case .done: return "You're all set."
         }
     }
 
-    var subtitle: String {
+    var caption: String {
         switch self {
-        case .welcome:
-            return "Junction intercepts every link click and lets you pick the browser, profile, or app. Nothing leaves your Mac."
-        case .defaultBrowser:
-            return "macOS will ask you to confirm. Without this, Junction can't catch links from other apps."
-        case .permissions:
-            return "For source app + focus awareness, Junction needs Accessibility access. This is optional but recommended."
-        case .appSchemes:
-            return "Send matching links straight to the desktop app when it's installed."
-        case .hotkeys:
-            return "Trigger the picker for any link on your clipboard, no matter which app you're in."
-        case .done:
-            return "Visit Preferences to fine-tune rules, rewrites, and browser profiles whenever you want."
+        case .welcome: return "Junction catches every link click and lets you choose where it lands. Local. Private. Fast."
+        case .defaultBrowser: return "macOS will ask once. Junction needs this to catch links from other apps."
+        case .permissions: return "Optional, but they unlock the smartest routing."
+        case .appSchemes: return "Send Slack, Figma, and Notion links straight to the desktop app."
+        case .hotkeys: return "Two shortcuts. Pick a browser or paste-and-go without lifting your hands."
+        case .done: return "Tweak rules, profiles, and rewrites anytime from the menu bar."
         }
     }
 }
@@ -70,8 +64,11 @@ private enum OnboardingStep: Int, CaseIterable {
 struct OnboardingView: View {
     let onFinish: () -> Void
     @State private var step: OnboardingStep = .welcome
+    @State private var heroPulse: Bool = false
     @ObservedObject private var settings = SettingsStore.shared
     @StateObject private var permissions = PermissionStatusModel()
+
+    private var accent: Color { settings.settings.accentPreset.swiftUIColor }
 
     private var visibleSteps: [OnboardingStep] {
         if permissions.isJunctionDefaultBrowser {
@@ -88,266 +85,332 @@ struct OnboardingView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider().opacity(0.2)
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            Divider().opacity(0.2)
-            footer
+        ZStack {
+            backdrop
+            VStack(spacing: 0) {
+                topBar
+                heroArea
+                    .frame(height: 240)
+                    .frame(maxWidth: .infinity)
+                contentArea
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                footer
+            }
         }
-        .frame(width: 640, height: 520)
-        .tint(settings.settings.accentPreset.swiftUIColor)
-        .background(
-            VisualEffectView(material: .underWindowBackground, blendingMode: .behindWindow)
-        )
-        .onAppear { permissions.startObserving() }
+        .frame(width: 720, height: 620)
+        .tint(accent)
+        .onAppear {
+            permissions.startObserving()
+            withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
+                heroPulse = true
+            }
+        }
         .onDisappear { permissions.stopObserving() }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                ForEach(Array(visibleSteps.enumerated()), id: \.element) { index, _ in
-                    Circle()
-                        .fill(index <= visibleStepIndex ? Color.accentColor : Color.secondary.opacity(0.3))
-                        .frame(width: 7, height: 7)
-                }
-                Spacer()
-                Button("Skip setup") {
-                    onFinish()
-                }
-                .buttonStyle(.plain)
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
-            }
+    // MARK: Backdrop
 
-            Text(step.title)
-                .font(.system(size: 22, weight: .semibold))
-                .padding(.top, 4)
-            Text(step.subtitle)
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+    private var backdrop: some View {
+        ZStack {
+            VisualEffectView(material: .underWindowBackground, blendingMode: .behindWindow)
+
+            LinearGradient(
+                colors: [
+                    accent.opacity(0.22),
+                    accent.opacity(0.06),
+                    Color.black.opacity(0.0)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            RadialGradient(
+                colors: [accent.opacity(0.30), .clear],
+                center: .topTrailing,
+                startRadius: 0,
+                endRadius: 420
+            )
+            .blendMode(.plusLighter)
+            .opacity(0.75)
+
+            RadialGradient(
+                colors: [accent.opacity(0.18), .clear],
+                center: .bottomLeading,
+                startRadius: 0,
+                endRadius: 360
+            )
+            .blendMode(.plusLighter)
+            .opacity(0.5)
+        }
+        .ignoresSafeArea()
+    }
+
+    // MARK: Top bar
+
+    private var topBar: some View {
+        HStack(spacing: 10) {
+            ForEach(Array(visibleSteps.enumerated()), id: \.element) { index, _ in
+                Capsule()
+                    .fill(index <= visibleStepIndex ? accent : Color.primary.opacity(0.14))
+                    .frame(
+                        width: index == visibleStepIndex ? 22 : 8,
+                        height: 6
+                    )
+                    .animation(.spring(response: 0.5, dampingFraction: 0.8), value: visibleStepIndex)
+            }
+            Spacer()
+            if step != .done {
+                Button("Skip setup") { onFinish() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(
+                        Capsule().fill(Color.primary.opacity(0.06))
+                    )
+            }
         }
         .padding(.horizontal, 32)
-        .padding(.top, 26)
-        .padding(.bottom, 18)
+        .padding(.top, 24)
+        .padding(.bottom, 14)
+    }
+
+    // MARK: Hero
+
+    private var heroArea: some View {
+        ZStack {
+            switch step {
+            case .welcome: WelcomeHero(accent: accent, pulse: heroPulse)
+            case .defaultBrowser: DefaultBrowserHero(accent: accent, isDefault: permissions.isJunctionDefaultBrowser, pulse: heroPulse)
+            case .permissions: PermissionsHero(accent: accent, pulse: heroPulse)
+            case .appSchemes: AppSchemesHero(accent: accent, pulse: heroPulse)
+            case .hotkeys: HotkeysHero(accent: accent, pulse: heroPulse)
+            case .done: DoneHero(accent: accent, pulse: heroPulse)
+            }
+        }
+        .id(step)
+        .transition(.asymmetric(
+            insertion: .opacity.combined(with: .scale(scale: 0.96)),
+            removal: .opacity
+        ))
+        .animation(.spring(response: 0.55, dampingFraction: 0.85), value: step)
+    }
+
+    // MARK: Content
+
+    private var contentArea: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .center, spacing: 8) {
+                Text(step.headline)
+                    .font(.system(size: 30, weight: .semibold, design: .rounded))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(step.caption)
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 480)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 40)
+            .padding(.top, 4)
+            .padding(.bottom, 18)
+
+            stepInteractions
+                .padding(.horizontal, 40)
+        }
     }
 
     @ViewBuilder
-    private var content: some View {
-        ScrollView {
-            Group {
-                switch step {
-                case .welcome: welcomeStep
-                case .defaultBrowser: defaultBrowserStep
-                case .permissions: permissionsStep
-                case .appSchemes: appSchemesStep
-                case .hotkeys: hotkeysStep
-                case .done: doneStep
-                }
-            }
-            .padding(.horizontal, 32)
-            .padding(.vertical, 22)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+    private var stepInteractions: some View {
+        switch step {
+        case .welcome:
+            EmptyView()
+        case .defaultBrowser:
+            defaultBrowserAction
+        case .permissions:
+            permissionsActions
+        case .appSchemes:
+            appSchemesPicker
+        case .hotkeys:
+            hotkeysList
+        case .done:
+            EmptyView()
         }
     }
 
-    private var footer: some View {
-        HStack {
-            Button("Back") {
-                goBackStep()
-            }
-            .disabled(visibleStepIndex == 0)
-            .keyboardShortcut(.leftArrow, modifiers: [.command])
-
-            Spacer()
-
-            if step == .done {
-                Button("Finish") { onFinish() }
-                    .keyboardShortcut(.return, modifiers: [])
-                    .buttonStyle(.borderedProminent)
-            } else {
-                Button("Continue") {
-                    advanceStep()
-                }
-                .keyboardShortcut(.return, modifiers: [])
-                .buttonStyle(.borderedProminent)
-            }
-        }
-        .padding(.horizontal, 32)
-        .padding(.vertical, 16)
-    }
-
-    private func advanceStep() {
-        if let i = visibleSteps.firstIndex(of: step), i + 1 < visibleSteps.count {
-            step = visibleSteps[i + 1]
-            return
-        }
-
-        if let next = visibleSteps.first(where: { $0.rawValue > step.rawValue }) {
-            step = next
-        }
-    }
-
-    private func goBackStep() {
-        if let i = visibleSteps.firstIndex(of: step), i > 0 {
-            step = visibleSteps[i - 1]
-            return
-        }
-
-        if let previous = visibleSteps.last(where: { $0.rawValue < step.rawValue }) {
-            step = previous
-        }
-    }
-
-    // MARK: Steps
-
-    private var welcomeStep: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            bullet(icon: "arrow.triangle.branch", title: "Per-site routing",
-                   detail: "Keep personal and work profiles separate. github.com goes to Work, drive.google.com goes to Personal.")
-            bullet(icon: "eyeglasses", title: "Private / incognito on demand",
-                   detail: "Hold Option when picking, or save an incognito rule for sensitive hosts.")
-            bullet(icon: "sparkles", title: "Automatic URL cleanup",
-                   detail: "Strip utm_*, fbclid, and other trackers before the browser sees them.")
-        }
-    }
-
-    private var defaultBrowserStep: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                statusPill(
-                    granted: permissions.isJunctionDefaultBrowser,
-                    grantedLabel: "Junction is the default browser",
-                    pendingLabel: "Not yet set"
-                )
-                Spacer()
-            }
-
-            Text("Click the button below. macOS will ask you to confirm the change.")
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
+    private var defaultBrowserAction: some View {
+        VStack(spacing: 10) {
             Button {
                 let bid = Bundle.main.bundleIdentifier ?? "dev.gideonsarfo.Junction"
                 LSSetDefaultHandlerForURLScheme("http" as CFString, bid as CFString)
                 LSSetDefaultHandlerForURLScheme("https" as CFString, bid as CFString)
                 permissions.refresh()
             } label: {
-                Label(
-                    permissions.isJunctionDefaultBrowser
-                        ? "Junction is your default browser"
-                        : "Set Junction as default browser",
-                    systemImage: permissions.isJunctionDefaultBrowser ? "checkmark.circle.fill" : "checkmark.circle"
-                )
+                HStack(spacing: 8) {
+                    Image(systemName: permissions.isJunctionDefaultBrowser ? "checkmark.circle.fill" : "arrow.up.right.circle.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text(permissions.isJunctionDefaultBrowser ? "Junction is your default" : "Set Junction as default")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
+                .frame(minWidth: 240)
             }
-            .controlSize(.large)
             .buttonStyle(.borderedProminent)
+            .controlSize(.large)
             .disabled(permissions.isJunctionDefaultBrowser)
 
-            Text("If nothing happens, open System Settings > Desktop & Dock > Default web browser and choose Junction.")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
-                .padding(.top, 2)
+            if !permissions.isJunctionDefaultBrowser {
+                Text("If macOS doesn't ask, open Settings > Desktop & Dock and pick Junction.")
+                    .font(.system(size: 10.5))
+                    .foregroundColor(.secondary)
+            }
         }
+        .frame(maxWidth: .infinity)
     }
 
-    private var permissionsStep: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            permissionRow(
+    private var permissionsActions: some View {
+        HStack(spacing: 12) {
+            permissionTile(
+                icon: "hand.raised.fill",
                 title: "Accessibility",
-                detail: "Needed to detect the frontmost app so Junction can route links differently based on where they came from.",
                 granted: permissions.isAccessibilityTrusted,
-                primaryAction: { permissions.requestAccessibility() },
-                primaryLabel: "Request access",
-                secondaryAction: { permissions.openAccessibilitySettings() },
-                secondaryLabel: "Open Settings"
+                actionLabel: "Grant",
+                action: { permissions.requestAccessibility() }
             )
-            permissionRow(
+            permissionTile(
+                icon: "bell.badge.fill",
                 title: "Notifications",
-                detail: "Used for the Undo banner after opening a link so you can switch browsers quickly.",
                 granted: permissions.notificationStatus == .granted,
-                primaryAction: {
+                actionLabel: permissions.notificationStatus == .notDetermined ? "Grant" : "Settings",
+                action: {
                     if permissions.notificationStatus == .notDetermined {
                         permissions.requestNotificationAuthorization()
                     } else {
                         permissions.openNotificationSettings()
                     }
-                },
-                primaryLabel: permissions.notificationStatus == .notDetermined ? "Request access" : "Open Settings",
-                secondaryAction: nil,
-                secondaryLabel: nil
+                }
             )
-            Text("These are optional. Junction still works without them.")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
         }
     }
 
-    private var appSchemesStep: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(settings.settings.appSchemes) { rewrite in
-                HStack(spacing: 10) {
-                    Toggle("", isOn: Binding(
-                        get: { rewrite.enabled },
-                        set: { settings.setAppSchemeEnabled(id: rewrite.id, enabled: $0) }
-                    ))
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                    .controlSize(.small)
+    private func permissionTile(
+        icon: String,
+        title: String,
+        granted: Bool,
+        actionLabel: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        VStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(granted ? Color.green.opacity(0.18) : accent.opacity(0.16))
+                    .frame(width: 36, height: 36)
+                Image(systemName: granted ? "checkmark" : icon)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(granted ? .green : accent)
+            }
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 6) {
-                            Text(rewrite.name)
-                                .font(.system(size: 13, weight: .semibold))
-                            if NSWorkspace.shared.urlForApplication(withBundleIdentifier: rewrite.bundleID) == nil {
-                                Text("Not installed")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .padding(.horizontal, 6).padding(.vertical, 1)
-                                    .background(Capsule().fill(Color.secondary.opacity(0.18)))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        Text(rewrite.rules.map { $0.host }.joined(separator: ", "))
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.primary.opacity(0.04))
-                )
+            if granted {
+                Text("Granted")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundColor(.green)
+                    .frame(height: 22)
+            } else {
+                Button(actionLabel, action: action)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
             }
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.primary.opacity(0.04))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+        )
     }
 
-    private var hotkeysStep: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HotkeyRowView(
-                title: "Open clipboard link in picker",
-                detail: "Great for triggering the picker when a link is in your clipboard.",
+    private var appSchemesPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(settings.settings.appSchemes) { rewrite in
+                    appSchemeChip(rewrite: rewrite)
+                }
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 4)
+        }
+        .frame(maxHeight: 80)
+    }
+
+    private func appSchemeChip(rewrite: AppSchemeRewrite) -> some View {
+        let installed = NSWorkspace.shared.urlForApplication(withBundleIdentifier: rewrite.bundleID) != nil
+        let active = rewrite.enabled && installed
+        return Button {
+            settings.setAppSchemeEnabled(id: rewrite.id, enabled: !rewrite.enabled)
+        } label: {
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(active ? accent.opacity(0.22) : Color.primary.opacity(0.06))
+                        .frame(width: 26, height: 26)
+                    Image(systemName: active ? "checkmark" : "app.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(active ? accent : .secondary)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(rewrite.name)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.primary)
+                    Text(installed ? (active ? "On" : "Off") : "Not installed")
+                        .font(.system(size: 10))
+                        .foregroundColor(installed ? (active ? accent : .secondary) : .secondary.opacity(0.7))
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(active ? accent.opacity(0.10) : Color.primary.opacity(0.04))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(
+                        active ? accent.opacity(0.45) : Color.primary.opacity(0.08),
+                        lineWidth: 1
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(!installed)
+        .opacity(installed ? 1 : 0.55)
+    }
+
+    private var hotkeysList: some View {
+        VStack(spacing: 10) {
+            onboardingHotkeyRow(
+                icon: "rectangle.stack.fill",
+                title: "Open picker",
+                detail: "Show the picker for the link on your clipboard.",
                 binding: Binding(
                     get: { settings.settings.hotkeys.summonPicker },
                     set: { settings.setHotkey($0, for: \.summonPicker) }
                 )
             )
-            HotkeyRowView(
-                title: "Reroute last link",
-                detail: "Shows the picker for the most recently routed link so you can pick a different browser.",
-                binding: Binding(
-                    get: { settings.settings.hotkeys.rerouteLast },
-                    set: { settings.setHotkey($0, for: \.rerouteLast) }
-                )
-            )
-            HotkeyRowView(
+            onboardingHotkeyRow(
+                icon: "bolt.fill",
                 title: "Paste & open",
-                detail: "Routes the clipboard link immediately using your rules.",
+                detail: "Skip the picker. Route the clipboard link instantly.",
                 binding: Binding(
                     get: { settings.settings.hotkeys.pasteAndOpen },
                     set: { settings.setHotkey($0, for: \.pasteAndOpen) }
@@ -356,110 +419,418 @@ struct OnboardingView: View {
         }
     }
 
-    private var doneStep: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            bullet(icon: "command", title: "Menu bar",
-                   detail: "Preferences (including rules) are available from the menu bar arrow icon.")
-            bullet(icon: "questionmark.circle", title: "Picker shortcuts",
-                   detail: "The picker footer shows common keys; click ? Shortcuts (or press ?) for the rest.")
-            bullet(icon: "terminal", title: "CLI",
-                   detail: "Install the junction CLI and run junction open <url> from scripts or shortcuts.")
-        }
-    }
-
-    private func bullet(icon: String, title: String, detail: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.accentColor.opacity(0.25), Color.accentColor.opacity(0.1)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .frame(width: 32, height: 32)
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.accentColor)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                Text(detail)
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
-        }
-    }
-
-    private func permissionRow(
+    private func onboardingHotkeyRow(
+        icon: String,
         title: String,
         detail: String,
-        granted: Bool,
-        primaryAction: @escaping () -> Void,
-        primaryLabel: String,
-        secondaryAction: (() -> Void)?,
-        secondaryLabel: String?
+        binding: Binding<HotkeyBinding>
     ) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(title)
-                        .font(.system(size: 13, weight: .semibold))
-                    statusPill(
-                        granted: granted,
-                        grantedLabel: "Granted",
-                        pendingLabel: "Not granted"
-                    )
-                }
+        HStack(alignment: .center, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(accent.opacity(0.16))
+                    .frame(width: 32, height: 32)
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(accent)
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 12.5, weight: .semibold))
                 Text(detail)
-                    .font(.system(size: 11))
+                    .font(.system(size: 10.5))
                     .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
+
             Spacer(minLength: 12)
-            VStack(alignment: .trailing, spacing: 6) {
-                if granted {
-                    Image(systemName: "checkmark.seal.fill")
-                        .foregroundColor(.green)
-                        .font(.system(size: 18, weight: .semibold))
-                } else {
-                    Button(primaryLabel, action: primaryAction)
-                        .controlSize(.small)
-                    if let secondaryAction, let secondaryLabel {
-                        Button(secondaryLabel, action: secondaryAction)
-                            .controlSize(.small)
-                            .buttonStyle(.borderless)
-                            .font(.system(size: 11))
-                    }
-                }
-            }
+
+            HotkeyRecorderView(binding: binding)
+                .frame(width: 150, height: 32)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.vertical, 10)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color.primary.opacity(0.04))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
         )
     }
 
-    private func statusPill(granted: Bool, grantedLabel: String, pendingLabel: String) -> some View {
-        let label = granted ? grantedLabel : pendingLabel
-        let color = granted ? Color.green : Color.orange
-        return HStack(spacing: 4) {
-            Image(systemName: granted ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                .font(.system(size: 9, weight: .semibold))
-            Text(label)
-                .font(.system(size: 10, weight: .semibold))
+    // MARK: Footer
+
+    private var footer: some View {
+        HStack {
+            Button("Back") { goBackStep() }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule().fill(Color.primary.opacity(0.05))
+                )
+                .opacity(visibleStepIndex == 0 ? 0 : 1)
+                .disabled(visibleStepIndex == 0)
+                .keyboardShortcut(.leftArrow, modifiers: [.command])
+
+            Spacer()
+
+            Button(action: {
+                if step == .done { onFinish() } else { advanceStep() }
+            }) {
+                HStack(spacing: 6) {
+                    Text(step == .done ? "Get started" : "Continue")
+                        .font(.system(size: 13, weight: .semibold))
+                    if step != .done {
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                }
+                .padding(.horizontal, 22)
+                .padding(.vertical, 11)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .keyboardShortcut(.return, modifiers: [])
         }
-        .foregroundColor(color)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
+        .padding(.horizontal, 32)
+        .padding(.bottom, 22)
+        .padding(.top, 8)
+    }
+
+    private func advanceStep() {
+        if let i = visibleSteps.firstIndex(of: step), i + 1 < visibleSteps.count {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+                step = visibleSteps[i + 1]
+            }
+            return
+        }
+        if let next = visibleSteps.first(where: { $0.rawValue > step.rawValue }) {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+                step = next
+            }
+        }
+    }
+
+    private func goBackStep() {
+        if let i = visibleSteps.firstIndex(of: step), i > 0 {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+                step = visibleSteps[i - 1]
+            }
+            return
+        }
+        if let previous = visibleSteps.last(where: { $0.rawValue < step.rawValue }) {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+                step = previous
+            }
+        }
+    }
+}
+
+// MARK: - Hero illustrations
+
+private struct HeroFrame<Content: View>: View {
+    let accent: Color
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [accent.opacity(0.18), accent.opacity(0.04)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.16), lineWidth: 1)
+                )
+                .shadow(color: accent.opacity(0.18), radius: 24, y: 10)
+
+            content()
+                .padding(20)
+        }
+        .frame(maxWidth: 520, maxHeight: 200)
+        .padding(.horizontal, 40)
+        .padding(.top, 4)
+    }
+}
+
+private struct WelcomeHero: View {
+    let accent: Color
+    let pulse: Bool
+
+    var body: some View {
+        HeroFrame(accent: accent) {
+            HStack(spacing: 0) {
+                routePill(icon: "link", label: "link", color: .primary)
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 10)
+
+                ZStack {
+                    Circle()
+                        .stroke(accent.opacity(0.45), lineWidth: 2)
+                        .frame(width: 72, height: 72)
+                        .scaleEffect(pulse ? 1.08 : 1.0)
+                        .opacity(pulse ? 0.6 : 1.0)
+                    Circle()
+                        .fill(LinearGradient(
+                            colors: [accent, accent.opacity(0.65)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ))
+                        .frame(width: 56, height: 56)
+                        .shadow(color: accent.opacity(0.5), radius: 14, y: 4)
+                    Image(systemName: "arrow.triangle.branch")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 14)
+
+                VStack(spacing: 8) {
+                    routePill(icon: "briefcase.fill", label: "Work", color: accent)
+                    routePill(icon: "person.fill", label: "Personal", color: .pink)
+                    routePill(icon: "eyeglasses", label: "Private", color: .indigo)
+                }
+            }
+        }
+    }
+
+    private func routePill(icon: String, label: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .bold))
+            Text(label)
+                .font(.system(size: 11, weight: .semibold))
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
         .background(
-            Capsule().fill(color.opacity(0.15))
+            Capsule().fill(LinearGradient(
+                colors: [color, color.opacity(0.7)],
+                startPoint: .top,
+                endPoint: .bottom
+            ))
         )
+        .shadow(color: color.opacity(0.35), radius: 6, y: 2)
+    }
+}
+
+private struct DefaultBrowserHero: View {
+    let accent: Color
+    let isDefault: Bool
+    let pulse: Bool
+
+    var body: some View {
+        HeroFrame(accent: accent) {
+            HStack(spacing: 24) {
+                ForEach(["safari", "globe", "globe.americas.fill"], id: \.self) { icon in
+                    Image(systemName: icon)
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundColor(.secondary.opacity(0.5))
+                }
+
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(LinearGradient(
+                            colors: [accent, accent.opacity(0.7)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ))
+                        .frame(width: 84, height: 84)
+                        .shadow(color: accent.opacity(0.5), radius: 18, y: 6)
+                        .scaleEffect(pulse ? 1.05 : 1.0)
+
+                    Image(systemName: isDefault ? "checkmark" : "arrow.triangle.branch")
+                        .font(.system(size: 36, weight: .bold))
+                        .foregroundColor(.white)
+                }
+
+                ForEach(["network", "globe.badge.chevron.backward", "macwindow"], id: \.self) { icon in
+                    Image(systemName: icon)
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundColor(.secondary.opacity(0.5))
+                }
+            }
+        }
+    }
+}
+
+private struct PermissionsHero: View {
+    let accent: Color
+    let pulse: Bool
+
+    var body: some View {
+        HeroFrame(accent: accent) {
+            HStack(spacing: 28) {
+                shieldIcon(
+                    symbol: "hand.raised.fill",
+                    label: "Accessibility",
+                    color: accent,
+                    delay: 0
+                )
+                shieldIcon(
+                    symbol: "bell.badge.fill",
+                    label: "Notifications",
+                    color: .orange,
+                    delay: 0.4
+                )
+            }
+        }
+    }
+
+    private func shieldIcon(symbol: String, label: String, color: Color, delay: Double) -> some View {
+        VStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .stroke(color.opacity(0.35), lineWidth: 2)
+                    .frame(width: 88, height: 88)
+                    .scaleEffect(pulse ? 1.08 : 0.96)
+                    .opacity(pulse ? 0.4 : 0.9)
+
+                Circle()
+                    .fill(LinearGradient(
+                        colors: [color, color.opacity(0.65)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ))
+                    .frame(width: 72, height: 72)
+                    .shadow(color: color.opacity(0.45), radius: 14, y: 4)
+
+                Image(systemName: symbol)
+                    .font(.system(size: 30, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            Text(label)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.secondary)
+        }
+    }
+}
+
+private struct AppSchemesHero: View {
+    let accent: Color
+    let pulse: Bool
+
+    private let apps: [(String, Color)] = [
+        ("message.fill", .purple),
+        ("paintpalette.fill", .pink),
+        ("note.text", .gray),
+        ("video.fill", .blue),
+        ("music.note", .red)
+    ]
+
+    var body: some View {
+        HeroFrame(accent: accent) {
+            HStack(spacing: 14) {
+                ForEach(Array(apps.enumerated()), id: \.offset) { index, item in
+                    appTile(symbol: item.0, color: item.1, lift: pulse && index % 2 == 0)
+                }
+            }
+        }
+    }
+
+    private func appTile(symbol: String, color: Color, lift: Bool) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(LinearGradient(
+                    colors: [color, color.opacity(0.7)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ))
+                .frame(width: 64, height: 64)
+                .shadow(color: color.opacity(0.4), radius: 10, y: 4)
+
+            Image(systemName: symbol)
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundColor(.white)
+        }
+        .offset(y: lift ? -6 : 0)
+    }
+}
+
+private struct HotkeysHero: View {
+    let accent: Color
+    let pulse: Bool
+
+    var body: some View {
+        HeroFrame(accent: accent) {
+            HStack(spacing: 8) {
+                keycap(label: "⌃", glow: pulse)
+                keycap(label: "⌥", glow: pulse)
+                keycap(label: "⌘", glow: pulse)
+                Text("+")
+                    .font(.system(size: 22, weight: .light))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 4)
+                keycap(label: "V", wide: true, accent: true, glow: pulse)
+            }
+        }
+    }
+
+    private func keycap(label: String, wide: Bool = false, accent useAccent: Bool = false, glow: Bool) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(useAccent
+                      ? AnyShapeStyle(LinearGradient(colors: [accent, accent.opacity(0.7)], startPoint: .top, endPoint: .bottom))
+                      : AnyShapeStyle(Color.primary.opacity(0.08)))
+                .frame(width: wide ? 78 : 56, height: 60)
+                .shadow(color: useAccent ? accent.opacity(glow ? 0.6 : 0.3) : Color.black.opacity(0.18), radius: useAccent && glow ? 14 : 6, y: 3)
+
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
+                .frame(width: wide ? 78 : 56, height: 60)
+
+            Text(label)
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .foregroundColor(useAccent ? .white : .primary)
+        }
+    }
+}
+
+private struct DoneHero: View {
+    let accent: Color
+    let pulse: Bool
+
+    var body: some View {
+        HeroFrame(accent: accent) {
+            ZStack {
+                ForEach(0..<3) { i in
+                    Circle()
+                        .stroke(accent.opacity(0.25 - Double(i) * 0.07), lineWidth: 2)
+                        .frame(width: CGFloat(110 + i * 36), height: CGFloat(110 + i * 36))
+                        .scaleEffect(pulse ? 1.05 : 0.95)
+                        .opacity(pulse ? 0.4 : 1.0)
+                }
+
+                Circle()
+                    .fill(LinearGradient(
+                        colors: [accent, accent.opacity(0.6)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ))
+                    .frame(width: 96, height: 96)
+                    .shadow(color: accent.opacity(0.5), radius: 22, y: 8)
+
+                Image(systemName: "sparkles")
+                    .font(.system(size: 38, weight: .bold))
+                    .foregroundColor(.white)
+            }
+        }
     }
 }
