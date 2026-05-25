@@ -1,28 +1,14 @@
 name: Release Please
 
 on:
+  # Run on every push to main so the open release PR stays in sync
+  # with all conventional commits, not just those that touch
+  # binary-affecting paths. The expensive build-publish job below is
+  # still gated on `needs.release-please.outputs.released == 'true'`,
+  # so non-release pushes only pay for the lightweight release-please
+  # action itself.
   push:
     branches: [main]
-    # Only run when files that affect the shipped binary change OR
-    # when release-please's own controlled files change. The trailing
-    # entries are critical: when release-please's release PR merges,
-    # the merge commit only touches CHANGELOG.md and the manifest. If
-    # those aren't in the trigger paths, the workflow never re-runs on
-    # the merge and the release tag is never cut.
-    paths:
-      - 'Sources/**'
-      - 'Resources/**'
-      - 'Package.swift'
-      - 'Package.resolved'
-      - 'build-app.sh'
-      - 'scripts/make-dmg.sh'
-      - 'LICENSE'
-      - 'CHANGELOG.md'
-      - '.release-please-manifest.json'
-      - 'release-please-config.json'
-      - '.github/workflows/release-please.yml'
-  # Manual recovery path for the case where the workflow missed a
-  # release-PR merge (e.g. the trigger paths didn't match at the time).
   workflow_dispatch:
 
 # Default-deny token scope. Each job opts in explicitly below.
