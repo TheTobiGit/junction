@@ -36,7 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         observeOnboardingAndUpdateRequests()
         flushPendingURLs()
         maybeShowOnboarding()
-        Task { @MainActor in UpdateChecker.shared.check(silent: true) }
+        UpdateChecker.shared.start()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -747,10 +747,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             forName: .junctionCheckForUpdates,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
+        ) { _ in
             Task { @MainActor in
-                UpdateChecker.shared.check(silent: false)
-                self?.showPreferences(focus: .general)
+                UpdateChecker.shared.checkForUpdates()
             }
         }
     }

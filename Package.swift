@@ -4,6 +4,9 @@ import PackageDescription
 let package = Package(
     name: "Junction",
     platforms: [.macOS(.v13)],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.2"),
+    ],
     targets: [
         .target(
             name: "JunctionCore",
@@ -11,13 +14,19 @@ let package = Package(
         ),
         .target(
             name: "JunctionApp",
-            dependencies: ["JunctionCore"],
+            dependencies: [
+                "JunctionCore",
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
             path: "Sources/JunctionApp"
         ),
         .executableTarget(
             name: "Junction",
             dependencies: ["JunctionApp"],
-            path: "Sources/Junction"
+            path: "Sources/Junction",
+            linkerSettings: [
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])
+            ]
         ),
         .executableTarget(
             name: "JunctionCLI",
