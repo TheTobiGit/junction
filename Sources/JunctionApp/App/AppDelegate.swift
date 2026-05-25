@@ -743,15 +743,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             self?.showOnboarding()
         }
-        NotificationCenter.default.addObserver(
-            forName: .junctionCheckForUpdates,
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task { @MainActor in
-                UpdateChecker.shared.checkForUpdates()
-            }
-        }
     }
 
     private func maybeShowOnboarding() {
