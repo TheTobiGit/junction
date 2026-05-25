@@ -71,7 +71,7 @@ struct OnboardingView: View {
     private var accent: Color { settings.settings.accentPreset.swiftUIColor }
 
     private var visibleSteps: [OnboardingStep] {
-        if permissions.isJunctionDefaultBrowser {
+        if permissions.isJunctionDefaultBrowser && step != .defaultBrowser {
             OnboardingStep.allCases.filter { $0 != .defaultBrowser }
         } else {
             Array(OnboardingStep.allCases)
@@ -466,18 +466,18 @@ struct OnboardingView: View {
 
     private var footer: some View {
         HStack {
-            Button("Back") { goBackStep() }
-                .buttonStyle(.plain)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(
-                    Capsule().fill(Color.primary.opacity(0.05))
-                )
-                .opacity(visibleStepIndex == 0 ? 0 : 1)
-                .disabled(visibleStepIndex == 0)
-                .keyboardShortcut(.leftArrow, modifiers: [.command])
+            if visibleStepIndex > 0 {
+                Button("Back") { goBackStep() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule().fill(Color.primary.opacity(0.05))
+                    )
+                    .keyboardShortcut(.leftArrow, modifiers: [.command])
+            }
 
             Spacer()
 
@@ -681,20 +681,18 @@ private struct PermissionsHero: View {
                 shieldIcon(
                     symbol: "hand.raised.fill",
                     label: "Accessibility",
-                    color: accent,
-                    delay: 0
+                    color: accent
                 )
                 shieldIcon(
                     symbol: "bell.badge.fill",
                     label: "Notifications",
-                    color: .orange,
-                    delay: 0.4
+                    color: .orange
                 )
             }
         }
     }
 
-    private func shieldIcon(symbol: String, label: String, color: Color, delay: Double) -> some View {
+    private func shieldIcon(symbol: String, label: String, color: Color) -> some View {
         VStack(spacing: 10) {
             ZStack {
                 Circle()
