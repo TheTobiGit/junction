@@ -18,7 +18,7 @@ junction-cli-<version>-macos.zip  junction CLI
 
 Open the DMG and drag `Junction.app` into `Applications`, or unzip the `.app` directly. Open it once and follow the onboarding to make Junction the default browser. The CLI is optional — drop `junction` into `/usr/local/bin/` if you want it.
 
-Releases are signed with a Developer ID certificate and notarized by Apple, so Gatekeeper opens them without prompting.
+Releases are signed with a Developer ID certificate and notarized by Apple, so macOS won't block them as an unidentified developer. You may still see the standard one-time "downloaded from the internet" prompt on first launch.
 
 ## Use
 
