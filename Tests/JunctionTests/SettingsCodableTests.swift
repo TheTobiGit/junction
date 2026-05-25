@@ -49,9 +49,14 @@ final class SettingsCodableTests: XCTestCase {
         XCTAssertEqual(settings.pickerStyle, .tiles)
 
         settings.pickerStyle = .list
-        let data = try JSONEncoder().encode(settings)
-        let decoded = try JSONDecoder().decode(JunctionSettings.self, from: data)
+        var data = try JSONEncoder().encode(settings)
+        var decoded = try JSONDecoder().decode(JunctionSettings.self, from: data)
         XCTAssertEqual(decoded.pickerStyle, .list)
+
+        settings.pickerStyle = .dial
+        data = try JSONEncoder().encode(settings)
+        decoded = try JSONDecoder().decode(JunctionSettings.self, from: data)
+        XCTAssertEqual(decoded.pickerStyle, .dial)
     }
 
     func test_legacySettingsJSON_missingPickerStyle_decodesAsTiles() throws {

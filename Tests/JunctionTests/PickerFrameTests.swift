@@ -18,6 +18,12 @@ final class PickerFrameTests: XCTestCase {
         )
     }
 
+    func test_dialStyleDesiredSize() {
+        let size = PickerView.desiredSize(forOptionCount: 5, style: .dial)
+        XCTAssertEqual(size.width, PickerView.dialStyleWidth, accuracy: 0.001)
+        XCTAssertEqual(size.height, PickerView.dialStyleHeight, accuracy: 0.001)
+    }
+
     func test_listStyleHeight_showsNineRowsBeforeScrolling() {
         let oneThroughNineHeight = PickerView.listStyleHeight(forOptionCount: 9)
         let tenthHeight = PickerView.listStyleHeight(forOptionCount: 10)
