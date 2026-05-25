@@ -235,7 +235,7 @@ struct PreferencesView: View {
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
-                    .frame(width: 160)
+                    .frame(width: 240)
                 }
                 PrefsHairline()
                 PrefsRow(title: "Accent") {
