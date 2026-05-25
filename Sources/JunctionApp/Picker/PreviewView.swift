@@ -466,7 +466,7 @@ private struct WebContainer: NSViewRepresentable {
         func installTeardown(on model: PickerViewModel?, webView: WKWebView) {
             guard let model else { return }
             registeredModel = model
-            model.previewTeardown = { [weak self, weak webView] in
+            model.installPreviewTeardown(owner: self) { [weak self, weak webView] in
                 guard let self, let webView else { return }
                 self.tearDown(webView: webView)
             }
@@ -477,9 +477,11 @@ private struct WebContainer: NSViewRepresentable {
             didTearDown = true
             invalidate(webView: webView)
             PreviewWebViewFactory.teardown(webView)
-            if let model = registeredModel {
-                model.previewTeardown = nil
-            }
+            // Only clear the model's teardown hook if this coordinator still
+            // owns it. SwiftUI can recreate the WebContainer (e.g. when
+            // ``readerEnabled`` toggles), at which point a newer coordinator
+            // has already registered a fresh closure.
+            registeredModel?.clearPreviewTeardown(owner: self)
             registeredModel = nil
         }
     }
