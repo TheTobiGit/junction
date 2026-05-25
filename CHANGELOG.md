@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.9.0](https://github.com/TheTobiGit/junction/compare/v0.8.0...v0.9.0) (2026-05-25)
+
+
+### Features
+
+* **updates:** in-app download, verify, and restart-to-install flow ([8112a8b](https://github.com/TheTobiGit/junction/commit/8112a8bdc08d19df31127067647230600c952ac6))
+* use Sparkle for app updates ([e0cf5cf](https://github.com/TheTobiGit/junction/commit/e0cf5cfbfb02f3c7138f980bcf5ace2246374932))
+
+
+### Bug Fixes
+
+* address Sparkle updater review comments ([86e4ade](https://github.com/TheTobiGit/junction/commit/86e4adefd738ff33fa11d604c83a9e72f545ff35))
+* **updates:** address Copilot review on update flow ([2179ae2](https://github.com/TheTobiGit/junction/commit/2179ae2659175f519a1c15c176e37a93ff49bb2d))
+
 ## [0.8.0](https://github.com/TheTobiGit/junction/compare/v0.7.0...v0.8.0) (2026-05-25)
 
 
