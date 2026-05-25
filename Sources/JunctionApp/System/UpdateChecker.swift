@@ -154,7 +154,7 @@ final class UpdateChecker: NSObject, ObservableObject {
         // parent directory; the bundle's own mode bits don't matter, so
         // root-owned-but-replaceable installs in /Applications still work.
         guard fm.isWritableFile(atPath: parentDir) else {
-            state = .error("Junction can't replace itself in \(parentDir). Move Junction.app to a writable location like /Applications and try again.")
+            state = .error("Junction can't write into \(parentDir). Make sure you have permission to modify that folder, or move Junction.app to ~/Applications and try again.")
             return
         }
 
@@ -185,12 +185,16 @@ final class UpdateChecker: NSObject, ObservableObject {
         // anything fails before the final mv, we restore the original
         // bundle and reopen it so the user is never left without a
         // running app. The main process has already been told to quit,
-        // so every early exit needs to reopen $OLD itself.
+        // so every early exit needs to reopen $OLD itself. The script
+        // also unlinks itself on the way out so repeated update attempts
+        // don't pile up junction-installer-*.sh files in the temp dir.
         let script = """
         #!/bin/bash
+        SCRIPT="$0"
         PID="$1"
         OLD="$2"
         NEW="$3"
+        trap '/bin/rm -f "$SCRIPT"' EXIT
         for _ in $(seq 1 600); do
             if ! kill -0 "$PID" 2>/dev/null; then break; fi
             sleep 0.1
@@ -260,15 +264,35 @@ final class UpdateChecker: NSObject, ObservableObject {
     }
 
     private func handleDownloadFinished(temporaryURL: URL, context: DownloadContext) {
-        do {
-            let stagedApp = try Self.stageDownloadedApp(zipAt: temporaryURL, version: context.latestVersion)
-            try Self.verifyStagedApp(at: stagedApp, expectedVersion: context.latestVersion)
-            state = .readyToInstall(latestVersion: context.latestVersion, htmlURL: context.htmlURL, stagedAppURL: stagedApp)
-        } catch {
-            state = .error("Couldn't prepare the update: \(error.localizedDescription)")
+        // Staging and verification shell out to ditto, codesign, and spctl
+        // and use Process.waitUntilExit(), which is seconds of blocking
+        // I/O. Hop off the main actor so the preferences UI keeps
+        // breathing while a multi-megabyte zip is being unpacked and
+        // checked.
+        let runningBundleURL = Bundle.main.bundleURL
+        let runningIdentifier = Bundle.main.bundleIdentifier ?? "dev.gideonsarfo.Junction"
+        Task.detached(priority: .userInitiated) { [weak self] in
+            do {
+                let stagedApp = try Self.stageDownloadedApp(zipAt: temporaryURL, version: context.latestVersion, runningIdentifier: runningIdentifier)
+                try Self.verifyStagedApp(at: stagedApp,
+                                         expectedVersion: context.latestVersion,
+                                         runningBundleURL: runningBundleURL,
+                                         runningIdentifier: runningIdentifier)
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    self.state = .readyToInstall(latestVersion: context.latestVersion, htmlURL: context.htmlURL, stagedAppURL: stagedApp)
+                    self.teardownDownload()
+                    self.downloadContext = nil
+                }
+            } catch {
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    self.state = .error("Couldn't prepare the update: \(error.localizedDescription)")
+                    self.teardownDownload()
+                    self.downloadContext = nil
+                }
+            }
         }
-        teardownDownload()
-        downloadContext = nil
     }
 
     private func handleDownloadFailure(_ error: Error, context: DownloadContext) {
@@ -278,7 +302,7 @@ final class UpdateChecker: NSObject, ObservableObject {
         state = .error("Download failed: \(error.localizedDescription)")
     }
 
-    private static func stageDownloadedApp(zipAt zipTempURL: URL, version: String) throws -> URL {
+    private static nonisolated func stageDownloadedApp(zipAt zipTempURL: URL, version: String, runningIdentifier: String) throws -> URL {
         let fm = FileManager.default
         let support = try fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         let stageRoot = support
@@ -311,22 +335,46 @@ final class UpdateChecker: NSObject, ObservableObject {
                           userInfo: [NSLocalizedDescriptionKey: "ditto failed: \(message)"])
         }
 
-        let app = try locateApp(in: extractDir)
+        let app = try locateApp(in: extractDir, runningIdentifier: runningIdentifier)
         return app
     }
 
-    private static func locateApp(in directory: URL) throws -> URL {
+    private static nonisolated func locateApp(in directory: URL, runningIdentifier: String) throws -> URL {
         let fm = FileManager.default
+        var candidates: [URL] = []
         let enumerator = fm.enumerator(at: directory,
                                        includingPropertiesForKeys: [.isDirectoryKey],
                                        options: [.skipsHiddenFiles])
         while let url = enumerator?.nextObject() as? URL {
             if url.pathExtension == "app" {
-                return url
+                candidates.append(url)
+                // Helper apps live inside another .app's Contents/, so we
+                // don't want to recurse into a matched bundle.
+                enumerator?.skipDescendants()
             }
         }
-        throw NSError(domain: "UpdateChecker", code: -1,
-                      userInfo: [NSLocalizedDescriptionKey: "couldn't find Junction.app inside the downloaded archive"])
+
+        guard !candidates.isEmpty else {
+            throw NSError(domain: "UpdateChecker", code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: "couldn't find Junction.app inside the downloaded archive"])
+        }
+
+        // Prefer a bundle whose CFBundleIdentifier matches the running app.
+        // Falls back to the shallowest path so an archive that only ships
+        // Junction.app at the root still works even if the plist is unreadable.
+        if let match = candidates.first(where: { bundleIdentifier(at: $0) == runningIdentifier }) {
+            return match
+        }
+        return candidates.min(by: { $0.pathComponents.count < $1.pathComponents.count })!
+    }
+
+    private static nonisolated func bundleIdentifier(at app: URL) -> String? {
+        let plistURL = app.appendingPathComponent("Contents/Info.plist")
+        guard let data = try? Data(contentsOf: plistURL),
+              let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] else {
+            return nil
+        }
+        return plist["CFBundleIdentifier"] as? String
     }
 
     /// Confirms the downloaded bundle is the same Junction we're running:
@@ -335,9 +383,11 @@ final class UpdateChecker: NSObject, ObservableObject {
     /// notarized). We also strip the GitHub-applied quarantine xattr only
     /// after these pass so a tampered or stale archive can't slip past
     /// the user's first-launch warning.
-    private static func verifyStagedApp(at app: URL, expectedVersion: String) throws {
-        let runningIdentifier = Bundle.main.bundleIdentifier ?? "dev.gideonsarfo.Junction"
-        let runningInfo = try codesignInfo(forApp: Bundle.main.bundleURL)
+    private static nonisolated func verifyStagedApp(at app: URL,
+                                                    expectedVersion: String,
+                                                    runningBundleURL: URL,
+                                                    runningIdentifier: String) throws {
+        let runningInfo = try codesignInfo(forApp: runningBundleURL)
 
         let stagedInfoPlist = app.appendingPathComponent("Contents/Info.plist")
         guard let plistData = try? Data(contentsOf: stagedInfoPlist),
@@ -396,7 +446,7 @@ final class UpdateChecker: NSObject, ObservableObject {
         let firstAuthority: String?
     }
 
-    private static func codesignInfo(forApp app: URL) throws -> CodesignInfo {
+    private static nonisolated func codesignInfo(forApp app: URL) throws -> CodesignInfo {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
         process.arguments = ["-dvv", app.path]
@@ -422,7 +472,7 @@ final class UpdateChecker: NSObject, ObservableObject {
         return CodesignInfo(teamID: teamID, firstAuthority: authority)
     }
 
-    private static func runOrThrow(executable: String, arguments: [String], failurePrefix: String) throws {
+    private static nonisolated func runOrThrow(executable: String, arguments: [String], failurePrefix: String) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
