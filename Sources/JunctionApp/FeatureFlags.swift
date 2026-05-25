@@ -15,13 +15,22 @@ enum FeatureFlags {
 
     /// Clipboard link bar is available when shipped and the user enables it in Preferences.
     static var clipboardLinkHUD: Bool {
-        if ProcessInfo.processInfo.environment["JUNCTION_CLIPBOARD_HUD"] == "1" {
+        clipboardLinkHUD(environment: ProcessInfo.processInfo.environment)
+    }
+
+    static func clipboardLinkHUD(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        if environment["JUNCTION_CLIPBOARD_HUD"] == "1" {
             return true
         }
         return shipClipboardLinkHUD
     }
 
-    static func clipboardLinkHUDEnabled(userPreference: Bool) -> Bool {
-        clipboardLinkHUD && userPreference
+    static func clipboardLinkHUDEnabled(
+        userPreference: Bool,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        clipboardLinkHUD(environment: environment) && userPreference
     }
 }
