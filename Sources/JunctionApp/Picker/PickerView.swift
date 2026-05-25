@@ -17,7 +17,14 @@ struct PickerView: View {
     @ObservedObject var model: PickerViewModel
     @ObservedObject private var appSettings = SettingsStore.shared
     let width: CGFloat
+    let height: CGFloat
     @State private var appeared: Bool = false
+
+    init(model: PickerViewModel, width: CGFloat, height: CGFloat = PickerView.pickerHeight) {
+        self.model = model
+        self.width = width
+        self.height = height
+    }
 
     static let tileWidth: CGFloat = 144
     static let tileSpacing: CGFloat = 13
@@ -26,6 +33,17 @@ struct PickerView: View {
     static let pickerHeight: CGFloat = 332
     static let previewWidth: CGFloat = 1280
     static let previewHeight: CGFloat = 880
+
+    static let listRowHeight: CGFloat = 52
+    static let listRowSpacing: CGFloat = 4
+    static let listVerticalPadding: CGFloat = 8
+    static let listRowsBeforeScroll: Int = 9
+    static let listStyleWidth: CGFloat = 680
+    static let listStyleMinHeight: CGFloat = 240
+    static let listStyleMaxHeight: CGFloat = 630
+    static let listDockHeight: CGFloat = 44
+    static let listDockGap: CGFloat = 10
+    static let listDockBottomInset: CGFloat = 16
 
     static func desiredWidth(forOptionCount count: Int) -> CGFloat {
         let content = CGFloat(count) * tileWidth
@@ -38,6 +56,26 @@ struct PickerView: View {
             return 1200
         }()
         return max(minWidth, min(content, screenMax))
+    }
+
+    static func desiredSize(forOptionCount count: Int, style: PickerStyle) -> CGSize {
+        switch style {
+        case .tiles:
+            return CGSize(width: desiredWidth(forOptionCount: count), height: pickerHeight)
+        case .list:
+            let panel = listStyleHeight(forOptionCount: count)
+            return CGSize(width: listStyleWidth, height: panel + listDockGap + listDockHeight + listDockBottomInset)
+        }
+    }
+
+    static func listStyleHeight(forOptionCount count: Int) -> CGFloat {
+        let header: CGFloat = 62
+        let footer: CGFloat = 52
+        let rows = CGFloat(min(max(count, 1), listRowsBeforeScroll))
+        let rowsHeight = rows * listRowHeight + max(rows - 1, 0) * listRowSpacing
+        let content = rowsHeight + listVerticalPadding * 2
+        let total = header + footer + content
+        return min(max(total, listStyleMinHeight), listStyleMaxHeight)
     }
 
     static func previewSize() -> CGSize {
@@ -55,8 +93,11 @@ struct PickerView: View {
                 PreviewView(model: model)
                     .frame(width: Self.previewSize().width, height: Self.previewSize().height)
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            } else if appSettings.settings.pickerStyle == .list {
+                listLayout
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
             } else {
-                pickerBody
+                pickerBody()
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
 
@@ -78,7 +119,56 @@ struct PickerView: View {
         }
     }
 
-    private var pickerBody: some View {
+    private var listLayout: some View {
+        let panelHeight = max(0, height - Self.listDockHeight - Self.listDockGap - Self.listDockBottomInset)
+        return VStack(spacing: Self.listDockGap) {
+            pickerBody(height: panelHeight)
+                .frame(width: width, height: panelHeight)
+            shortcutDock
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(height: Self.listDockHeight)
+        }
+        .padding(.bottom, Self.listDockBottomInset)
+        .frame(width: width, height: height, alignment: .top)
+    }
+
+    private var shortcutDock: some View {
+        HStack(spacing: 12) {
+            ForEach(PickerShortcutHelp.pickerFooterHints) { hint in
+                HintPill(key: hint.key, label: hint.label)
+            }
+            Button {
+                model.cheatSheetVisible.toggle()
+            } label: {
+                HintPill(key: "?", label: "More", emphasized: model.cheatSheetVisible)
+            }
+            .buttonStyle(.plain)
+            .help(PickerShortcutHelp.picker)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 9)
+        .background(
+            JunctionChromeBackground(
+                theme: appSettings.settings.chromeTheme,
+                accent: appSettings.settings.accentPreset.swiftUIColor
+            )
+        )
+        .clipShape(Capsule(style: .continuous))
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.18), Color.white.opacity(0.04)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 1
+                )
+        )
+        .compositingGroup()
+    }
+
+    private func pickerBody(height bodyHeight: CGFloat? = nil) -> some View {
         ZStack {
             VStack(alignment: .leading, spacing: 0) {
                 header
@@ -109,7 +199,7 @@ struct PickerView: View {
                     lineWidth: 1
                 )
         )
-        .frame(width: width, height: Self.pickerHeight)
+        .frame(width: width, height: bodyHeight ?? height)
         .animation(.spring(response: 0.25, dampingFraction: 0.85), value: model.showQRSheet)
     }
 
@@ -305,6 +395,8 @@ struct PickerView: View {
                     .font(.system(size: 14))
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if appSettings.settings.pickerStyle == .list {
+                listStyleBody(tiles: tiles)
             } else {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -326,6 +418,76 @@ struct PickerView: View {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    private func listStyleBody(tiles: [TileEntry]) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: Self.listRowSpacing) {
+                    ForEach(Array(tiles.enumerated()), id: \.element.tileID) { idx, entry in
+                        listRowForEntry(entry, visibleIndex: idx)
+                            .id(entry.tileID)
+                    }
+                }
+                .padding(.horizontal, Self.listHorizontalPadding)
+                .padding(.vertical, Self.listVerticalPadding)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onChange(of: model.selectedIndex) { newIndex in
+                guard tiles.indices.contains(newIndex) else { return }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    proxy.scrollTo(tiles[newIndex].tileID, anchor: .center)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func listRowForEntry(_ entry: TileEntry, visibleIndex: Int) -> some View {
+        switch entry.kind {
+        case .single(let opt), .groupChild(let opt):
+            listRow(idx: visibleIndex, option: opt)
+        }
+    }
+
+    private func listRow(idx: Int, option: LaunchOption) -> some View {
+        let privateActive = model.incognitoMode || model.optionKeyHeld
+        let supportsIncognito = URLOpener.supportsIncognito(bundleID: option.browser.bundleID)
+        let incognitoUnsupported = privateActive && !supportsIncognito
+        return PickerListRow(
+            option: option,
+            number: idx + 1,
+            selected: idx == model.selectedIndex,
+            multiSelected: model.multiSelection.contains(option.id),
+            dimmed: incognitoUnsupported,
+            showIncognito: privateActive && supportsIncognito
+        )
+        .help(incognitoUnsupported
+              ? "\(option.browser.name) doesn't support private windows — it will open normally."
+              : "Open in \(option.displayName)")
+        .contentShape(Rectangle())
+        .contextMenu {
+            let key = option.target.storageKey
+            let isPinned = appSettings.settings.pinnedTargetKey == key
+            if isPinned {
+                Button("Unpin") {
+                    appSettings.setPinnedTargetKey(nil)
+                }
+            } else {
+                Button("Pin to first slot") {
+                    appSettings.setPinnedTargetKey(key)
+                }
+            }
+        }
+        .onTapGesture {
+            let flags = NSEvent.modifierFlags
+            if flags.contains(.shift) {
+                model.toggleMulti(option)
+            } else {
+                let incognito = flags.contains(.option) || model.incognitoMode
+                model.pick(option, incognito: incognito)
             }
         }
     }
@@ -448,14 +610,20 @@ struct PickerView: View {
     }
 
     private var hintSegments: some View {
-        PickerShortcutFooter(
-            hints: PickerShortcutHelp.pickerFooterHints,
-            fullHelp: PickerShortcutHelp.picker,
-            cheatSheetVisible: Binding(
-                get: { model.cheatSheetVisible },
-                set: { model.cheatSheetVisible = $0 }
-            )
-        )
+        Group {
+            if appSettings.settings.pickerStyle == .list {
+                EmptyView()
+            } else {
+                PickerShortcutFooter(
+                    hints: PickerShortcutHelp.pickerFooterHints,
+                    fullHelp: PickerShortcutHelp.picker,
+                    cheatSheetVisible: Binding(
+                        get: { model.cheatSheetVisible },
+                        set: { model.cheatSheetVisible = $0 }
+                    )
+                )
+            }
+        }
     }
 }
 
@@ -751,6 +919,129 @@ private struct PickerTile: View {
         if multiSelected { return Color.accentColor.opacity(0.75) }
         if selected { return Color.accentColor.opacity(0.85) }
         if hovered { return Color.white.opacity(0.18) }
+        return Color.white.opacity(0.06)
+    }
+}
+
+private struct PickerListRow: View {
+    let option: LaunchOption
+    let number: Int
+    let selected: Bool
+    let multiSelected: Bool
+    let dimmed: Bool
+    let showIncognito: Bool
+    @State private var hovered: Bool = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack(alignment: .bottomTrailing) {
+                Image(nsImage: option.icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 28, height: 28)
+                if showIncognito {
+                    IncognitoBadge(size: 14)
+                        .offset(x: 3, y: 3)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .frame(width: 32, height: 32)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(option.browser.name)
+                    .font(.system(size: 13, weight: selected ? .semibold : .medium))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if let profile = option.profile {
+                    HStack(spacing: 6) {
+                        if let hex = option.colorHex, let color = Color(hexString: hex) {
+                            Capsule()
+                                .fill(color)
+                                .frame(width: 10, height: 4)
+                        }
+                        Text(profile.displayName)
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if multiSelected {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.accentColor)
+                    .font(.system(size: 14))
+            }
+
+            if number <= 9 {
+                Text("\(number)")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary.opacity(0.75))
+                    .frame(width: 22, height: 22)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.black.opacity(0.35))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                            )
+                    )
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: PickerView.listRowHeight)
+        .background(
+            rowFill
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(rowStroke, lineWidth: selected || multiSelected ? 1.5 : 0.5)
+        )
+        .opacity(dimmed ? 0.45 : 1.0)
+        .contentShape(Rectangle())
+        .onHover { isHovered in
+            hovered = isHovered
+            if isHovered {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: hovered)
+        .animation(.easeOut(duration: 0.15), value: selected)
+        .animation(.easeOut(duration: 0.15), value: multiSelected)
+        .animation(.spring(response: 0.25, dampingFraction: 0.75), value: showIncognito)
+    }
+
+    @ViewBuilder
+    private var rowFill: some View {
+        if multiSelected {
+            LinearGradient(
+                colors: [Color.accentColor.opacity(0.28), Color.accentColor.opacity(0.14)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        } else if selected {
+            LinearGradient(
+                colors: [Color.accentColor.opacity(0.30), Color.accentColor.opacity(0.12)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        } else if hovered {
+            Color.white.opacity(0.08)
+        } else {
+            Color.white.opacity(0.04)
+        }
+    }
+
+    private var rowStroke: Color {
+        if multiSelected { return Color.accentColor.opacity(0.7) }
+        if selected { return Color.accentColor.opacity(0.8) }
+        if hovered { return Color.white.opacity(0.16) }
         return Color.white.opacity(0.06)
     }
 }

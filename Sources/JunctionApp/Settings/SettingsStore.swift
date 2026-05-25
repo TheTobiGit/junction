@@ -50,6 +50,7 @@ struct JunctionSettings: Codable {
     var hasCompletedOnboarding: Bool = false
     var chromeTheme: ChromeTheme = .glass
     var accentPreset: AccentPreset = .system
+    var pickerStyle: PickerStyle = .tiles
     var pinnedTargetKey: String? = nil
     var pickerFrame: CGRect? = nil
     var trackerOverrides: TrackerOverrides = TrackerOverrides()
@@ -67,6 +68,7 @@ struct JunctionSettings: Codable {
         case hasCompletedOnboarding
         case chromeTheme
         case accentPreset
+        case pickerStyle
         case pinnedTargetKey
         case historyEnabled // legacy; ignored on read, not written
         case pickerFrame
@@ -92,6 +94,7 @@ struct JunctionSettings: Codable {
         self.hasCompletedOnboarding = (try? c.decode(Bool.self, forKey: .hasCompletedOnboarding)) ?? false
         self.chromeTheme = (try? c.decode(ChromeTheme.self, forKey: .chromeTheme)) ?? .glass
         self.accentPreset = (try? c.decode(AccentPreset.self, forKey: .accentPreset)) ?? .system
+        self.pickerStyle = (try? c.decode(PickerStyle.self, forKey: .pickerStyle)) ?? .tiles
         _ = try? c.decode(Bool.self, forKey: .historyEnabled)
         self.pinnedTargetKey = try? c.decodeIfPresent(String.self, forKey: .pinnedTargetKey)
         self.pickerFrame = (try? c.decodeIfPresent(PickerFrameCodable.self, forKey: .pickerFrame))?.rect
@@ -112,6 +115,7 @@ struct JunctionSettings: Codable {
         try c.encode(hasCompletedOnboarding, forKey: .hasCompletedOnboarding)
         try c.encode(chromeTheme, forKey: .chromeTheme)
         try c.encode(accentPreset, forKey: .accentPreset)
+        try c.encode(pickerStyle, forKey: .pickerStyle)
         try c.encodeIfPresent(pinnedTargetKey, forKey: .pinnedTargetKey)
         if let frame = pickerFrame {
             try c.encode(PickerFrameCodable(frame), forKey: .pickerFrame)
