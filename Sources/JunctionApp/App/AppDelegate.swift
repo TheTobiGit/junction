@@ -25,6 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             routeURL: { [weak self] url in self?.route(url) }
         )
         _ = FrontmostTracker.shared
+        ClipboardWatcher.shared.configure(handlers: ClipboardHUDHandlers(
+            onRoute: { [weak self] url in self?.route(url) }
+        ))
         ClipboardWatcher.shared.updateEnabledState()
         startAgentServer()
         configureHotkeys()

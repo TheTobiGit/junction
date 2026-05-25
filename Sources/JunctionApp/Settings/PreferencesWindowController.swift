@@ -256,8 +256,13 @@ struct PreferencesView: View {
                 PrefsToggleRow(title: "Remove tracking from URLs", isOn: $settings.settings.cleanURLsBeforeOpening)
                 PrefsHairline()
                 PrefsToggleRow(title: "Expand shortened links", isOn: $settings.settings.expandShortenedURLs)
-                PrefsHairline()
-                PrefsToggleRow(title: "Watch clipboard for links", isOn: $settings.settings.clipboardWatcherEnabled)
+                if FeatureFlags.clipboardLinkHUD {
+                    PrefsHairline()
+                    PrefsToggleRow(
+                        title: "Watch clipboard for links",
+                        isOn: $settings.settings.clipboardWatcherEnabled
+                    )
+                }
             }
 
             AboutAndUpdatesBlock()
