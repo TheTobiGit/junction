@@ -5,6 +5,47 @@ final class PickerFrameTests: XCTestCase {
 
     private let controller = PickerPanelController()
 
+    func test_listStyleDesiredSize_reservesDockShadowInset() {
+        let bodyHeight = PickerView.listStyleHeight(forOptionCount: 8)
+        let size = PickerView.desiredSize(forOptionCount: 8, style: .list)
+
+        XCTAssertEqual(size.width, PickerView.listStyleWidth, accuracy: 0.001)
+        XCTAssertEqual(
+            size.height,
+            bodyHeight + PickerView.listDockGap + PickerView.listDockHeight + PickerView.listDockBottomInset,
+            accuracy: 0.001,
+            "List picker window must reserve bottom inset so the shortcut dock shadow is not clipped."
+        )
+    }
+
+    func test_listStyleHeight_showsNineRowsBeforeScrolling() {
+        let oneThroughNineHeight = PickerView.listStyleHeight(forOptionCount: 9)
+        let tenthHeight = PickerView.listStyleHeight(forOptionCount: 10)
+
+        XCTAssertGreaterThan(
+            oneThroughNineHeight,
+            PickerView.listStyleHeight(forOptionCount: 8),
+            "List picker should grow through the ninth keyboard-selectable row."
+        )
+        XCTAssertEqual(
+            tenthHeight,
+            oneThroughNineHeight,
+            accuracy: 0.001,
+            "List picker should stop growing after nine rows so the tenth browser scrolls."
+        )
+    }
+
+    func test_restoreFrame_usesCurrentPickerSizeWithSavedOrigin() {
+        let saved = CGRect(x: 60, y: 70, width: 600, height: PickerView.pickerHeight)
+        let currentSize = PickerView.desiredSize(forOptionCount: 8, style: .list)
+        let restored = PickerPanelController.restoredFrame(from: saved, currentSize: currentSize)
+
+        XCTAssertEqual(restored.origin.x, saved.origin.x, accuracy: 0.001)
+        XCTAssertEqual(restored.origin.y, saved.origin.y, accuracy: 0.001)
+        XCTAssertEqual(restored.size.width, currentSize.width, accuracy: 0.001)
+        XCTAssertEqual(restored.size.height, currentSize.height, accuracy: 0.001)
+    }
+
     // VAL-M3-FRAME-003: clampToScreen returns a frame intersecting at least one
     // NSScreen.visibleFrame when input is fully off-screen.
     func test_clampToScreen_returnsOnScreenWhenFullyOffScreen_VAL_M3_FRAME_003() {

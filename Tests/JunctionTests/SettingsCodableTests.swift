@@ -43,4 +43,29 @@ final class SettingsCodableTests: XCTestCase {
         let decoded = try JSONDecoder().decode(JunctionSettings.self, from: json)
         XCTAssertNil(decoded.pickerFrame)
     }
+
+    func test_pickerStyle_defaultsToTilesAndRoundtrips() throws {
+        var settings = JunctionSettings()
+        XCTAssertEqual(settings.pickerStyle, .tiles)
+
+        settings.pickerStyle = .list
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(JunctionSettings.self, from: data)
+        XCTAssertEqual(decoded.pickerStyle, .list)
+    }
+
+    func test_legacySettingsJSON_missingPickerStyle_decodesAsTiles() throws {
+        let json = """
+        {
+            "cleanURLsBeforeOpening": true,
+            "expandShortenedURLs": true,
+            "clipboardWatcherEnabled": false,
+            "hiddenTargetKeys": [],
+            "targetOrder": [],
+            "hasCompletedOnboarding": true
+        }
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(JunctionSettings.self, from: json)
+        XCTAssertEqual(decoded.pickerStyle, .tiles)
+    }
 }
