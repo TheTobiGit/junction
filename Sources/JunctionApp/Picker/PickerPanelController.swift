@@ -124,12 +124,9 @@ final class PickerPanelController {
         panel.hidesOnDeactivate = false
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        // List style draws a detached shortcut dock inside a transparent
-        // borderless panel. AppKit's window shadow is based on the panel's
-        // transparent content rect, which creates a visible dark outline
-        // around the floating dock/gap. Keep the system shadow for the compact
-        // tile picker, but let list style rely on its SwiftUI chrome.
-        panel.hasShadow = style != .list
+        // List and Dial styles draw their own shadows in SwiftUI (to support
+        // round/detached shapes). Only Tiles style uses the system window shadow.
+        panel.hasShadow = style == .tiles
         panel.isMovableByWindowBackground = true
         panel.worksWhenModal = true
         panel.contentView = host

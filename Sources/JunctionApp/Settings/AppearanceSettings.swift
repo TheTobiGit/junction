@@ -5,6 +5,7 @@ import SwiftUI
 enum PickerStyle: String, Codable, CaseIterable, Identifiable {
     case tiles
     case list
+    case dial
 
     var id: String { rawValue }
 
@@ -12,6 +13,7 @@ enum PickerStyle: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .tiles: return "Tiles"
         case .list: return "List"
+        case .dial: return "Dial"
         }
     }
 }

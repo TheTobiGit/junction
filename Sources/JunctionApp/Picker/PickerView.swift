@@ -45,6 +45,23 @@ struct PickerView: View {
     static let listDockGap: CGFloat = 10
     static let listDockBottomInset: CGFloat = 16
 
+    static let dialStyleWidth: CGFloat = 540
+    static let dialDiameter: CGFloat = 440
+    static let dialHeaderHeight: CGFloat = 48
+    static let dialHeaderGap: CGFloat = 16
+    static let dialPanelHorizontalPadding: CGFloat = 20
+    static let dialPanelTopPadding: CGFloat = 14
+
+    static var dialStyleHeight: CGFloat {
+        dialPanelTopPadding
+            + dialHeaderHeight
+            + dialHeaderGap
+            + dialDiameter
+            + listDockGap
+            + listDockHeight
+            + listDockBottomInset
+    }
+
     static func desiredWidth(forOptionCount count: Int) -> CGFloat {
         let content = CGFloat(count) * tileWidth
             + CGFloat(max(count - 1, 0)) * tileSpacing
@@ -65,6 +82,8 @@ struct PickerView: View {
         case .list:
             let panel = listStyleHeight(forOptionCount: count)
             return CGSize(width: listStyleWidth, height: panel + listDockGap + listDockHeight + listDockBottomInset)
+        case .dial:
+            return CGSize(width: dialStyleWidth, height: dialStyleHeight)
         }
     }
 
@@ -96,11 +115,13 @@ struct PickerView: View {
             } else if appSettings.settings.pickerStyle == .list {
                 listLayout
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            } else if appSettings.settings.pickerStyle == .dial {
+                dialLayout
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
             } else {
                 pickerBody()
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
-
             if model.cheatSheetVisible {
                 CheatSheetOverlay(model: model)
                     .transition(.opacity.combined(with: .scale(scale: 0.97)))
@@ -421,6 +442,491 @@ struct PickerView: View {
             }
         }
     }
+
+    private func brandColor(for bundleID: String) -> Color {
+        let id = bundleID.lowercased()
+        if id.contains("chrome") { return .blue }
+        if id.contains("safari") { return Color(red: 0.0, green: 0.6, blue: 0.9) }
+        if id.contains("firefox") { return .orange }
+        if id.contains("brave") { return Color(red: 0.9, green: 0.3, blue: 0.1) }
+        if id.contains("edge") { return .teal }
+        if id.contains("arc") { return .purple }
+        if id.contains("opera") { return .red }
+        if id.contains("vivaldi") { return .red }
+        return appSettings.settings.accentPreset.swiftUIColor
+    }
+
+    private var dialLayout: some View {
+        let tiles = groupedTiles(model.groupedFilteredOptions)
+        return VStack(spacing: Self.dialHeaderGap) {
+            dialHeader
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .frame(height: Self.dialHeaderHeight)
+                .frame(maxWidth: .infinity)
+                .background(
+                    JunctionChromeBackground(
+                        theme: appSettings.settings.chromeTheme,
+                        accent: appSettings.settings.accentPreset.swiftUIColor
+                    )
+                )
+                .clipShape(Capsule(style: .continuous))
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.18), Color.white.opacity(0.04)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                )
+                .padding(.horizontal, Self.dialPanelHorizontalPadding)
+
+            dialBoard(tiles: tiles)
+                .frame(width: Self.dialDiameter, height: Self.dialDiameter)
+
+            shortcutDock
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(height: Self.listDockHeight)
+                .padding(.top, Self.listDockGap - Self.dialHeaderGap)
+        }
+        .padding(.top, Self.dialPanelTopPadding)
+        .padding(.bottom, Self.listDockBottomInset)
+        .frame(width: width, height: height, alignment: .top)
+        .overlay(alignment: .center) {
+            if model.showQRSheet {
+                QRSheetOverlay(model: model)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            }
+        }
+    }
+
+    private var dialHeader: some View {
+        HStack(alignment: .center, spacing: 10) {
+            if let source = model.sourceApp {
+                sourcePill(source)
+            }
+            if model.incognitoMode {
+                incognitoBadge
+            }
+            if !idnRiskFlags.isEmpty {
+                RiskChip(flags: idnRiskFlags)
+            }
+            if !otherRiskFlags.isEmpty {
+                riskChip(otherRiskFlags)
+            }
+
+            Spacer(minLength: 8)
+
+            HStack(spacing: 6) {
+                FaviconView(data: model.displayFaviconData, fallbackSize: 11)
+                    .frame(width: 16, height: 16)
+                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                Text(displayURL)
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if model.willOpenCleaned {
+                    cleanedChip
+                }
+            }
+            .help(model.cleaningSummary ?? displayURL)
+            .layoutPriority(1)
+
+            Spacer(minLength: 8)
+
+            Button {
+                model.openQRSheet()
+            } label: {
+                Image(systemName: "qrcode")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 30, height: 30)
+                    .background(Circle().fill(Color.white.opacity(0.08)))
+            }
+            .buttonStyle(.plain)
+            .help("Show QR code for this URL")
+
+            Button {
+                model.openPreferences()
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 30, height: 30)
+                    .background(Circle().fill(Color.white.opacity(0.08)))
+            }
+            .buttonStyle(.plain)
+            .help("Open Preferences")
+        }
+    }
+
+    private func dialBoard(tiles: [TileEntry]) -> some View {
+        let outerRad: CGFloat = Self.dialDiameter / 2.0
+        let innerRad: CGFloat = outerRad * 0.42
+        let iconRad: CGFloat = outerRad * 0.66
+
+        let count = tiles.count
+        let angleStep: Double = 360.0 / Double(max(count, 1))
+        let selectedIdx = model.selectedIndex
+        let selectedOption: LaunchOption? = {
+            guard tiles.indices.contains(selectedIdx) else { return nil }
+            switch tiles[selectedIdx].kind {
+            case .single(let opt), .groupChild(let opt): return opt
+            }
+        }()
+        let selectedBrand: Color = selectedOption.map { brandColor(for: $0.browser.bundleID) }
+            ?? appSettings.settings.accentPreset.swiftUIColor
+
+        return ZStack {
+            Circle()
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    selectedBrand.opacity(0.18),
+                                    Color.black.opacity(0.05),
+                                ],
+                                center: .center,
+                                startRadius: 0,
+                                endRadius: outerRad
+                            )
+                        )
+                )
+                .overlay(
+                    Circle()
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.20), Color.white.opacity(0.04)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(color: Color.black.opacity(0.35), radius: 22, x: 0, y: 10)
+
+            if tiles.indices.contains(selectedIdx) {
+                let startAngle = Double(selectedIdx) * angleStep - 90.0 - (angleStep / 2.0)
+                let endAngle = startAngle + angleStep
+
+                CircularWedge(
+                    startAngle: startAngle,
+                    endAngle: endAngle,
+                    innerRadius: innerRad,
+                    outerRadius: outerRad
+                )
+                .fill(
+                    RadialGradient(
+                        colors: [selectedBrand.opacity(0.32), selectedBrand.opacity(0.06)],
+                        center: .center,
+                        startRadius: innerRad,
+                        endRadius: outerRad
+                    )
+                )
+
+                CircularWedge(
+                    startAngle: startAngle,
+                    endAngle: endAngle,
+                    innerRadius: innerRad,
+                    outerRadius: outerRad
+                )
+                .stroke(selectedBrand.opacity(0.7), lineWidth: 1.5)
+                .animation(.spring(response: 0.32, dampingFraction: 0.82), value: selectedIdx)
+            }
+
+            DialDividers(count: count, innerRadius: innerRad, outerRadius: outerRad)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+
+            ForEach(Array(tiles.enumerated()), id: \.element.tileID) { idx, entry in
+                let option: LaunchOption = {
+                    switch entry.kind {
+                    case .single(let opt), .groupChild(let opt): return opt
+                    }
+                }()
+                let isSelected = idx == selectedIdx
+                let isMultiSelected = model.multiSelection.contains(option.id)
+                let startAngle = Double(idx) * angleStep - 90.0 - (angleStep / 2.0)
+                let endAngle = startAngle + angleStep
+                let centerAngle = Double(idx) * angleStep - 90.0
+                let centerRad = centerAngle * .pi / 180.0
+                let supportsIncognito = URLOpener.supportsIncognito(bundleID: option.browser.bundleID)
+                let privateActive = model.incognitoMode || model.optionKeyHeld
+
+                DialSegmentView(
+                    option: option,
+                    idx: idx,
+                    number: idx + 1,
+                    isSelected: isSelected,
+                    isMultiSelected: isMultiSelected,
+                    showIncognito: privateActive && supportsIncognito,
+                    dimmed: privateActive && !supportsIncognito,
+                    startAngle: startAngle,
+                    endAngle: endAngle,
+                    innerRadius: innerRad,
+                    outerRadius: outerRad,
+                    iconOffsetX: iconRad * cos(centerRad),
+                    iconOffsetY: iconRad * sin(centerRad),
+                    labelMaxWidth: max(60, 2 * outerRad * sin((angleStep * .pi / 180.0) / 2.0) - 18),
+                    brandCol: brandColor(for: option.browser.bundleID),
+                    model: model
+                )
+            }
+
+            DialCenterHub(
+                radius: innerRad,
+                selectedOption: selectedOption,
+                multiCount: model.multiSelection.count,
+                privateActive: model.incognitoMode || model.optionKeyHeld,
+                accent: selectedBrand
+            )
+        }
+        .compositingGroup()
+        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: selectedIdx)
+    }
+
+private struct DialSegmentView: View {
+    let option: LaunchOption
+    let idx: Int
+    let number: Int
+    let isSelected: Bool
+    let isMultiSelected: Bool
+    let showIncognito: Bool
+    let dimmed: Bool
+    let startAngle: Double
+    let endAngle: Double
+    let innerRadius: CGFloat
+    let outerRadius: CGFloat
+    let iconOffsetX: CGFloat
+    let iconOffsetY: CGFloat
+    let labelMaxWidth: CGFloat
+    let brandCol: Color
+    @ObservedObject var model: PickerViewModel
+    @State private var isHovered = false
+
+    private var iconSize: CGFloat { isSelected ? 50 : 42 }
+
+    private var labelText: String {
+        option.profile?.displayName ?? option.browser.name
+    }
+
+    var body: some View {
+        ZStack {
+            if !isSelected && isHovered {
+                CircularWedge(
+                    startAngle: startAngle,
+                    endAngle: endAngle,
+                    innerRadius: innerRadius,
+                    outerRadius: outerRadius
+                )
+                .fill(Color.white.opacity(0.06))
+            }
+
+            VStack(spacing: 4) {
+                ZStack {
+                    if isSelected {
+                        Circle()
+                            .fill(brandCol.opacity(0.16))
+                            .frame(width: iconSize + 18, height: iconSize + 18)
+                            .blur(radius: 6)
+                    }
+
+                    Image(nsImage: option.icon)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: iconSize, height: iconSize)
+                        .shadow(
+                            color: isSelected ? brandCol.opacity(0.45) : Color.black.opacity(0.18),
+                            radius: isSelected ? 10 : 4,
+                            x: 0,
+                            y: 2
+                        )
+                        .overlay(alignment: .bottomTrailing) {
+                            if showIncognito {
+                                IncognitoBadge(size: 18)
+                                    .offset(x: 4, y: 4)
+                                    .transition(.scale.combined(with: .opacity))
+                            }
+                        }
+
+                    if number <= 9 {
+                        Text("\(number)")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary.opacity(0.85))
+                            .frame(width: 18, height: 18)
+                            .background(
+                                Circle()
+                                    .fill(Color.black.opacity(0.55))
+                                    .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 0.5))
+                            )
+                            .offset(x: iconSize / 2 - 4, y: -iconSize / 2 + 4)
+                    }
+
+                    if isMultiSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.accentColor)
+                            .font(.system(size: 14))
+                            .background(Circle().fill(Color.black.opacity(0.6)))
+                            .offset(x: iconSize / 2 - 4, y: iconSize / 2 - 4)
+                    }
+                }
+
+                HStack(spacing: 4) {
+                    if let hex = option.colorHex, let color = Color(hexString: hex) {
+                        Capsule()
+                            .fill(color)
+                            .frame(width: 8, height: 3)
+                    }
+                    Text(labelText)
+                        .font(.system(size: 10, weight: isSelected ? .semibold : .medium))
+                        .foregroundColor(isSelected ? .primary : .secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .frame(maxWidth: labelMaxWidth)
+                .shadow(color: Color.black.opacity(0.5), radius: 1.5, x: 0, y: 1)
+            }
+            .opacity(dimmed ? 0.45 : 1.0)
+            .scaleEffect(isHovered && !isSelected ? 1.04 : 1.0)
+            .offset(x: iconOffsetX, y: iconOffsetY)
+        }
+        .contentShape(
+            CircularWedge(
+                startAngle: startAngle,
+                endAngle: endAngle,
+                innerRadius: innerRadius,
+                outerRadius: outerRadius
+            )
+        )
+        .onHover { hovering in
+            isHovered = hovering
+            if hovering {
+                NSCursor.pointingHand.push()
+                if model.selectedIndex != idx {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        model.selectedIndex = idx
+                    }
+                }
+            } else {
+                NSCursor.pop()
+            }
+        }
+        .onTapGesture {
+            let flags = NSEvent.modifierFlags
+            if flags.contains(.shift) {
+                model.toggleMulti(option)
+            } else {
+                let incognito = flags.contains(.option) || model.incognitoMode
+                model.pick(option, incognito: incognito)
+            }
+        }
+        .help(dimmed
+              ? "\(option.browser.name) doesn't support private windows — it will open normally."
+              : "Open in \(option.displayName)")
+        .animation(.easeOut(duration: 0.15), value: isHovered)
+        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: isSelected)
+        .animation(.spring(response: 0.25, dampingFraction: 0.75), value: showIncognito)
+    }
+}
+
+private struct DialDividers: Shape {
+    let count: Int
+    let innerRadius: CGFloat
+    let outerRadius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        guard count > 1 else { return path }
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let step = 360.0 / Double(count)
+        for i in 0..<count {
+            let angle = Double(i) * step - 90.0 - (step / 2.0)
+            let rad = angle * .pi / 180.0
+            let s = CGPoint(x: center.x + innerRadius * cos(rad), y: center.y + innerRadius * sin(rad))
+            let e = CGPoint(x: center.x + outerRadius * cos(rad), y: center.y + outerRadius * sin(rad))
+            path.move(to: s)
+            path.addLine(to: e)
+        }
+        return path
+    }
+}
+
+private struct DialCenterHub: View {
+    let radius: CGFloat
+    let selectedOption: LaunchOption?
+    let multiCount: Int
+    let privateActive: Bool
+    let accent: Color
+
+    var body: some View {
+        let diameter = radius * 2
+        ZStack {
+            Circle()
+                .fill(.ultraThinMaterial)
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [accent.opacity(0.25), Color.clear],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: radius
+                    )
+                )
+            Circle()
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.22), Color.white.opacity(0.05)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 1
+                )
+
+            VStack(spacing: 6) {
+                if privateActive {
+                    Image(systemName: "eyeglasses")
+                        .font(.system(size: 22, weight: .regular))
+                        .foregroundColor(.indigo)
+                    Text("Private")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.indigo)
+                } else if let selectedOption {
+                    Text(selectedOption.browser.name)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    Text("Press ↵ to open")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.secondary)
+                } else {
+                    Image(systemName: "globe")
+                        .font(.system(size: 22))
+                        .foregroundColor(.secondary)
+                }
+
+                if multiCount > 0 {
+                    Text("\(multiCount) selected")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.accentColor)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Capsule().fill(Color.accentColor.opacity(0.18)))
+                }
+            }
+            .padding(.horizontal, 12)
+            .frame(maxWidth: diameter - 16)
+            .multilineTextAlignment(.center)
+        }
+        .frame(width: diameter, height: diameter)
+        .animation(.easeOut(duration: 0.15), value: privateActive)
+    }
+}
 
     private func listStyleBody(tiles: [TileEntry]) -> some View {
         ScrollViewReader { proxy in
@@ -1249,5 +1755,43 @@ private final class KeyCatcherView: NSView {
     deinit {
         if let monitor { NSEvent.removeMonitor(monitor) }
         if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }
+    }
+}
+
+struct CircularWedge: Shape {
+    let startAngle: Double
+    let endAngle: Double
+    let innerRadius: CGFloat
+    let outerRadius: CGFloat
+    
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        
+        let startRad = startAngle * .pi / 180.0
+        let endRad = endAngle * .pi / 180.0
+        
+        let outerStart = CGPoint(x: center.x + outerRadius * cos(startRad), y: center.y + outerRadius * sin(startRad))
+        let innerEnd = CGPoint(x: center.x + innerRadius * cos(endRad), y: center.y + innerRadius * sin(endRad))
+        
+        path.move(to: CGPoint(x: center.x + innerRadius * cos(startRad), y: center.y + innerRadius * sin(startRad)))
+        path.addLine(to: outerStart)
+        path.addArc(
+            center: center,
+            radius: outerRadius,
+            startAngle: .degrees(startAngle),
+            endAngle: .degrees(endAngle),
+            clockwise: false
+        )
+        path.addLine(to: innerEnd)
+        path.addArc(
+            center: center,
+            radius: innerRadius,
+            startAngle: .degrees(endAngle),
+            endAngle: .degrees(startAngle),
+            clockwise: true
+        )
+        path.closeSubpath()
+        return path
     }
 }
