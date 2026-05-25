@@ -31,6 +31,7 @@ final class PickerPanelController {
     private var pickerSize: CGSize = .zero
     private var isDismissed: Bool = false
     private var isInPreviewMode: Bool = false
+    private weak var model: PickerViewModel?
 
     func present(url: URL, context: RouteContext, onOpenPreferences: (() -> Void)? = nil) {
         if panel != nil { dismiss(reason: .userCancelled) }
@@ -157,6 +158,7 @@ final class PickerPanelController {
         self.hosting = host
         self.pickerSize = size
         self.isInPreviewMode = false
+        self.model = model
 
         previewObserver = model.$previewMode
             .removeDuplicates()
@@ -239,6 +241,15 @@ final class PickerPanelController {
         _ = reason
 
         persistPickerFrame()
+
+        // Stop the preview WebView synchronously so YouTube and other media
+        // don't keep playing audio after the panel is hidden. Relying on
+        // SwiftUI's ``dismantleNSView`` here is unreliable: ``orderOut`` only
+        // hides the panel, and the hosting view (and its WKWebView subtree)
+        // can stay alive until the next picker invocation.
+        model?.previewTeardown?()
+        model?.previewTeardown = nil
+        model = nil
 
         previewObserver?.cancel()
         previewObserver = nil
