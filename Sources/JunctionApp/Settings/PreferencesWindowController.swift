@@ -227,6 +227,17 @@ struct PreferencesView: View {
                     .frame(width: 160)
                 }
                 PrefsHairline()
+                PrefsRow(title: "Picker layout") {
+                    Picker("", selection: $settings.settings.pickerStyle) {
+                        ForEach(PickerStyle.allCases) { style in
+                            Text(style.title).tag(style)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 160)
+                }
+                PrefsHairline()
                 PrefsRow(title: "Accent") {
                     HStack(spacing: 8) {
                         ForEach(AccentPreset.allCases) { preset in

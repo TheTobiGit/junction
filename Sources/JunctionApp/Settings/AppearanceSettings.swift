@@ -1,6 +1,21 @@
 import AppKit
 import SwiftUI
 
+/// Layout style for the browser picker.
+enum PickerStyle: String, Codable, CaseIterable, Identifiable {
+    case tiles
+    case list
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .tiles: return "Tiles"
+        case .list: return "List"
+        }
+    }
+}
+
 /// Background treatment for floating panels (picker, clipboard HUD).
 enum ChromeTheme: String, Codable, CaseIterable, Identifiable {
     case glass

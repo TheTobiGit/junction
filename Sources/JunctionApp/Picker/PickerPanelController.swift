@@ -105,13 +105,14 @@ final class PickerPanelController {
         LastURLStore.shared.recordPicker(url)
         PreviewWebViewFactory.warmup()
 
-        let width = PickerView.desiredWidth(forOptionCount: options.count)
-        let view = PickerView(model: model, width: width)
+        let style = SettingsStore.shared.settings.pickerStyle
+        let size = PickerView.desiredSize(forOptionCount: options.count, style: style)
+        let view = PickerView(model: model, width: size.width, height: size.height)
         let host = NSHostingView(rootView: view)
         host.translatesAutoresizingMaskIntoConstraints = false
 
         let panel = KeyablePanel(
-            contentRect: NSRect(x: 0, y: 0, width: width, height: PickerView.pickerHeight),
+            contentRect: NSRect(x: 0, y: 0, width: size.width, height: size.height),
             styleMask: [.borderless, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -122,7 +123,12 @@ final class PickerPanelController {
         panel.hidesOnDeactivate = false
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        // List style draws a detached shortcut dock inside a transparent
+        // borderless panel. AppKit's window shadow is based on the panel's
+        // transparent content rect, which creates a visible dark outline
+        // around the floating dock/gap. Keep the system shadow for the compact
+        // tile picker, but let list style rely on its SwiftUI chrome.
+        panel.hasShadow = style != .list
         panel.isMovableByWindowBackground = true
         panel.worksWhenModal = true
         panel.contentView = host
@@ -138,7 +144,8 @@ final class PickerPanelController {
 
         let savedFrame = SettingsStore.shared.settings.pickerFrame
         if let saved = savedFrame {
-            let clamped = clampToScreen(saved)
+            let desiredFrame = Self.restoredFrame(from: saved, currentSize: size)
+            let clamped = clampToScreen(desiredFrame)
             panel.setFrame(clamped, display: true)
         } else {
             panel.center()
@@ -148,7 +155,7 @@ final class PickerPanelController {
 
         self.panel = panel
         self.hosting = host
-        self.pickerSize = CGSize(width: width, height: PickerView.pickerHeight)
+        self.pickerSize = size
         self.isInPreviewMode = false
 
         previewObserver = model.$previewMode
@@ -216,6 +223,10 @@ final class PickerPanelController {
         if out.maxX > visible.maxX { out.origin.x = visible.maxX - out.width - inset }
         if out.maxY > visible.maxY { out.origin.y = visible.maxY - out.height - inset }
         return out
+    }
+
+    static func restoredFrame(from savedFrame: CGRect, currentSize: CGSize) -> CGRect {
+        CGRect(origin: savedFrame.origin, size: currentSize)
     }
 
     func dismiss() {
