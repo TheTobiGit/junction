@@ -10,6 +10,15 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to build/upload assets for (for retrying a partial release)
+        required: false
+        type: string
+      release_version:
+        description: Version without leading v for release_tag (for example, 0.9.0)
+        required: false
+        type: string
 
 # Default-deny token scope. Each job opts in explicitly below.
 permissions: {}
@@ -42,7 +51,7 @@ jobs:
   build-publish:
     name: Build & Attach Release Assets
     needs: release-please
-    if: needs.release-please.outputs.released == 'true'
+    if: needs.release-please.outputs.released == 'true' || inputs.release_tag != ''
     runs-on: macos-14
     timeout-minutes: 60
     permissions:
@@ -50,13 +59,20 @@ jobs:
     env:
       APP_NAME: Junction
       CLI_NAME: junction
-      TAG: ${{ needs.release-please.outputs.tag }}
-      VERSION: ${{ needs.release-please.outputs.version }}
+      TAG: ${{ needs.release-please.outputs.tag || inputs.release_tag }}
+      VERSION: ${{ needs.release-please.outputs.version || inputs.release_version }}
     steps:
+      - name: Validate release inputs
+        run: |
+          if [[ -z "${TAG}" || -z "${VERSION}" ]]; then
+            echo "::error::TAG and VERSION are required. For manual retries, pass release_tag (vX.Y.Z) and release_version (X.Y.Z)."
+            exit 1
+          fi
+
       - name: Checkout release tag
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ needs.release-please.outputs.tag }}
+          ref: ${{ needs.release-please.outputs.tag || inputs.release_tag }}
           fetch-depth: 0
           persist-credentials: false
 
