@@ -341,7 +341,7 @@ struct ClipboardHUDView: View {
                         .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(copyFeedbackTint(for: feedback))
                 }
-                if model.isShortened, model.expandedURL == nil {
+                if model.isShortened {
                     if model.isExpanding {
                         Text("Expanding…")
                             .font(.system(size: 9))
@@ -387,7 +387,7 @@ struct ClipboardHUDView: View {
         .fixedSize()
     }
 
-    private var routeURL: URL { model.expandedURL ?? url }
+    private var routeURL: URL { model.sourceURL }
 
     private var actionBar: some View {
         HStack(spacing: 6) {
@@ -429,9 +429,11 @@ struct ClipboardHUDView: View {
 
     private var moreMenu: some View {
         Menu {
-            Button("Open in default browser") {
-                NSWorkspace.shared.open(model.openURL)
-                onDismiss()
+            if model.matchedAction != .block {
+                Button("Open in default browser") {
+                    NSWorkspace.shared.open(model.openURL)
+                    onDismiss()
+                }
             }
             Button("Copy domain", action: model.copyDomain)
             Divider()
@@ -472,6 +474,23 @@ struct ClipboardHUDView: View {
 
 // MARK: - View model
 
+struct ClipboardHUDAnalysis {
+    let sourceURL: URL
+    let trace: URLTransformResult
+    let riskFlags: [RiskFlag]
+    let matchedRule: DomainRule?
+    let matchedAction: RuleAction
+
+    init(url: URL) {
+        let result = ClipboardURLContext.analyze(url)
+        sourceURL = url
+        trace = result.trace
+        riskFlags = result.riskFlags
+        matchedRule = result.matchedRule
+        matchedAction = result.matchedAction
+    }
+}
+
 enum ClipboardLinkStatus {
     case ok
     case cleaned
@@ -481,24 +500,41 @@ enum ClipboardLinkStatus {
 
 @MainActor
 final class ClipboardHUDViewModel: ObservableObject {
-    let url: URL
-    let trace: URLTransformResult
-    let riskFlags: [RiskFlag]
-    let matchedRule: DomainRule?
-    let matchedAction: RuleAction
+    let originalURL: URL
+    @Published private(set) var analysis: ClipboardHUDAnalysis
 
     @Published private(set) var faviconData: Data?
     @Published var showQR = false
     @Published private(set) var qrImage: CGImage?
     @Published var isExpanding = false
-    @Published private(set) var expandedURL: URL?
     @Published var urlExpanded = false
     @Published private(set) var copyFeedback: String?
 
-    var cleaned: URL { trace.final }
-    var didClean: Bool { trace.didChange }
-    var isShortened: Bool { ShortenerExpander.isShortened(cleaned) }
-    var openURL: URL { expandedURL ?? cleaned }
+    var sourceURL: URL { analysis.sourceURL }
+    var trace: URLTransformResult { analysis.trace }
+    var riskFlags: [RiskFlag] { analysis.riskFlags }
+    var matchedRule: DomainRule? { analysis.matchedRule }
+    var matchedAction: RuleAction { analysis.matchedAction }
+
+    var cleaned: URL { analysis.trace.final }
+    var didClean: Bool { analysis.trace.didChange }
+    var isShortened: Bool { ShortenerExpander.isShortened(analysis.sourceURL) }
+
+    private var effectiveCleaningEnabled: Bool {
+        DomainRule.resolveCleanFlag(
+            rule: analysis.matchedRule,
+            globalEnabled: SettingsStore.shared.settings.cleanURLsBeforeOpening
+        )
+    }
+
+    /// URL shown and used for copy/QR/share/default browser — mirrors the picker.
+    var openURL: URL {
+        PickerViewModel.displayURL(
+            raw: analysis.sourceURL,
+            cleaned: analysis.trace.final,
+            cleaningEnabled: effectiveCleaningEnabled
+        )
+    }
 
     var displayHost: String {
         if let host = openURL.host, !host.isEmpty { return host }
@@ -508,10 +544,7 @@ final class ClipboardHUDViewModel: ObservableObject {
     var willOpenCleaned: Bool {
         PickerViewModel.willOpenCleaned(
             didClean: didClean,
-            cleaningEnabled: DomainRule.resolveCleanFlag(
-                rule: matchedRule,
-                globalEnabled: SettingsStore.shared.settings.cleanURLsBeforeOpening
-            )
+            cleaningEnabled: effectiveCleaningEnabled
         )
     }
 
@@ -537,12 +570,8 @@ final class ClipboardHUDViewModel: ObservableObject {
     }
 
     init(url: URL) {
-        self.url = url
-        let analysis = ClipboardURLContext.analyze(url)
-        self.trace = analysis.trace
-        self.riskFlags = analysis.riskFlags
-        self.matchedRule = analysis.matchedRule
-        self.matchedAction = analysis.matchedAction
+        originalURL = url
+        analysis = ClipboardHUDAnalysis(url: url)
         loadFavicon()
     }
 
@@ -556,11 +585,12 @@ final class ClipboardHUDViewModel: ObservableObject {
     func expandShortener() {
         guard isShortened, !isExpanding else { return }
         isExpanding = true
-        ShortenerExpander.shared.expand(cleaned) { [weak self] resolved in
+        ShortenerExpander.shared.expand(analysis.sourceURL) { [weak self] resolved in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isExpanding = false
-                self.expandedURL = resolved
+                self.analysis = ClipboardHUDAnalysis(url: resolved)
+                self.loadFavicon()
                 if self.showQR {
                     self.qrImage = QRCodeGenerator.generate(from: self.openURL.absoluteString)
                 }
@@ -574,7 +604,7 @@ final class ClipboardHUDViewModel: ObservableObject {
     }
 
     func copyOriginalLink() {
-        copyString(url.absoluteString)
+        copyString(originalURL.absoluteString)
         showCopyFeedback(cleaned: false, original: true)
     }
 
@@ -612,7 +642,7 @@ final class ClipboardHUDViewModel: ObservableObject {
     }
 
     private func loadFavicon() {
-        guard let host = cleaned.host ?? url.host else { return }
+        guard let host = openURL.host ?? originalURL.host else { return }
         HostFaviconFetcher.fetch(host: host) { [weak self] data in
             DispatchQueue.main.async { self?.faviconData = data }
         }
