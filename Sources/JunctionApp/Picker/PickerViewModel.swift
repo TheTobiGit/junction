@@ -32,6 +32,11 @@ final class PickerViewModel: ObservableObject {
     var qrImageProvider: (String) -> CGImage? = QRCodeGenerator.generate(from:)
     @Published var cheatSheetVisible: Bool = false
 
+    /// Closure registered by the active preview ``WebContainer`` so the
+    /// controller can stop media playback synchronously on dismiss instead
+    /// of waiting for SwiftUI to dismantle the hosting view.
+    var previewTeardown: (() -> Void)?
+
     private let pickHandler: (LaunchOption, Bool, Bool) -> Void
     private let pickMultiHandler: ([LaunchOption], Bool) -> Void
     private let cancelHandler: () -> Void

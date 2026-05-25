@@ -40,6 +40,7 @@ struct PreviewView: View {
             WebContainer(
                 url: model.previewURL,
                 readerEnabled: readerEnabled,
+                model: model,
                 title: $model.previewTitle,
                 isLoading: $model.previewLoading,
                 progress: $model.previewProgress
@@ -389,6 +390,7 @@ private struct DockTile: View {
 private struct WebContainer: NSViewRepresentable {
     let url: URL
     let readerEnabled: Bool
+    weak var model: PickerViewModel?
     @Binding var title: String?
     @Binding var isLoading: Bool
     @Binding var progress: Double
@@ -398,18 +400,22 @@ private struct WebContainer: NSViewRepresentable {
         webView.navigationDelegate = context.coordinator
         context.coordinator.observe(webView: webView)
         webView.load(URLRequest(url: url))
+        // Register a deterministic teardown so the controller can stop media
+        // even when SwiftUI defers ``dismantleNSView`` (e.g. during the
+        // panel-dismiss animation).
+        context.coordinator.installTeardown(on: model, webView: webView)
         return webView
     }
 
     func updateNSView(_ nsView: WKWebView, context: Context) {
+        guard !context.coordinator.didTearDown else { return }
         if nsView.url != url {
             nsView.load(URLRequest(url: url))
         }
     }
 
     static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
-        coordinator.invalidate(webView: nsView)
-        PreviewWebViewFactory.teardown(nsView)
+        coordinator.tearDown(webView: nsView)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -423,6 +429,8 @@ private struct WebContainer: NSViewRepresentable {
         private var progressObservation: NSKeyValueObservation?
         private var titleObservation: NSKeyValueObservation?
         private var loadingObservation: NSKeyValueObservation?
+        private weak var registeredModel: PickerViewModel?
+        private(set) var didTearDown: Bool = false
 
         init(title: Binding<String?>, isLoading: Binding<Bool>, progress: Binding<Double>) {
             _title = title
@@ -453,6 +461,26 @@ private struct WebContainer: NSViewRepresentable {
             progressObservation = nil
             titleObservation = nil
             loadingObservation = nil
+        }
+
+        func installTeardown(on model: PickerViewModel?, webView: WKWebView) {
+            guard let model else { return }
+            registeredModel = model
+            model.previewTeardown = { [weak self, weak webView] in
+                guard let self, let webView else { return }
+                self.tearDown(webView: webView)
+            }
+        }
+
+        func tearDown(webView: WKWebView) {
+            guard !didTearDown else { return }
+            didTearDown = true
+            invalidate(webView: webView)
+            PreviewWebViewFactory.teardown(webView)
+            if let model = registeredModel {
+                model.previewTeardown = nil
+            }
+            registeredModel = nil
         }
     }
 }
