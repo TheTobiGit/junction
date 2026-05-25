@@ -20,7 +20,7 @@ struct AboutAndUpdatesBlock: View {
                         .toggleStyle(.switch)
                 }
                 PrefsHairline()
-                PrefsRow(title: "Download and install automatically") {
+                PrefsRow(title: "Download updates automatically") {
                     Toggle("", isOn: automaticDownloadsBinding)
                         .labelsHidden()
                         .toggleStyle(.switch)
