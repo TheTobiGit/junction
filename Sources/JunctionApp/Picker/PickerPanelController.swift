@@ -236,6 +236,17 @@ final class PickerPanelController {
     }
 
     func dismiss(reason: DismissReason) {
+        // ``dismiss(reason:)`` can be invoked from ``NSEvent`` global monitor
+        // callbacks (clicks outside the panel) which are not guaranteed to
+        // run on the main thread. The work below touches AppKit, WKWebView,
+        // and ``@Published`` state, all of which require the main actor.
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in
+                self?.dismiss(reason: reason)
+            }
+            return
+        }
+
         guard !isDismissed else { return }
         isDismissed = true
         _ = reason
@@ -248,7 +259,7 @@ final class PickerPanelController {
         // hides the panel, and the hosting view (and its WKWebView subtree)
         // can stay alive until the next picker invocation.
         model?.previewTeardown?()
-        model?.previewTeardown = nil
+        model?.clearPreviewTeardown()
         model = nil
 
         previewObserver?.cancel()

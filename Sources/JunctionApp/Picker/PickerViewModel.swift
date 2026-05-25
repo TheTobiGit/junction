@@ -35,7 +35,29 @@ final class PickerViewModel: ObservableObject {
     /// Closure registered by the active preview ``WebContainer`` so the
     /// controller can stop media playback synchronously on dismiss instead
     /// of waiting for SwiftUI to dismantle the hosting view.
-    var previewTeardown: (() -> Void)?
+    private(set) var previewTeardown: (() -> Void)?
+    /// Identifies the coordinator that installed the current
+    /// ``previewTeardown``. SwiftUI may instantiate a new ``WebContainer``
+    /// (e.g. when ``readerEnabled`` toggles) and dismantle the previous one
+    /// asynchronously; without this token, the stale coordinator's teardown
+    /// path would clear the new coordinator's freshly-registered closure.
+    private var previewTeardownOwner: ObjectIdentifier?
+
+    func installPreviewTeardown(owner: AnyObject, _ closure: @escaping () -> Void) {
+        previewTeardownOwner = ObjectIdentifier(owner)
+        previewTeardown = closure
+    }
+
+    func clearPreviewTeardown(owner: AnyObject) {
+        guard previewTeardownOwner == ObjectIdentifier(owner) else { return }
+        previewTeardown = nil
+        previewTeardownOwner = nil
+    }
+
+    func clearPreviewTeardown() {
+        previewTeardown = nil
+        previewTeardownOwner = nil
+    }
 
     private let pickHandler: (LaunchOption, Bool, Bool) -> Void
     private let pickMultiHandler: ([LaunchOption], Bool) -> Void
