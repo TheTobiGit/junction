@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.8.0](https://github.com/TheTobiGit/junction/compare/v0.7.0...v0.8.0) (2026-05-25)
+
+
+### Features
+
+* **clipboard:** redesign link HUD and gate behind release flag ([d201feb](https://github.com/TheTobiGit/junction/commit/d201feb2db495a3573b5a8e430610934fe672872))
+* **onboarding:** expressive redesign with hero illustrations ([e3f7b31](https://github.com/TheTobiGit/junction/commit/e3f7b318f310797300869c66aa7753da76340a78))
+* **picker:** add Dial picker style ([85540ed](https://github.com/TheTobiGit/junction/commit/85540edb11b13adb4129d2febc96d902ce7dcfe9))
+
+
+### Bug Fixes
+
+* **clipboard:** address Copilot review on clipboard HUD ([45ff135](https://github.com/TheTobiGit/junction/commit/45ff135794cc7b19a72d8cd6bc2b53b135c784b0))
+* **onboarding:** address Copilot review on visibleSteps, Back button, shield helper ([06fcb24](https://github.com/TheTobiGit/junction/commit/06fcb240bd431729e49f66b910b893e0fe23b257))
+* **picker:** address Copilot review on dial style ([ab27559](https://github.com/TheTobiGit/junction/commit/ab27559c83d9acd47642fc71b5a94228f4ad95d7))
+* **picker:** main-thread guard dismiss and gate teardown clear by owner ([515f197](https://github.com/TheTobiGit/junction/commit/515f197aaf5718f80994630563cf1ec7636cfd49))
+* **picker:** stop preview WebView media on dismiss ([49f234a](https://github.com/TheTobiGit/junction/commit/49f234aa852fc69897db6fdbd94d3ce0904cb9d2))
+* polish list picker layout ([75ac3ca](https://github.com/TheTobiGit/junction/commit/75ac3ca97efe52130009e4f577b3b510b67b315b))
+
 ## [0.7.0](https://github.com/TheTobiGit/junction/compare/v0.6.1...v0.7.0) (2026-05-23)
 
 
