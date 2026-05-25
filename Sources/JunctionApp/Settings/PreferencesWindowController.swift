@@ -601,9 +601,7 @@ struct PreferencesView: View {
 
     private var hotkeysPanel: some View {
         PrefsBlock {
-            hotkeyRow("Open clipboard link", binding: hotkeyBinding(\.summonPicker))
-            PrefsHairline()
-            hotkeyRow("Re-open last link", binding: hotkeyBinding(\.rerouteLast))
+            hotkeyRow("Open picker", binding: hotkeyBinding(\.summonPicker))
             PrefsHairline()
             hotkeyRow("Paste and open", binding: hotkeyBinding(\.pasteAndOpen))
         }
