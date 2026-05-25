@@ -16,6 +16,7 @@ fi
 CONFIG="${1:-release}"
 APP_NAME="Junction"
 APP_BUNDLE="build/${APP_NAME}.app"
+APP_PLIST="${APP_BUNDLE}/Contents/Info.plist"
 CLI_NAME="junction"
 CLI_OUT="build/${CLI_NAME}"
 ENTITLEMENTS="Resources/Junction.entitlements"
@@ -75,9 +76,36 @@ fi
 rm -rf "${APP_BUNDLE}"
 mkdir -p "${APP_BUNDLE}/Contents/MacOS"
 mkdir -p "${APP_BUNDLE}/Contents/Resources"
+mkdir -p "${APP_BUNDLE}/Contents/Frameworks"
 
 cp "${APP_EXEC_SRC}" "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
-cp "Resources/Info.plist" "${APP_BUNDLE}/Contents/Info.plist"
+cp "Resources/Info.plist" "${APP_PLIST}"
+
+# Sparkle reads update feed settings from Info.plist. The public EdDSA key
+# is intentionally injected at build/release time so the private signing key
+# never has to live in the repository. Local unsigned builds may keep the
+# placeholder and simply won't be able to perform real update checks.
+if [[ -n "${SPARKLE_FEED_URL:-}" ]]; then
+    /usr/libexec/PlistBuddy -c "Set :SUFeedURL ${SPARKLE_FEED_URL}" "${APP_PLIST}"
+fi
+if [[ -n "${SPARKLE_PUBLIC_ED_KEY:-}" ]]; then
+    /usr/libexec/PlistBuddy -c "Set :SUPublicEDKey ${SPARKLE_PUBLIC_ED_KEY}" "${APP_PLIST}"
+elif [[ "${CODE_SIGN_IDENTITY}" == Developer\ ID\ Application:* ]]; then
+    echo "error: SPARKLE_PUBLIC_ED_KEY is required for Developer ID release builds." >&2
+    echo "Generate it with Sparkle's bin/generate_keys and store the private key separately for appcast signing." >&2
+    exit 1
+fi
+
+SPARKLE_FRAMEWORK="$(find .build -path '*/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework' -type d -print -quit)"
+if [[ -z "${SPARKLE_FRAMEWORK}" ]]; then
+    SPARKLE_FRAMEWORK="$(find .build -path '*/Sparkle.framework' -type d -print -quit)"
+fi
+if [[ -z "${SPARKLE_FRAMEWORK}" ]]; then
+    echo "error: Sparkle.framework not found under .build. Run swift package resolve/build first." >&2
+    exit 1
+fi
+ditto "${SPARKLE_FRAMEWORK}" "${APP_BUNDLE}/Contents/Frameworks/Sparkle.framework"
+
 cp "Resources/Readability.js" "${APP_BUNDLE}/Contents/Resources/Readability.js"
 
 if [[ -f "Resources/MenuBarIcon.png" ]]; then
@@ -93,6 +121,22 @@ fi
 cat > "${APP_BUNDLE}/Contents/PkgInfo" <<EOF
 APPL????
 EOF
+
+SPARKLE_IN_APP="${APP_BUNDLE}/Contents/Frameworks/Sparkle.framework"
+if [[ "${CODE_SIGN_IDENTITY}" == Developer\ ID\ Application:* ]]; then
+    # Sparkle's nested tools must be explicitly signed for hardened runtime
+    # release builds; do not rely on --deep for distribution signing.
+    for item in \
+        "${SPARKLE_IN_APP}/Versions/B/XPCServices/Installer.xpc" \
+        "${SPARKLE_IN_APP}/Versions/B/XPCServices/Downloader.xpc" \
+        "${SPARKLE_IN_APP}/Versions/B/Autoupdate" \
+        "${SPARKLE_IN_APP}/Versions/B/Updater.app" \
+        "${SPARKLE_IN_APP}"; do
+        if [[ -e "${item}" ]]; then
+            codesign "${SIGN_FLAGS[@]}" "${item}"
+        fi
+    done
+fi
 
 codesign "${APP_SIGN_FLAGS[@]}" "${APP_BUNDLE}"
 

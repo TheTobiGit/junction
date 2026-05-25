@@ -1,6 +1,7 @@
 import AppKit
 import CoreServices
 
+@MainActor
 final class MenuBarController: NSObject {
     private enum MenuTags: Int {
         case setDefaultBrowser = 71001
@@ -215,7 +216,7 @@ final class MenuBarController: NSObject {
     }
 
     @objc private func checkForUpdates() {
-        NotificationCenter.default.post(name: .junctionCheckForUpdates, object: nil)
+        UpdateChecker.shared.checkForUpdates()
     }
 
     private static func menuBarImage() -> NSImage? {
@@ -245,6 +246,9 @@ extension MenuBarController: NSMenuDelegate {
         // Refresh the Recent submenu lazily so re-opening the menu always shows current entries.
         if let recent = menu.items.first(where: { $0.tag == MenuTags.recent.rawValue }) {
             recent.submenu = makeRecentSubmenu()
+        }
+        if let updates = menu.items.first(where: { $0.tag == MenuTags.checkForUpdates.rawValue }) {
+            updates.isEnabled = UpdateChecker.shared.canCheckForUpdates
         }
 
         let isDefault = DefaultWebBrowserStatus.current.isJunctionDefaultForHTTPAndHTTPS

@@ -18,7 +18,7 @@ junction-cli-<version>-macos.zip  junction CLI
 
 Open the DMG and drag `Junction.app` into `Applications`, or unzip the `.app` directly. Open it once and follow the onboarding to make Junction the default browser. The CLI is optional — drop `junction` into `/usr/local/bin/` if you want it.
 
-Releases are signed with a Developer ID certificate and notarized by Apple, so macOS won't block them as an unidentified developer. You may still see the standard one-time "downloaded from the internet" prompt on first launch.
+Releases are signed with a Developer ID certificate, notarized by Apple, and update through Sparkle using a signed appcast. macOS may still show the standard one-time "downloaded from the internet" prompt on first launch.
 
 ## Use
 
@@ -78,7 +78,19 @@ open build/Junction.app
 
 > **Why `scripts/setup.sh`?** Junction enforces Conventional Commits via a tracked git hook (`.githooks/commit-msg`). The setup script points `core.hooksPath` at it. Skipping this step means your commits won't be validated locally and release-please may reject them.
 
-Local builds are ad-hoc signed by default. macOS may prompt the first time you run a hand-built `Junction.app` — right-click → Open to bypass Gatekeeper. Set `JUNCTION_CODESIGN_IDENTITY` to a Developer ID certificate in your keychain to produce a fully signed local build.
+Local builds are ad-hoc signed by default. macOS may prompt the first time you run a hand-built `Junction.app` — right-click → Open to bypass Gatekeeper. Set `JUNCTION_CODESIGN_IDENTITY` to a Developer ID certificate in your keychain to produce a fully signed local build. Developer ID release builds also require `SPARKLE_PUBLIC_ED_KEY` so the app contains the Sparkle public EdDSA key.
+
+### Release updater setup
+
+Junction uses Sparkle 2 for update checks and installs. Generate Sparkle keys once on a secure Mac after resolving dependencies:
+
+```
+swift package resolve
+.build/artifacts/sparkle/Sparkle/bin/generate_keys
+.build/artifacts/sparkle/Sparkle/bin/generate_keys -x sparkle_private_key.txt
+```
+
+Store the printed public key as the GitHub Actions secret `SPARKLE_PUBLIC_ED_KEY`, and store the exported private key contents as `SPARKLE_PRIVATE_ED_KEY`. Do not commit the private key. Release CI injects the public key into `Info.plist`, packages the signed/notarized app, generates a signed `appcast.xml`, and uploads it to the GitHub release. The app feed URL is `https://github.com/TheTobiGit/junction/releases/latest/download/appcast.xml`.
 
 ## Contributing
 
@@ -87,7 +99,7 @@ Issues and pull requests are welcome. A few ground rules:
 - Commits must follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, `chore:`…). The `commit-msg` hook installed by `scripts/setup.sh` enforces this.
 - Open an issue first for non-trivial changes so we can agree on the approach before you spend time on a PR.
 - Keep PRs focused. Mixing unrelated refactors and features makes review slow.
-- The codebase has zero third-party Swift dependencies and the project intends to keep it that way.
+- Keep dependencies minimal and security-sensitive. Sparkle is intentionally included for signed macOS updates; avoid adding more third-party Swift dependencies unless the benefit is clear.
 
 ## Security
 
