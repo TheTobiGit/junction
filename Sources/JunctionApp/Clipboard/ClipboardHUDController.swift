@@ -38,17 +38,11 @@ final class ClipboardHUDController {
         )
         let host = NSHostingView(rootView: view)
         Self.configureTransparentHosting(host)
-        host.translatesAutoresizingMaskIntoConstraints = false
+        // `panel.contentView = host` makes the panel auto-size the hosting
+        // view to its content rect via the default autoresizing mask, so we
+        // don't add manual constraints (those would self-reference once host
+        // becomes contentView) and we don't disable the autoresizing mask.
         panel.contentView = host
-
-        if let contentView = panel.contentView {
-            NSLayoutConstraint.activate([
-                host.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-                host.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-                host.topAnchor.constraint(equalTo: contentView.topAnchor),
-                host.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            ])
-        }
 
         placeTopRight(panel, size: panel.frame.size, animate: false)
         panel.alphaValue = 0
