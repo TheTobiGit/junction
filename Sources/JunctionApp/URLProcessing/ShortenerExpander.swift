@@ -139,8 +139,9 @@ final class ShortenerExpander {
 /// Minimal LRU dictionary used to bound the shortener cache. Insert/lookup
 /// promote the entry to most-recently-used; once `count` exceeds `capacity`
 /// the least-recently-used entry is evicted. Not thread-safe — callers
-/// hold an external lock (see `ShortenerExpander.lock`).
-struct LRUCache<Key: Hashable, Value> {
+/// hold an external lock (see `ShortenerExpander.lock`). File-private so the
+/// generic name doesn't leak into the app module's namespace.
+fileprivate struct LRUCache<Key: Hashable, Value> {
     let capacity: Int
     private var storage: [Key: Value] = [:]
     private var order: [Key] = []
