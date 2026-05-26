@@ -85,6 +85,27 @@ enum LaunchOptionDiscovery {
         return nil
     }
 
+    /// Resolves the user's favorite browser/profile to a `LaunchOption` if
+    /// the underlying app or profile is still installed and discoverable.
+    /// Falls back to the bundle-level app option when a previously-favored
+    /// profile has been deleted, mirroring `resolve(target:)` semantics so
+    /// "open in favorite" stays useful even after profile churn.
+    static func resolveFavorite(in options: [LaunchOption] = options()) -> LaunchOption? {
+        guard let key = SettingsStore.shared.settings.favoriteTargetKey else { return nil }
+        if let match = options.first(where: { $0.target.storageKey == key }) {
+            return match
+        }
+        if key.hasPrefix("profile:") {
+            let rest = String(key.dropFirst("profile:".count))
+            let bundleID = rest.split(separator: ":", maxSplits: 1).first.map(String.init) ?? ""
+            if !bundleID.isEmpty,
+               let appFallback = options.first(where: { $0.browser.bundleID == bundleID }) {
+                return appFallback
+            }
+        }
+        return nil
+    }
+
     private static func applyUserOrder(_ options: [LaunchOption]) -> [LaunchOption] {
         applyUserOrder(options, order: SettingsStore.shared.settings.targetOrder)
     }

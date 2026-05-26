@@ -55,6 +55,13 @@ struct JunctionSettings: Codable {
     var pickerFrame: CGRect? = nil
     var trackerOverrides: TrackerOverrides = TrackerOverrides()
     var toursCompleted: [String: Bool] = [:]
+    /// Storage key (`LaunchTarget.storageKey`) of the user's favorite
+    /// browser or browser profile. Distinct from `pinnedTargetKey`, which
+    /// only controls picker order; the favorite is the named default that
+    /// rules and shortcuts can reference symbolically (e.g. "open in
+    /// favorite browser") so the user can swap the underlying target
+    /// without rewriting every rule.
+    var favoriteTargetKey: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case cleanURLsBeforeOpening
@@ -74,6 +81,7 @@ struct JunctionSettings: Codable {
         case pickerFrame
         case trackerOverrides
         case toursCompleted
+        case favoriteTargetKey
     }
 
     init() {}
@@ -100,6 +108,7 @@ struct JunctionSettings: Codable {
         self.pickerFrame = (try? c.decodeIfPresent(PickerFrameCodable.self, forKey: .pickerFrame))?.rect
         self.trackerOverrides = (try? c.decodeIfPresent(TrackerOverrides.self, forKey: .trackerOverrides)) ?? TrackerOverrides()
         self.toursCompleted = (try? c.decodeIfPresent([String: Bool].self, forKey: .toursCompleted)) ?? [:]
+        self.favoriteTargetKey = try? c.decodeIfPresent(String.self, forKey: .favoriteTargetKey)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -122,6 +131,7 @@ struct JunctionSettings: Codable {
         }
         try c.encode(trackerOverrides, forKey: .trackerOverrides)
         try c.encode(toursCompleted, forKey: .toursCompleted)
+        try c.encodeIfPresent(favoriteTargetKey, forKey: .favoriteTargetKey)
     }
 
     /// Sets `pinnedTargetKey` and rewrites `targetOrder` so the pinned key is at index 0.
@@ -221,6 +231,10 @@ final class SettingsStore: ObservableObject {
 
     func setPinnedTargetKey(_ key: String?) {
         settings.setPinnedTargetKey(key)
+    }
+
+    func setFavoriteTargetKey(_ key: String?) {
+        settings.favoriteTargetKey = key
     }
 
     func markOnboardingComplete() {
