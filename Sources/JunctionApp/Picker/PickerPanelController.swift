@@ -32,6 +32,7 @@ final class PickerPanelController {
     private var isDismissed: Bool = false
     private var isInPreviewMode: Bool = false
     private weak var model: PickerViewModel?
+    private var pickerStyle: PickerStyle = .tiles
 
     func present(url: URL, context: RouteContext, onOpenPreferences: (() -> Void)? = nil) {
         if panel != nil { dismiss(reason: .userCancelled) }
@@ -124,7 +125,7 @@ final class PickerPanelController {
         }
 
         let savedFrame = SettingsStore.shared.settings.pickerFrame
-        if let saved = savedFrame {
+        if style != .dial, let saved = savedFrame {
             let desiredFrame = Self.restoredFrame(from: saved, currentSize: size)
             let clamped = clampToScreen(desiredFrame)
             panel.setFrame(clamped, display: true)
@@ -139,6 +140,7 @@ final class PickerPanelController {
         self.pickerSize = size
         self.isInPreviewMode = false
         self.model = model
+        self.pickerStyle = style
 
         previewObserver = model.$previewMode
             .removeDuplicates()
@@ -262,7 +264,7 @@ final class PickerPanelController {
     }
 
     private func persistPickerFrame() {
-        guard !isInPreviewMode, let panel else { return }
+        guard !isInPreviewMode, pickerStyle != .dial, let panel else { return }
         let frame = CGRect(origin: panel.frame.origin, size: pickerSize)
         SettingsStore.shared.settings.pickerFrame = frame
     }

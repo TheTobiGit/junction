@@ -33,8 +33,8 @@ struct PickerView: View {
     static let listDockGap: CGFloat = 10
     static let listDockBottomInset: CGFloat = 16
 
-    static let dialStyleWidth: CGFloat = 540
-    static let dialDiameter: CGFloat = 440
+    static let dialStyleWidth: CGFloat = 660
+    static let dialDiameter: CGFloat = 560
     static let dialHeaderHeight: CGFloat = 48
     static let dialHeaderGap: CGFloat = 16
     static let dialPanelHorizontalPadding: CGFloat = 20
@@ -709,10 +709,36 @@ struct PickerView: View {
                     outerRadius: outerRad,
                     iconOffsetX: iconRad * cos(centerRad),
                     iconOffsetY: iconRad * sin(centerRad),
-                    labelMaxWidth: max(60, 2 * outerRad * sin((angleStep * .pi / 180.0) / 2.0) - 18),
                     brandCol: brandColor(for: option.browser.bundleID),
                     model: model
                 )
+            }
+
+            ForEach(Array(tiles.enumerated()), id: \.element.tileID) { idx, entry in
+                let option: LaunchOption = {
+                    switch entry.kind {
+                    case .single(let opt), .groupChild(let opt): return opt
+                    }
+                }()
+                let isSelected = idx == selectedIdx
+                let centerAngleDeg = Double(idx) * angleStep - 90.0
+                let centerAngleRad = centerAngleDeg * .pi / 180.0
+                let labelText = option.profile?.displayName ?? option.browser.name
+                let supportsIncognito = URLOpener.supportsIncognito(bundleID: option.browser.bundleID)
+                let privateActive = model.incognitoMode || model.optionKeyHeld
+                let dimmed = privateActive && !supportsIncognito
+                ArcText(
+                    text: labelText,
+                    radius: outerRad - 16,
+                    centerAngleRadians: centerAngleRad,
+                    maxArcSpanRadians: angleStep * 0.85 * .pi / 180.0,
+                    fontSize: 11,
+                    weight: isSelected ? .semibold : .medium,
+                    color: isSelected ? .primary : .secondary
+                )
+                .opacity(dimmed ? 0.45 : 1.0)
+                .allowsHitTesting(false)
+                .animation(.spring(response: 0.32, dampingFraction: 0.82), value: isSelected)
             }
 
             DialCenterHub(
@@ -741,16 +767,11 @@ private struct DialSegmentView: View {
     let outerRadius: CGFloat
     let iconOffsetX: CGFloat
     let iconOffsetY: CGFloat
-    let labelMaxWidth: CGFloat
     let brandCol: Color
     @ObservedObject var model: PickerViewModel
     @State private var isHovered = false
 
     private var iconSize: CGFloat { isSelected ? 50 : 42 }
-
-    private var labelText: String {
-        option.profile?.displayName ?? option.browser.name
-    }
 
     var body: some View {
         ZStack {
@@ -764,69 +785,52 @@ private struct DialSegmentView: View {
                 .fill(Color.white.opacity(0.06))
             }
 
-            VStack(spacing: 4) {
-                ZStack {
-                    if isSelected {
-                        Circle()
-                            .fill(brandCol.opacity(0.16))
-                            .frame(width: iconSize + 18, height: iconSize + 18)
-                            .blur(radius: 6)
-                    }
+            ZStack {
+                if isSelected {
+                    Circle()
+                        .fill(brandCol.opacity(0.16))
+                        .frame(width: iconSize + 18, height: iconSize + 18)
+                        .blur(radius: 6)
+                }
 
-                    Image(nsImage: option.icon)
-                        .resizable()
-                        .interpolation(.high)
-                        .frame(width: iconSize, height: iconSize)
-                        .shadow(
-                            color: isSelected ? brandCol.opacity(0.45) : Color.black.opacity(0.18),
-                            radius: isSelected ? 10 : 4,
-                            x: 0,
-                            y: 2
-                        )
-                        .overlay(alignment: .bottomTrailing) {
-                            if showIncognito {
-                                IncognitoBadge(size: 18)
-                                    .offset(x: 4, y: 4)
-                                    .transition(.scale.combined(with: .opacity))
-                            }
+                Image(nsImage: option.icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: iconSize, height: iconSize)
+                    .shadow(
+                        color: isSelected ? brandCol.opacity(0.45) : Color.black.opacity(0.18),
+                        radius: isSelected ? 10 : 4,
+                        x: 0,
+                        y: 2
+                    )
+                    .overlay(alignment: .bottomTrailing) {
+                        if showIncognito {
+                            IncognitoBadge(size: 18)
+                                .offset(x: 4, y: 4)
+                                .transition(.scale.combined(with: .opacity))
                         }
-
-                    if number <= 9 {
-                        Text("\(number)")
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
-                            .foregroundColor(.primary.opacity(0.85))
-                            .frame(width: 18, height: 18)
-                            .background(
-                                Circle()
-                                    .fill(Color.black.opacity(0.55))
-                                    .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 0.5))
-                            )
-                            .offset(x: iconSize / 2 - 4, y: -iconSize / 2 + 4)
                     }
 
-                    if isMultiSelected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.accentColor)
-                            .font(.system(size: 14))
-                            .background(Circle().fill(Color.black.opacity(0.6)))
-                            .offset(x: iconSize / 2 - 4, y: iconSize / 2 - 4)
-                    }
+                if number <= 9 {
+                    Text("\(number)")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundColor(.primary.opacity(0.85))
+                        .frame(width: 18, height: 18)
+                        .background(
+                            Circle()
+                                .fill(Color.black.opacity(0.55))
+                                .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 0.5))
+                        )
+                        .offset(x: iconSize / 2 - 4, y: -iconSize / 2 + 4)
                 }
 
-                HStack(spacing: 4) {
-                    if let hex = option.colorHex, let color = Color(hexString: hex) {
-                        Capsule()
-                            .fill(color)
-                            .frame(width: 8, height: 3)
-                    }
-                    Text(labelText)
-                        .font(.system(size: 10, weight: isSelected ? .semibold : .medium))
-                        .foregroundColor(isSelected ? .primary : .secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                if isMultiSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.accentColor)
+                        .font(.system(size: 14))
+                        .background(Circle().fill(Color.black.opacity(0.6)))
+                        .offset(x: iconSize / 2 - 4, y: iconSize / 2 - 4)
                 }
-                .frame(maxWidth: labelMaxWidth)
-                .shadow(color: Color.black.opacity(0.5), radius: 1.5, x: 0, y: 1)
             }
             .opacity(dimmed ? 0.45 : 1.0)
             .scaleEffect(isHovered && !isSelected ? 1.04 : 1.0)
@@ -890,6 +894,86 @@ private struct DialDividers: Shape {
             path.addLine(to: e)
         }
         return path
+    }
+}
+
+private struct ArcText: View {
+    let text: String
+    let radius: CGFloat
+    let centerAngleRadians: Double
+    let maxArcSpanRadians: Double
+    let fontSize: CGFloat
+    let weight: Font.Weight
+    let color: Color
+
+    private var nsWeight: NSFont.Weight {
+        switch weight {
+        case .bold: return .bold
+        case .semibold: return .semibold
+        case .medium: return .medium
+        case .light: return .light
+        case .thin: return .thin
+        case .heavy: return .heavy
+        case .black: return .black
+        case .ultraLight: return .ultraLight
+        default: return .regular
+        }
+    }
+
+    private func widths(for chars: [Character], font: NSFont) -> [CGFloat] {
+        let attrs: [NSAttributedString.Key: Any] = [.font: font]
+        return chars.map { ch in
+            (String(ch) as NSString).size(withAttributes: attrs).width
+        }
+    }
+
+    private func fitted(font: NSFont) -> (chars: [Character], widths: [CGFloat]) {
+        let maxArcLength = maxArcSpanRadians * radius
+        var chars = Array(text)
+        var w = widths(for: chars, font: font)
+        if w.reduce(0, +) <= maxArcLength {
+            return (chars, w)
+        }
+        let ellipsis: Character = "\u{2026}"
+        let ellipsisW = (String(ellipsis) as NSString)
+            .size(withAttributes: [.font: font]).width
+        while !chars.isEmpty {
+            chars.removeLast()
+            w.removeLast()
+            let total = w.reduce(0, +) + ellipsisW
+            if total <= maxArcLength { break }
+        }
+        chars.append(ellipsis)
+        w.append(ellipsisW)
+        return (chars, w)
+    }
+
+    var body: some View {
+        let font = NSFont.systemFont(ofSize: fontSize, weight: nsWeight)
+        let (chars, charWidths) = fitted(font: font)
+        let totalWidth = charWidths.reduce(0, +)
+        let isBottom = sin(centerAngleRadians) > 0
+        return ZStack {
+            ForEach(0..<chars.count, id: \.self) { i in
+                let cumulative = charWidths.prefix(i).reduce(0, +)
+                let centerOffset = cumulative + charWidths[i] / 2 - totalWidth / 2
+                let angleOffset = Double(centerOffset) / Double(radius)
+                let angle = isBottom
+                    ? centerAngleRadians - angleOffset
+                    : centerAngleRadians + angleOffset
+                let rotation = isBottom ? angle - .pi / 2 : angle + .pi / 2
+                Text(String(chars[i]))
+                    .font(.system(size: fontSize, weight: weight))
+                    .foregroundColor(color)
+                    .fixedSize()
+                    .rotationEffect(.radians(rotation))
+                    .offset(
+                        x: radius * CGFloat(cos(angle)),
+                        y: radius * CGFloat(sin(angle))
+                    )
+            }
+        }
+        .shadow(color: Color.black.opacity(0.5), radius: 1.5, x: 0, y: 1)
     }
 }
 
