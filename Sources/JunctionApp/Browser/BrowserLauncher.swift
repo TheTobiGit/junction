@@ -12,6 +12,13 @@ protocol BrowserLaunching {
         url: URL,
         completion: @escaping (Bool) -> Void
     )
+
+    /// Spawns the Mach-O binary inside `appURL` with an explicit CLI argument list.
+    func run(
+        appURL: URL,
+        arguments: [String],
+        completion: @escaping (Bool) -> Void
+    )
 }
 
 // MARK: - Default implementation
@@ -107,7 +114,15 @@ struct BrowserLauncher: BrowserLaunching {
             incognito: incognito,
             url: url
         )
-        BrowserLauncher.run(appURL: appURL, arguments: args, completion: completion)
+        run(appURL: appURL, arguments: args, completion: completion)
+    }
+
+    func run(
+        appURL: URL,
+        arguments: [String],
+        completion: @escaping (Bool) -> Void
+    ) {
+        BrowserLauncher.run(appURL: appURL, arguments: arguments, completion: completion)
     }
 
     /// Spawns the Mach-O binary inside `appURL` with `arguments` on a background

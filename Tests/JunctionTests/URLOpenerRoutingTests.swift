@@ -1,10 +1,11 @@
 import XCTest
 import Foundation
+import Darwin
 @testable import JunctionApp
 
 // MARK: - Mock launcher
 
-/// Records every `launch` call so tests can assert routing without spawning real processes.
+/// Records every `launch` / `run` call so tests can assert routing without spawning real processes.
 final class MockBrowserLauncher: BrowserLaunching {
     struct Call: Equatable {
         let appURL: URL
@@ -13,7 +14,13 @@ final class MockBrowserLauncher: BrowserLaunching {
         let url: URL
     }
 
+    struct RunCall: Equatable {
+        let appURL: URL
+        let arguments: [String]
+    }
+
     private(set) var calls: [Call] = []
+    private(set) var runCalls: [RunCall] = []
 
     func launch(
         appURL: URL,
@@ -23,6 +30,15 @@ final class MockBrowserLauncher: BrowserLaunching {
         completion: @escaping (Bool) -> Void
     ) {
         calls.append(Call(appURL: appURL, profileDirectory: profileDirectory, incognito: incognito, url: url))
+        DispatchQueue.main.async { completion(true) }
+    }
+
+    func run(
+        appURL: URL,
+        arguments: [String],
+        completion: @escaping (Bool) -> Void
+    ) {
+        runCalls.append(RunCall(appURL: appURL, arguments: arguments))
         DispatchQueue.main.async { completion(true) }
     }
 }
@@ -44,6 +60,16 @@ final class URLOpenerRoutingTests: XCTestCase {
     private func makeHelium(profile: ChromiumProfile? = nil) -> LaunchOption {
         let browser = Browser(bundleID: "net.imput.helium", name: "Helium", url: fakeAppURL)
         return LaunchOption(browser: browser, profile: profile)
+    }
+
+    private func makeZen(profile: ChromiumProfile? = nil) -> LaunchOption {
+        let browser = Browser(bundleID: "app.zen-browser.zen", name: "Zen", url: fakeAppURL)
+        return LaunchOption(browser: browser, profile: profile)
+    }
+
+    private func makeFirefox() -> LaunchOption {
+        let browser = Browser(bundleID: "org.mozilla.firefox", name: "Firefox", url: fakeAppURL)
+        return LaunchOption(browser: browser, profile: nil)
     }
 
     // MARK: - VAL-OPENER-001: Chromium profile path uses BrowserLauncher
@@ -190,23 +216,62 @@ final class URLOpenerRoutingTests: XCTestCase {
     // added `--new-instance` to a profile that was already locked. Zen then
     // aborted with "already running but not responding" and nothing opened.
 
-    private func makeTempProfileDir() -> URL {
+    private func makeTempProfileDir() throws -> URL {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("junction-profile-\(UUID().uuidString)", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
 
-    func test_firefoxProfileActivelyLocked_emptyDirectory_returnsFalse() {
-        let dir = makeTempProfileDir()
+    /// Compiles a tiny helper that holds an `fcntl(F_SETLK)` write lock on a path.
+    private func compilePOSIXLockHolder() throws -> URL {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("junction-lock-holder-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let source = dir.appendingPathComponent("holder.c")
+        try """
+        #include <fcntl.h>
+        #include <unistd.h>
+        int main(int argc, char **argv) {
+            int fd = open(argv[1], O_RDWR);
+            if (fd < 0) return 1;
+            struct flock lock = { .l_type = F_WRLCK, .l_whence = SEEK_SET };
+            if (fcntl(fd, F_SETLK, &lock) != 0) return 2;
+            pause();
+            return 0;
+        }
+        """.write(to: source, atomically: true, encoding: .utf8)
+
+        let binary = dir.appendingPathComponent("holder")
+        let compile = Process()
+        compile.executableURL = URL(fileURLWithPath: "/usr/bin/clang")
+        compile.arguments = ["-o", binary.path, source.path]
+        try compile.run()
+        compile.waitUntilExit()
+        guard compile.terminationStatus == 0 else {
+            throw NSError(domain: "URLOpenerRoutingTests", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Failed to compile POSIX lock holder (clang exit \(compile.terminationStatus))",
+            ])
+        }
+
+        let installed = FileManager.default.temporaryDirectory
+            .appendingPathComponent("junction-lock-holder-\(UUID().uuidString)")
+        try FileManager.default.copyItem(at: binary, to: installed)
+        return installed
+    }
+
+    func test_firefoxProfileActivelyLocked_emptyDirectory_returnsFalse() throws {
+        let dir = try makeTempProfileDir()
         defer { try? FileManager.default.removeItem(at: dir) }
 
         XCTAssertFalse(URLOpener.isFirefoxProfileActivelyLocked(dir.path),
                        "An empty profile directory must not be reported as locked.")
     }
 
-    func test_firefoxProfileActivelyLocked_parentLockWithoutFcntlLock_returnsFalse() {
-        let dir = makeTempProfileDir()
+    func test_firefoxProfileActivelyLocked_parentLockWithoutFcntlLock_returnsFalse() throws {
+        let dir = try makeTempProfileDir()
         defer { try? FileManager.default.removeItem(at: dir) }
 
         // Firefox leaves `.parentlock` on disk after clean shutdown without
@@ -219,31 +284,129 @@ final class URLOpenerRoutingTests: XCTestCase {
                        "Stale .parentlock without an fcntl lock must report as not running.")
     }
 
-    func test_firefoxProfileActivelyLocked_symlinkToDeadPid_returnsFalse() {
-        let dir = makeTempProfileDir()
+    func test_firefoxProfileActivelyLocked_parentLockWithFcntlLock_returnsTrue() throws {
+        let dir = try makeTempProfileDir()
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        // A PID that almost certainly isn't alive. pid_t max is platform
-        // dependent but 2^22-ish PIDs are reserved by the kernel and rarely
-        // active in test environments.
+        let lockPath = dir.appendingPathComponent(".parentlock").path
+        XCTAssertTrue(FileManager.default.createFile(atPath: lockPath, contents: nil))
+
+        let holderBinary = try compilePOSIXLockHolder()
+        defer { try? FileManager.default.removeItem(at: holderBinary) }
+
+        let holder = Process()
+        holder.executableURL = holderBinary
+        holder.arguments = [lockPath]
+        try holder.run()
+        defer {
+            if holder.isRunning { holder.terminate() }
+            holder.waitUntilExit()
+        }
+
+        var locked = false
+        for _ in 0..<50 where !locked {
+            locked = URLOpener.isFirefoxProfileActivelyLocked(dir.path)
+            if !locked { usleep(20_000) }
+        }
+        XCTAssertTrue(locked, "fcntl-held .parentlock must report as actively locked.")
+    }
+
+    func test_firefoxProfileActivelyLocked_symlinkToDeadPid_returnsFalse() throws {
+        let dir = try makeTempProfileDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
         let lockPath = dir.appendingPathComponent("lock").path
         let target = "127.0.0.1:+2147483640"
-        try? FileManager.default.createSymbolicLink(atPath: lockPath, withDestinationPath: target)
+        try FileManager.default.createSymbolicLink(atPath: lockPath, withDestinationPath: target)
 
         XCTAssertFalse(URLOpener.isFirefoxProfileActivelyLocked(dir.path),
                        "Symlink lock pointing at a dead PID must report as not running.")
     }
 
-    func test_firefoxProfileActivelyLocked_symlinkToLivePid_returnsTrue() {
-        let dir = makeTempProfileDir()
+    func test_firefoxProfileActivelyLocked_symlinkToLivePid_returnsTrue() throws {
+        let dir = try makeTempProfileDir()
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let lockPath = dir.appendingPathComponent("lock").path
         let target = "127.0.0.1:+\(getpid())"
-        try? FileManager.default.createSymbolicLink(atPath: lockPath, withDestinationPath: target)
+        try FileManager.default.createSymbolicLink(atPath: lockPath, withDestinationPath: target)
 
         XCTAssertTrue(URLOpener.isFirefoxProfileActivelyLocked(dir.path),
                       "Symlink lock pointing at a live PID must report as running.")
+    }
+
+    func test_firefoxProfileActivelyLocked_unparseableSymlink_returnsFalse() throws {
+        let dir = try makeTempProfileDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let lockPath = dir.appendingPathComponent("lock").path
+        try FileManager.default.createSymbolicLink(atPath: lockPath, withDestinationPath: "not-a-valid-lock-target")
+
+        XCTAssertFalse(URLOpener.isFirefoxProfileActivelyLocked(dir.path),
+                       "Unparseable lock symlink must not be treated as actively locked.")
+    }
+
+    // MARK: - Firefox/Zen routing via injected launcher
+
+    func test_zenProfile_unlocked_includesNewInstance() throws {
+        let mock = MockBrowserLauncher()
+        let profileDir = try makeTempProfileDir()
+        defer { try? FileManager.default.removeItem(at: profileDir) }
+
+        let profile = ChromiumProfile(directoryName: profileDir.path, displayName: "Test", colorHex: nil)
+        let option = makeZen(profile: profile)
+
+        let exp = expectation(description: "completion fires")
+        URLOpener.open(targetURL, with: option, incognito: false, launcher: mock) { _ in exp.fulfill() }
+        waitForExpectations(timeout: 1.0)
+
+        XCTAssertEqual(mock.runCalls.count, 1)
+        XCTAssertEqual(mock.runCalls[0].appURL, fakeAppURL)
+        XCTAssertEqual(
+            mock.runCalls[0].arguments,
+            ["--new-instance", "--profile", profileDir.path, "--new-tab", targetURL.absoluteString]
+        )
+    }
+
+    func test_zenProfile_locked_omitsNewInstance() throws {
+        let mock = MockBrowserLauncher()
+        let profileDir = try makeTempProfileDir()
+        defer { try? FileManager.default.removeItem(at: profileDir) }
+
+        let lockPath = profileDir.appendingPathComponent("lock").path
+        try FileManager.default.createSymbolicLink(
+            atPath: lockPath,
+            withDestinationPath: "127.0.0.1:+\(getpid())"
+        )
+
+        let profile = ChromiumProfile(directoryName: profileDir.path, displayName: "Test", colorHex: nil)
+        let option = makeZen(profile: profile)
+
+        let exp = expectation(description: "completion fires")
+        URLOpener.open(targetURL, with: option, incognito: false, launcher: mock) { _ in exp.fulfill() }
+        waitForExpectations(timeout: 1.0)
+
+        XCTAssertEqual(mock.runCalls.count, 1)
+        XCTAssertEqual(
+            mock.runCalls[0].arguments,
+            ["--profile", profileDir.path, "--new-tab", targetURL.absoluteString]
+        )
+    }
+
+    func test_firefoxNoProfileIncognito_usesLauncherRun() {
+        let mock = MockBrowserLauncher()
+        let option = makeFirefox()
+
+        let exp = expectation(description: "completion fires")
+        URLOpener.open(targetURL, with: option, incognito: true, launcher: mock) { _ in exp.fulfill() }
+        waitForExpectations(timeout: 1.0)
+
+        XCTAssertEqual(mock.runCalls.count, 1)
+        XCTAssertEqual(mock.runCalls[0].appURL, fakeAppURL)
+        XCTAssertEqual(
+            mock.runCalls[0].arguments,
+            ["--private-window", targetURL.absoluteString]
+        )
     }
 
     func test_diaWindowScript_usesPlainNewWindowMenuItemWithoutProfile() {
