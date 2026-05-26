@@ -87,21 +87,28 @@ enum LaunchOptionDiscovery {
 
     /// Resolves the user's favorite browser/profile to a `LaunchOption` if
     /// the underlying app or profile is still installed and discoverable.
-    /// Falls back to the bundle-level app option when a previously-favored
-    /// profile has been deleted, mirroring `resolve(target:)` semantics so
-    /// "open in favorite" stays useful even after profile churn.
-    static func resolveFavorite(in options: [LaunchOption] = options()) -> LaunchOption? {
-        guard let key = SettingsStore.shared.settings.favoriteTargetKey else { return nil }
+    /// When a previously-favored profile has been deleted, returns a
+    /// synthesized bundle-level option (profile-less) for the same browser
+    /// so "open in favorite" stays useful even after profile churn —
+    /// importantly, this never silently routes the user into an unrelated
+    /// surviving profile of the same browser.
+    /// `favoriteKey` defaults to the shared settings store's value;
+    /// tests inject an explicit key to avoid touching the singleton.
+    static func resolveFavorite(
+        favoriteKey: String? = SettingsStore.shared.settings.favoriteTargetKey,
+        in options: [LaunchOption] = options()
+    ) -> LaunchOption? {
+        guard let key = favoriteKey else { return nil }
         if let match = options.first(where: { $0.target.storageKey == key }) {
             return match
         }
         if key.hasPrefix("profile:") {
             let rest = String(key.dropFirst("profile:".count))
             let bundleID = rest.split(separator: ":", maxSplits: 1).first.map(String.init) ?? ""
-            if !bundleID.isEmpty,
-               let appFallback = options.first(where: { $0.browser.bundleID == bundleID }) {
-                return appFallback
-            }
+            guard !bundleID.isEmpty,
+                  let bundleMatch = options.first(where: { $0.browser.bundleID == bundleID })
+            else { return nil }
+            return LaunchOption(browser: bundleMatch.browser, profile: nil)
         }
         return nil
     }
