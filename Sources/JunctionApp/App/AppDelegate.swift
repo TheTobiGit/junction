@@ -474,7 +474,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        let route = URLRouteResolver.resolve(url: resolved, context: context)
+        let route = URLRouteResolver.resolve(
+            url: resolved,
+            context: context,
+            precomputedGlobalTrace: globalTrace
+        )
         let match = route.match
         let trace = route.trace
         let ruleLabel = match.rule.map { "\($0.kindLabel):\($0.displayValue)" }

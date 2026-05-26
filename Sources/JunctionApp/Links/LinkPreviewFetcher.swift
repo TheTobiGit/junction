@@ -9,12 +9,23 @@ struct LinkPreview {
 }
 
 enum LinkPreviewFetcher {
+    /// Worst-case time the URL loading system will keep a single preview task
+    /// alive end-to-end, even if bytes keep trickling in. Bigger than any
+    /// per-call `timeout` we pass so a normal slow response still completes,
+    /// but small enough that a stalled connection can't pin a session task
+    /// forever (the per-request timeout alone resets on incoming bytes).
+    private static let resourceTimeout: TimeInterval = 10
+
     /// Shared ephemeral session reused for HTML + favicon fetches. Per-request
     /// timeouts and `Accept` headers are set on the `URLRequest` so the same
     /// session can serve both code paths without bouncing the URL loading
     /// system on every preview lookup.
     private static let sharedSession: URLSession = {
         let config = URLSessionConfiguration.ephemeral
+        // Bound the absolute task lifetime; the per-request `timeoutInterval`
+        // resets on incoming bytes, so without this a slow trickle could
+        // outlast the caller's expected window.
+        config.timeoutIntervalForResource = resourceTimeout
         config.httpAdditionalHeaders = [
             "User-Agent": BrowserUserAgent.safariMacDesktop,
         ]
@@ -47,14 +58,18 @@ enum LinkPreviewFetcher {
             options: [.caseInsensitive, .dotMatchesLineSeparators]
         )
 
-        /// Patterns are compile-time literals; a runtime failure here means
-        /// the source pattern itself is malformed, so trapping is correct.
+        /// Patterns are compile-time literals and have no dynamic input.
+        /// A failure here means the literal itself is malformed — fail loudly
+        /// at first use rather than silently returning no metadata.
         private static func compile(
             _ pattern: String,
             options: NSRegularExpression.Options
         ) -> NSRegularExpression {
-            // swiftlint:disable:next force_try
-            try! NSRegularExpression(pattern: pattern, options: options)
+            do {
+                return try NSRegularExpression(pattern: pattern, options: options)
+            } catch {
+                preconditionFailure("LinkPreviewFetcher: invalid regex literal '\(pattern)': \(error)")
+            }
         }
     }
 
