@@ -84,10 +84,10 @@ final class FavoriteTargetTests: XCTestCase {
         )
         let options = [safari, braveDefault, braveWork]
 
-        SettingsStore.shared.setFavoriteTargetKey("profile:com.brave.Browser:Profile 1")
-        defer { SettingsStore.shared.setFavoriteTargetKey(nil) }
-
-        let resolved = LaunchOptionDiscovery.resolveFavorite(in: options)
+        let resolved = LaunchOptionDiscovery.resolveFavorite(
+            favoriteKey: "profile:com.brave.Browser:Profile 1",
+            in: options
+        )
         XCTAssertEqual(resolved?.target.storageKey, braveWork.target.storageKey)
     }
 
@@ -96,18 +96,56 @@ final class FavoriteTargetTests: XCTestCase {
         let brave = makeOption(bundleID: "com.brave.Browser", name: "Brave")
         let options = [safari, brave]
 
-        SettingsStore.shared.setFavoriteTargetKey("profile:com.brave.Browser:DeletedProfile")
-        defer { SettingsStore.shared.setFavoriteTargetKey(nil) }
-
-        let resolved = LaunchOptionDiscovery.resolveFavorite(in: options)
+        let resolved = LaunchOptionDiscovery.resolveFavorite(
+            favoriteKey: "profile:com.brave.Browser:DeletedProfile",
+            in: options
+        )
         XCTAssertEqual(resolved?.browser.bundleID, "com.brave.Browser")
         XCTAssertNil(resolved?.profile, "profile fallback must drop the profile suffix")
     }
 
-    func test_resolveFavorite_returnsNilWhenNoFavoriteSet() {
-        SettingsStore.shared.setFavoriteTargetKey(nil)
+    /// Regression: when the saved favorite profile is gone but other profiles
+    /// of the same browser still exist, resolution must drop the profile and
+    /// return the bundle-level option, never an unrelated surviving profile.
+    func test_resolveFavorite_missingProfile_otherSameBundleProfilesExist_returnsBundleOption() {
         let safari = makeOption(bundleID: "com.apple.Safari", name: "Safari")
-        XCTAssertNil(LaunchOptionDiscovery.resolveFavorite(in: [safari]))
+        let braveWork = makeProfileOption(
+            bundleID: "com.brave.Browser",
+            name: "Brave",
+            profileID: "Profile 1",
+            profileLabel: "Work"
+        )
+        let bravePersonal = makeProfileOption(
+            bundleID: "com.brave.Browser",
+            name: "Brave",
+            profileID: "Profile 2",
+            profileLabel: "Personal"
+        )
+        let options = [safari, braveWork, bravePersonal]
+
+        let resolved = LaunchOptionDiscovery.resolveFavorite(
+            favoriteKey: "profile:com.brave.Browser:DeletedProfile",
+            in: options
+        )
+
+        XCTAssertEqual(resolved?.browser.bundleID, "com.brave.Browser")
+        XCTAssertNil(resolved?.profile,
+                     "must not silently route to a different surviving profile")
+        XCTAssertEqual(resolved?.target.storageKey, "app:com.brave.Browser")
+    }
+
+    func test_resolveFavorite_returnsNilWhenNoFavoriteSet() {
+        let safari = makeOption(bundleID: "com.apple.Safari", name: "Safari")
+        XCTAssertNil(LaunchOptionDiscovery.resolveFavorite(favoriteKey: nil, in: [safari]))
+    }
+
+    func test_resolveFavorite_returnsNilWhenBundleNotInstalled() {
+        let safari = makeOption(bundleID: "com.apple.Safari", name: "Safari")
+        let resolved = LaunchOptionDiscovery.resolveFavorite(
+            favoriteKey: "profile:com.uninstalled.Browser:Default",
+            in: [safari]
+        )
+        XCTAssertNil(resolved)
     }
 
     // MARK: - Helpers
