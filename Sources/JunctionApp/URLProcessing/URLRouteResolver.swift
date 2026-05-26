@@ -27,26 +27,37 @@ enum URLRouteResolver {
     ///   - context: Frontmost source + focus context, used by `when` rule conditions.
     ///   - explicitClean: When the caller has a pinned `clean=…` override (CLI, agent,
     ///     `junction://open?clean=…`), pass it here; it wins over both rule and global.
+    ///   - precomputedGlobalTrace: Callers that already ran the default (global) pipeline
+    ///     on `url` (currently ``AppDelegate.routeAfterExpansion`` does this for the
+    ///     scheme/app-scheme preflight) can pass it here so the resolver doesn't redo
+    ///     that work. Must be the result of `URLTransformers.default.runTraced(url)` —
+    ///     anything else will mismatch the rule pipeline and cause subtle bugs.
     static func resolve(
         url: URL,
         context: RouteContext,
-        explicitClean: Bool? = nil
+        explicitClean: Bool? = nil,
+        precomputedGlobalTrace: URLTransformResult? = nil
     ) -> ResolvedRoute {
         let globalSettings = SettingsStore.shared.settings
-        let globalTrace = URLTransformers.default.runTraced(url)
         let match = RulesStore.shared.match(
             url: URLTransformers.urlForRuleMatching(url),
             context: context
         )
 
+        // Match first so we know whether the rule needs a per-rule pipeline.
+        // When overrides are present we run the merged pipeline once; when
+        // they're absent we use the caller's precomputed global trace if any,
+        // otherwise run the default pipeline once. Either way: one trace.
         let trace: URLTransformResult
         if let ruleOverrides = match.rule?.trackerOverrides {
             trace = URLTransformers.pipeline(
                 globalOverrides: globalSettings.trackerOverrides,
                 ruleOverrides: ruleOverrides
             ).runTraced(url)
+        } else if let precomputedGlobalTrace {
+            trace = precomputedGlobalTrace
         } else {
-            trace = globalTrace
+            trace = URLTransformers.default.runTraced(url)
         }
 
         let cleaningEnabled: Bool
