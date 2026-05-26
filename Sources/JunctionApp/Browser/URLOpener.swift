@@ -10,8 +10,9 @@ enum URLOpener {
     ///   - url: The URL to open.
     ///   - option: The browser (and optional profile) to use.
     ///   - incognito: Whether to request a private/incognito window.
-    ///   - launcher: The `BrowserLaunching` implementation used for all Chromium
-    ///     paths. Defaults to `BrowserLauncher()`. Inject a mock in unit tests.
+    ///   - launcher: The `BrowserLaunching` implementation used for Chromium and
+    ///     Firefox-family process launches. Defaults to `BrowserLauncher()`.
+    ///     Inject a mock in unit tests.
     ///   - completion: Called on the main queue with `true` on success.
     static func open(
         _ url: URL,
@@ -118,7 +119,7 @@ enum URLOpener {
                 }
                 args.append(contentsOf: ["--profile", absProfilePath, profileFlag, url.absoluteString])
 
-                BrowserLauncher.run(appURL: option.browser.url, arguments: args) { success in
+                launcher.run(appURL: option.browser.url, arguments: args) { success in
                     DispatchQueue.main.async { completion?(success) }
                 }
                 return
@@ -168,7 +169,7 @@ enum URLOpener {
            isFirefoxBundleID(option.browser.bundleID),
            let args = incognitoArguments(for: option.browser.bundleID, url: url)
         {
-            BrowserLauncher.run(appURL: option.browser.url, arguments: args) { success in
+            launcher.run(appURL: option.browser.url, arguments: args) { success in
                 DispatchQueue.main.async { completion?(success) }
             }
             return
@@ -601,11 +602,7 @@ enum URLOpener {
         guard let colon = target.lastIndex(of: ":") else { return false }
         var pidPart = target[target.index(after: colon)...]
         if pidPart.hasPrefix("+") { pidPart = pidPart.dropFirst() }
-        guard let pid = pid_t(pidPart) else {
-            // Unparseable target — treat as active to avoid spurious
-            // `--new-instance` if Firefox changes the lock format.
-            return true
-        }
+        guard let pid = pid_t(pidPart) else { return false }
 
         return kill(pid, 0) == 0 || errno == EPERM
     }
