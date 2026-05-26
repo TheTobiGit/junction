@@ -83,8 +83,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             if let key = explicitTargetKey,
                let option = LaunchOptionDiscovery.options().first(where: { $0.target.storageKey == key }) {
-                let globalSettings = SettingsStore.shared.settings
-                let globalTrace = URLTransformers.default.runTraced(target)
                 // junction://open?clean=… is an explicit user request and
                 // wins. Without it, fall through to the matching rule's
                 // `cleanOverride` so a "Never clean" pin on the host applies
@@ -93,29 +91,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     source: FrontmostTracker.shared.lastNonJunction,
                     focus: FocusTracker.current()
                 )
-                let match = RulesStore.shared.match(
-                    url: URLTransformers.urlForRuleMatching(target),
-                    context: context
-                )
-                let trace: URLTransformResult
-                if let ruleOverrides = match.rule?.trackerOverrides {
-                    trace = URLTransformers.pipeline(
-                        globalOverrides: globalSettings.trackerOverrides,
-                        ruleOverrides: ruleOverrides
-                    ).runTraced(target)
-                } else {
-                    trace = globalTrace
-                }
-                let shouldClean: Bool
-                if let explicit = clean {
-                    shouldClean = explicit
-                } else {
-                    shouldClean = DomainRule.resolveCleanFlag(
-                        rule: match.rule,
-                        globalEnabled: globalSettings.cleanURLsBeforeOpening
-                    )
-                }
-                let finalURL = shouldClean ? trace.final : target
+                let route = URLRouteResolver.resolve(url: target, context: context, explicitClean: clean)
+                let trace = route.trace
+                let finalURL = route.urlToOpen
                 if incognito, !supportsPrivate(option) {
                     showPicker(for: target)
                     return
@@ -374,8 +352,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         guard isAcceptableScheme(url) else { return }
 
-        let globalTrace = URLTransformers.default.runTraced(url)
-
         // Resolve the cleaning flag: an explicit CLI/junction:// `clean=…`
         // wins (user said so), then any matching rule's `cleanOverride`,
         // then the global setting. Looking up the rule even on the explicit-
@@ -385,29 +361,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             source: FrontmostTracker.shared.lastNonJunction,
             focus: FocusTracker.current()
         )
-        let match = RulesStore.shared.match(
-            url: URLTransformers.urlForRuleMatching(url),
-            context: context
-        )
-        let trace: URLTransformResult
-        if let ruleOverrides = match.rule?.trackerOverrides {
-            trace = URLTransformers.pipeline(
-                globalOverrides: SettingsStore.shared.settings.trackerOverrides,
-                ruleOverrides: ruleOverrides
-            ).runTraced(url)
-        } else {
-            trace = globalTrace
-        }
-        let shouldClean: Bool
-        if let explicit = clean {
-            shouldClean = explicit
-        } else {
-            shouldClean = DomainRule.resolveCleanFlag(
-                rule: match.rule,
-                globalEnabled: SettingsStore.shared.settings.cleanURLsBeforeOpening
-            )
-        }
-        let finalURL = shouldClean ? trace.final : url
+        let resolved = URLRouteResolver.resolve(url: url, context: context, explicitClean: clean)
+        let trace = resolved.trace
+        let finalURL = resolved.urlToOpen
 
         if let key = targetKey,
            let option = LaunchOptionDiscovery.options().first(where: { $0.target.storageKey == key }) {
@@ -518,36 +474,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        let match = RulesStore.shared.match(
-            url: URLTransformers.urlForRuleMatching(resolved),
-            context: context
-        )
-
-        // If the matched rule carries per-rule tracker overrides, rebuild the
-        // pipeline merging global + rule overrides and re-run from the resolved
-        // URL so the rule's disabled entries can suppress global stripping.
-        let trace: URLTransformResult
-        if let ruleOverrides = match.rule?.trackerOverrides {
-            trace = URLTransformers.pipeline(
-                globalOverrides: globalSettings.trackerOverrides,
-                ruleOverrides: ruleOverrides
-            ).runTraced(resolved)
-        } else {
-            trace = globalTrace
-        }
+        let route = URLRouteResolver.resolve(url: resolved, context: context)
+        let match = route.match
+        let trace = route.trace
         let ruleLabel = match.rule.map { "\($0.kindLabel):\($0.displayValue)" }
 
         if match.rule?.alsoCopyCleaned == true {
             copyCleaned(trace.final)
         }
 
-        // Honor `cleanURLsBeforeOpening` plus the per-rule override: the rule's
-        // `cleanOverride` (if set) wins over the global toggle, so users can
-        // pin "never clean for myinternal.example.com" or "always clean even
-        // when the global setting is off".
-        let globalCleaning = SettingsStore.shared.settings.cleanURLsBeforeOpening
-        let cleaned = DomainRule.resolveCleanFlag(rule: match.rule, globalEnabled: globalCleaning)
-        let urlToOpen = cleaned ? trace.final : resolved
+        let urlToOpen = route.urlToOpen
 
         // Picker keeps the resolved-but-not-yet-cleaned URL so it can show the
         // "cleaned" diff and let the user copy either form.

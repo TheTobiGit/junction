@@ -42,26 +42,9 @@ final class PickerPanelController {
             // does so picker-confirmed opens behave identically to rule-driven
             // opens. Match before global tracker stripping so query-scoped rules
             // and per-rule tracker overrides are found correctly.
-            let globalSettings = SettingsStore.shared.settings
-            let globalTrace = URLTransformers.default.runTraced(url)
-            let match = RulesStore.shared.match(
-                url: URLTransformers.urlForRuleMatching(url),
-                context: context
-            )
-            let trace: URLTransformResult
-            if let ruleOverrides = match.rule?.trackerOverrides {
-                trace = URLTransformers.pipeline(
-                    globalOverrides: globalSettings.trackerOverrides,
-                    ruleOverrides: ruleOverrides
-                ).runTraced(url)
-            } else {
-                trace = globalTrace
-            }
-            let shouldClean = DomainRule.resolveCleanFlag(
-                rule: match.rule,
-                globalEnabled: globalSettings.cleanURLsBeforeOpening
-            )
-            let urlToOpen = shouldClean ? trace.final : url
+            let route = URLRouteResolver.resolve(url: url, context: context)
+            let trace = route.trace
+            let urlToOpen = route.urlToOpen
             URLOpener.open(urlToOpen, with: option, incognito: incognito) { success in
                 if success {
                     LastURLStore.shared.recordRouted(urlToOpen)
