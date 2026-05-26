@@ -7,6 +7,7 @@ struct PickerView: View {
     let width: CGFloat
     let height: CGFloat
     @State private var appeared: Bool = false
+    @State private var dialHoveredIndex: Int? = nil
 
     init(model: PickerViewModel, width: CGFloat, height: CGFloat = PickerView.pickerHeight) {
         self.model = model
@@ -476,7 +477,7 @@ struct PickerView: View {
                 dialEmptyBoard
                     .frame(width: Self.dialDiameter, height: Self.dialDiameter)
             } else {
-                dialBoard(tiles: tiles)
+                dialBoard(tiles: tiles, hoveredIndex: $dialHoveredIndex)
                     .frame(width: Self.dialDiameter, height: Self.dialDiameter)
             }
 
@@ -601,7 +602,7 @@ struct PickerView: View {
         }
     }
 
-    private func dialBoard(tiles: [TileEntry]) -> some View {
+    private func dialBoard(tiles: [TileEntry], hoveredIndex: Binding<Int?>) -> some View {
         let outerRad: CGFloat = Self.dialDiameter / 2.0
         let innerRad: CGFloat = outerRad * 0.42
         let iconRad: CGFloat = outerRad * 0.66
@@ -609,13 +610,14 @@ struct PickerView: View {
         let count = tiles.count
         let angleStep: Double = 360.0 / Double(max(count, 1))
         let selectedIdx = model.selectedIndex
-        let selectedOption: LaunchOption? = {
-            guard tiles.indices.contains(selectedIdx) else { return nil }
-            switch tiles[selectedIdx].kind {
+        let highlightIdx = hoveredIndex.wrappedValue ?? selectedIdx
+        let highlightedOption: LaunchOption? = {
+            guard tiles.indices.contains(highlightIdx) else { return nil }
+            switch tiles[highlightIdx].kind {
             case .single(let opt), .groupChild(let opt): return opt
             }
         }()
-        let selectedBrand: Color = selectedOption.map { brandColor(for: $0.browser.bundleID) }
+        let highlightBrand: Color = highlightedOption.map { brandColor(for: $0.browser.bundleID) }
             ?? appSettings.settings.accentPreset.swiftUIColor
 
         return ZStack {
@@ -626,7 +628,7 @@ struct PickerView: View {
                         .fill(
                             RadialGradient(
                                 colors: [
-                                    selectedBrand.opacity(0.18),
+                                    highlightBrand.opacity(0.18),
                                     Color.black.opacity(0.05),
                                 ],
                                 center: .center,
@@ -634,6 +636,7 @@ struct PickerView: View {
                                 endRadius: outerRad
                             )
                         )
+                        .animation(.easeOut(duration: 0.22), value: highlightIdx)
                 )
                 .overlay(
                     Circle()
@@ -648,8 +651,8 @@ struct PickerView: View {
                 )
                 .shadow(color: Color.black.opacity(0.35), radius: 22, x: 0, y: 10)
 
-            if tiles.indices.contains(selectedIdx) {
-                let startAngle = Double(selectedIdx) * angleStep - 90.0 - (angleStep / 2.0)
+            if tiles.indices.contains(highlightIdx) {
+                let startAngle = Double(highlightIdx) * angleStep - 90.0 - (angleStep / 2.0)
                 let endAngle = startAngle + angleStep
 
                 CircularWedge(
@@ -660,7 +663,7 @@ struct PickerView: View {
                 )
                 .fill(
                     RadialGradient(
-                        colors: [selectedBrand.opacity(0.32), selectedBrand.opacity(0.06)],
+                        colors: [highlightBrand.opacity(0.32), highlightBrand.opacity(0.06)],
                         center: .center,
                         startRadius: innerRad,
                         endRadius: outerRad
@@ -673,8 +676,8 @@ struct PickerView: View {
                     innerRadius: innerRad,
                     outerRadius: outerRad
                 )
-                .stroke(selectedBrand.opacity(0.7), lineWidth: 1.5)
-                .animation(.spring(response: 0.32, dampingFraction: 0.82), value: selectedIdx)
+                .stroke(highlightBrand.opacity(0.7), lineWidth: 1.5)
+                .animation(.easeOut(duration: 0.22), value: highlightIdx)
             }
 
             DialDividers(count: count, innerRadius: innerRad, outerRadius: outerRad)
@@ -687,6 +690,7 @@ struct PickerView: View {
                     }
                 }()
                 let isSelected = idx == selectedIdx
+                let isHovered = hoveredIndex.wrappedValue == idx
                 let isMultiSelected = model.multiSelection.contains(option.id)
                 let startAngle = Double(idx) * angleStep - 90.0 - (angleStep / 2.0)
                 let endAngle = startAngle + angleStep
@@ -700,6 +704,7 @@ struct PickerView: View {
                     idx: idx,
                     number: idx + 1,
                     isSelected: isSelected,
+                    isHovered: isHovered,
                     isMultiSelected: isMultiSelected,
                     showIncognito: privateActive && supportsIncognito,
                     dimmed: privateActive && !supportsIncognito,
@@ -710,7 +715,17 @@ struct PickerView: View {
                     iconOffsetX: iconRad * cos(centerRad),
                     iconOffsetY: iconRad * sin(centerRad),
                     brandCol: brandColor(for: option.browser.bundleID),
-                    model: model
+                    model: model,
+                    onHoverChange: { hovering in
+                        if hovering {
+                            hoveredIndex.wrappedValue = idx
+                            if model.selectedIndex != idx {
+                                model.selectedIndex = idx
+                            }
+                        } else if hoveredIndex.wrappedValue == idx {
+                            hoveredIndex.wrappedValue = nil
+                        }
+                    }
                 )
             }
 
@@ -720,7 +735,7 @@ struct PickerView: View {
                     case .single(let opt), .groupChild(let opt): return opt
                     }
                 }()
-                let isSelected = idx == selectedIdx
+                let isHighlighted = idx == highlightIdx
                 let centerAngleDeg = Double(idx) * angleStep - 90.0
                 let centerAngleRad = centerAngleDeg * .pi / 180.0
                 let labelText = option.profile?.displayName ?? option.browser.name
@@ -733,31 +748,35 @@ struct PickerView: View {
                     centerAngleRadians: centerAngleRad,
                     maxArcSpanRadians: angleStep * 0.85 * .pi / 180.0,
                     fontSize: 11,
-                    weight: isSelected ? .semibold : .medium,
-                    color: isSelected ? .primary : .secondary
+                    weight: isHighlighted ? .semibold : .medium,
+                    color: isHighlighted ? .primary : .secondary
                 )
-                .opacity(dimmed ? 0.45 : 1.0)
+                .opacity(dimmed ? 0.45 : (isHighlighted ? 1.0 : 0.82))
                 .allowsHitTesting(false)
-                .animation(.spring(response: 0.32, dampingFraction: 0.82), value: isSelected)
+                .animation(.easeOut(duration: 0.18), value: isHighlighted)
             }
 
             DialCenterHub(
                 radius: innerRad,
-                selectedOption: selectedOption,
+                selectedOption: highlightedOption,
                 multiCount: model.multiSelection.count,
                 privateActive: model.incognitoMode || model.optionKeyHeld,
-                accent: selectedBrand
+                accent: highlightBrand
             )
+            .animation(.easeOut(duration: 0.18), value: highlightIdx)
         }
         .compositingGroup()
-        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: selectedIdx)
     }
 
 private struct DialSegmentView: View {
+    private static let iconSlotSize: CGFloat = 52
+    private static let iconBaseSize: CGFloat = 44
+
     let option: LaunchOption
     let idx: Int
     let number: Int
     let isSelected: Bool
+    let isHovered: Bool
     let isMultiSelected: Bool
     let showIncognito: Bool
     let dimmed: Bool
@@ -769,37 +788,51 @@ private struct DialSegmentView: View {
     let iconOffsetY: CGFloat
     let brandCol: Color
     @ObservedObject var model: PickerViewModel
-    @State private var isHovered = false
+    let onHoverChange: (Bool) -> Void
 
-    private var iconSize: CGFloat { isSelected ? 50 : 42 }
+    private var iconScale: CGFloat {
+        if isSelected { return 1.08 }
+        if isHovered { return 1.05 }
+        return 1.0
+    }
+
+    private var iconShadowRadius: CGFloat {
+        if isSelected { return 10 }
+        if isHovered { return 6 }
+        return 4
+    }
 
     var body: some View {
         ZStack {
-            if !isSelected && isHovered {
+            if isHovered && !isSelected {
                 CircularWedge(
                     startAngle: startAngle,
                     endAngle: endAngle,
                     innerRadius: innerRadius,
                     outerRadius: outerRadius
                 )
-                .fill(Color.white.opacity(0.06))
+                .fill(Color.white.opacity(0.07))
+                .transition(.opacity)
             }
 
             ZStack {
-                if isSelected {
+                if isSelected || isHovered {
                     Circle()
-                        .fill(brandCol.opacity(0.16))
-                        .frame(width: iconSize + 18, height: iconSize + 18)
+                        .fill(brandCol.opacity(isSelected ? 0.16 : 0.10))
+                        .frame(width: Self.iconSlotSize + 6, height: Self.iconSlotSize + 6)
                         .blur(radius: 6)
                 }
 
                 Image(nsImage: option.icon)
                     .resizable()
                     .interpolation(.high)
-                    .frame(width: iconSize, height: iconSize)
+                    .frame(width: Self.iconBaseSize, height: Self.iconBaseSize)
+                    .scaleEffect(iconScale)
                     .shadow(
-                        color: isSelected ? brandCol.opacity(0.45) : Color.black.opacity(0.18),
-                        radius: isSelected ? 10 : 4,
+                        color: isSelected || isHovered
+                            ? brandCol.opacity(isSelected ? 0.45 : 0.28)
+                            : Color.black.opacity(0.18),
+                        radius: iconShadowRadius,
                         x: 0,
                         y: 2
                     )
@@ -821,7 +854,7 @@ private struct DialSegmentView: View {
                                 .fill(Color.black.opacity(0.55))
                                 .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 0.5))
                         )
-                        .offset(x: iconSize / 2 - 4, y: -iconSize / 2 + 4)
+                        .offset(x: Self.iconBaseSize / 2 - 4, y: -Self.iconBaseSize / 2 + 4)
                 }
 
                 if isMultiSelected {
@@ -829,11 +862,11 @@ private struct DialSegmentView: View {
                         .foregroundColor(.accentColor)
                         .font(.system(size: 14))
                         .background(Circle().fill(Color.black.opacity(0.6)))
-                        .offset(x: iconSize / 2 - 4, y: iconSize / 2 - 4)
+                        .offset(x: Self.iconBaseSize / 2 - 4, y: Self.iconBaseSize / 2 - 4)
                 }
             }
+            .frame(width: Self.iconSlotSize, height: Self.iconSlotSize)
             .opacity(dimmed ? 0.45 : 1.0)
-            .scaleEffect(isHovered && !isSelected ? 1.04 : 1.0)
             .offset(x: iconOffsetX, y: iconOffsetY)
         }
         .contentShape(
@@ -845,14 +878,9 @@ private struct DialSegmentView: View {
             )
         )
         .onHover { hovering in
-            isHovered = hovering
+            onHoverChange(hovering)
             if hovering {
                 NSCursor.pointingHand.push()
-                if model.selectedIndex != idx {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                        model.selectedIndex = idx
-                    }
-                }
             } else {
                 NSCursor.pop()
             }
@@ -869,8 +897,8 @@ private struct DialSegmentView: View {
         .help(dimmed
               ? "\(option.browser.name) doesn't support private windows — it will open normally."
               : "Open in \(option.displayName)")
-        .animation(.easeOut(duration: 0.15), value: isHovered)
-        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: isSelected)
+        .animation(.easeOut(duration: 0.18), value: isHovered)
+        .animation(.easeOut(duration: 0.18), value: isSelected)
         .animation(.spring(response: 0.25, dampingFraction: 0.75), value: showIncognito)
     }
 }
