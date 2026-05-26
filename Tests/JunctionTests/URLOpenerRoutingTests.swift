@@ -223,43 +223,22 @@ final class URLOpenerRoutingTests: XCTestCase {
         return dir
     }
 
-    /// Compiles a tiny helper that holds an `fcntl(F_SETLK)` write lock on a path.
-    private func compilePOSIXLockHolder() throws -> URL {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("junction-lock-holder-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
-
-        let source = dir.appendingPathComponent("holder.c")
-        try """
-        #include <fcntl.h>
-        #include <unistd.h>
-        int main(int argc, char **argv) {
-            int fd = open(argv[1], O_RDWR);
-            if (fd < 0) return 1;
-            struct flock lock = { .l_type = F_WRLCK, .l_whence = SEEK_SET };
-            if (fcntl(fd, F_SETLK, &lock) != 0) return 2;
-            pause();
-            return 0;
+    /// Locates the `POSIXLockHolder` test helper built by SwiftPM alongside the test bundle.
+    private func posixLockHolderURL() throws -> URL {
+        let name = "POSIXLockHolder"
+        let fm = FileManager.default
+        let root = URL(fileURLWithPath: fm.currentDirectoryPath)
+        let candidates = [
+            root.appendingPathComponent(".build/debug/\(name)"),
+            root.appendingPathComponent(".build/arm64-apple-macosx/debug/\(name)"),
+            root.appendingPathComponent(".build/x86_64-apple-macosx/debug/\(name)"),
+        ]
+        if let url = candidates.first(where: { fm.isExecutableFile(atPath: $0.path) }) {
+            return url
         }
-        """.write(to: source, atomically: true, encoding: .utf8)
-
-        let binary = dir.appendingPathComponent("holder")
-        let compile = Process()
-        compile.executableURL = URL(fileURLWithPath: "/usr/bin/clang")
-        compile.arguments = ["-o", binary.path, source.path]
-        try compile.run()
-        compile.waitUntilExit()
-        guard compile.terminationStatus == 0 else {
-            throw NSError(domain: "URLOpenerRoutingTests", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "Failed to compile POSIX lock holder (clang exit \(compile.terminationStatus))",
-            ])
-        }
-
-        let installed = FileManager.default.temporaryDirectory
-            .appendingPathComponent("junction-lock-holder-\(UUID().uuidString)")
-        try FileManager.default.copyItem(at: binary, to: installed)
-        return installed
+        throw NSError(domain: "URLOpenerRoutingTests", code: 1, userInfo: [
+            NSLocalizedDescriptionKey: "POSIXLockHolder helper not found; run `swift build` first.",
+        ])
     }
 
     func test_firefoxProfileActivelyLocked_emptyDirectory_returnsFalse() throws {
@@ -291,11 +270,8 @@ final class URLOpenerRoutingTests: XCTestCase {
         let lockPath = dir.appendingPathComponent(".parentlock").path
         XCTAssertTrue(FileManager.default.createFile(atPath: lockPath, contents: nil))
 
-        let holderBinary = try compilePOSIXLockHolder()
-        defer { try? FileManager.default.removeItem(at: holderBinary) }
-
         let holder = Process()
-        holder.executableURL = holderBinary
+        holder.executableURL = try posixLockHolderURL()
         holder.arguments = [lockPath]
         try holder.run()
         defer {

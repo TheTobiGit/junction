@@ -33,9 +33,13 @@ let package = Package(
             dependencies: ["JunctionCore"],
             path: "Sources/JunctionCLI"
         ),
+        .executableTarget(
+            name: "POSIXLockHolder",
+            path: "Tests/Support/POSIXLockHolder"
+        ),
         .testTarget(
             name: "JunctionTests",
-            dependencies: ["JunctionApp", "JunctionCore"],
+            dependencies: ["JunctionApp", "JunctionCore", "POSIXLockHolder"],
             path: "Tests/JunctionTests"
         )
     ]
