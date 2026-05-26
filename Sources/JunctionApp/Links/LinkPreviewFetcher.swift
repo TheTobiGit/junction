@@ -9,6 +9,55 @@ struct LinkPreview {
 }
 
 enum LinkPreviewFetcher {
+    /// Shared ephemeral session reused for HTML + favicon fetches. Per-request
+    /// timeouts and `Accept` headers are set on the `URLRequest` so the same
+    /// session can serve both code paths without bouncing the URL loading
+    /// system on every preview lookup.
+    private static let sharedSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.httpAdditionalHeaders = [
+            "User-Agent": BrowserUserAgent.safariMacDesktop,
+        ]
+        return URLSession(configuration: config)
+    }()
+
+    /// Cached regex patterns. Compiling these on every `fetch` call shows up
+    /// in profile traces when the picker prefetches several previews back to
+    /// back, so we hold one `NSRegularExpression` per pattern at process
+    /// scope instead.
+    private enum CompiledPattern {
+        static let metaTag: NSRegularExpression = compile(
+            "<meta\\b[^>]*>",
+            options: [.caseInsensitive, .dotMatchesLineSeparators]
+        )
+        static let linkTag: NSRegularExpression = compile(
+            "<link\\b[^>]*>",
+            options: [.caseInsensitive, .dotMatchesLineSeparators]
+        )
+        static let titleTag: NSRegularExpression = compile(
+            "<title[^>]*>([^<]+)</title>",
+            options: [.caseInsensitive, .dotMatchesLineSeparators]
+        )
+        static let metaCharset: NSRegularExpression = compile(
+            "<meta[^>]+charset\\s*=\\s*[\"']?([A-Za-z0-9_\\-:.]+)",
+            options: [.caseInsensitive, .dotMatchesLineSeparators]
+        )
+        static let metaContentCharset: NSRegularExpression = compile(
+            "<meta[^>]+content\\s*=\\s*[\"'][^\"']*charset\\s*=\\s*([A-Za-z0-9_\\-:.]+)",
+            options: [.caseInsensitive, .dotMatchesLineSeparators]
+        )
+
+        /// Patterns are compile-time literals; a runtime failure here means
+        /// the source pattern itself is malformed, so trapping is correct.
+        private static func compile(
+            _ pattern: String,
+            options: NSRegularExpression.Options
+        ) -> NSRegularExpression {
+            // swiftlint:disable:next force_try
+            try! NSRegularExpression(pattern: pattern, options: options)
+        }
+    }
+
     static func fetch(_ url: URL, timeout: TimeInterval = 2.5, completion: @escaping (LinkPreview?) -> Void) {
         Task { await fetch(url, timeout: timeout, cache: PreviewCache.shared, completion: completion) }
     }
@@ -29,17 +78,9 @@ enum LinkPreviewFetcher {
             return
         }
 
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = timeout
-        config.timeoutIntervalForResource = timeout
-        config.httpAdditionalHeaders = [
-            "User-Agent": BrowserUserAgent.safariMacDesktop,
-            "Accept": "text/html,application/xhtml+xml",
-        ]
-        let session = URLSession(configuration: config)
+        let session = sharedSession
 
         let htmlResult = await loadHTML(session: session, url: url, timeout: timeout)
-        defer { session.finishTasksAndInvalidate() }
 
         guard let (data, responseURL, contentType, shouldPersistPreview) = htmlResult else {
             await MainActor.run { completion(nil) }
@@ -108,7 +149,9 @@ enum LinkPreviewFetcher {
     /// whose `Cache-Control` indicates the payload should not be stored (`no-store` / `private`).
     private static func loadHTML(session: URLSession, url: URL, timeout: TimeInterval) async -> (Data, URL, String?, shouldPersistPreview: Bool)? {
         return await withCheckedContinuation { cont in
-            let task = session.dataTask(with: url) { data, response, _ in
+            var request = URLRequest(url: url, timeoutInterval: timeout)
+            request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
+            let task = session.dataTask(with: request) { data, response, _ in
                 guard let data else {
                     cont.resume(returning: nil)
                     return
@@ -188,12 +231,8 @@ enum LinkPreviewFetcher {
     /// `<meta http-equiv=Content-Type content="…charset=…">`.
     private static func extractMetaCharset(data: Data.SubSequence) -> String? {
         let head = String(data: Data(data.prefix(4_000)), encoding: .ascii) ?? ""
-        let patterns = [
-            "<meta[^>]+charset\\s*=\\s*[\"']?([A-Za-z0-9_\\-:.]+)",
-            "<meta[^>]+content\\s*=\\s*[\"'][^\"']*charset\\s*=\\s*([A-Za-z0-9_\\-:.]+)",
-        ]
-        for p in patterns {
-            if let m = firstMatch(pattern: p, in: head, group: 1) { return m }
+        for re in [CompiledPattern.metaCharset, CompiledPattern.metaContentCharset] {
+            if let m = firstMatch(re: re, in: head, group: 1) { return m }
         }
         return nil
     }
@@ -208,12 +247,8 @@ enum LinkPreviewFetcher {
     private static func fetchFavicon(_ url: URL?, timeout: TimeInterval) async -> Data? {
         guard let url else { return nil }
         return await withCheckedContinuation { (cont: CheckedContinuation<Data?, Never>) in
-            let config = URLSessionConfiguration.ephemeral
-            config.timeoutIntervalForRequest = timeout
-            config.timeoutIntervalForResource = timeout
-            let session = URLSession(configuration: config)
-            let task = session.dataTask(with: url) { data, response, _ in
-                defer { session.finishTasksAndInvalidate() }
+            let request = URLRequest(url: url, timeoutInterval: timeout)
+            let task = sharedSession.dataTask(with: request) { data, response, _ in
                 if let data,
                    let http = response as? HTTPURLResponse,
                    (200...299).contains(http.statusCode),
@@ -268,10 +303,7 @@ enum LinkPreviewFetcher {
 
     private static func metaTags(in html: String) -> [String] {
         // Permissive: any `<meta` opener up to the next `>` (including across newlines).
-        guard let re = try? NSRegularExpression(
-            pattern: "<meta\\b[^>]*>",
-            options: [.caseInsensitive, .dotMatchesLineSeparators]
-        ) else { return [] }
+        let re = CompiledPattern.metaTag
         let nsString = html as NSString
         let range = NSRange(location: 0, length: nsString.length)
         return re.matches(in: html, range: range).compactMap { match -> String? in
@@ -352,15 +384,12 @@ enum LinkPreviewFetcher {
     }
 
     private static func extractTitleTag(html: String) -> String? {
-        firstMatch(pattern: "<title[^>]*>([^<]+)</title>", in: html, group: 1)?
+        firstMatch(re: CompiledPattern.titleTag, in: html, group: 1)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func extractLinkHref(html: String, relContains: String) -> String? {
-        guard let re = try? NSRegularExpression(
-            pattern: "<link\\b[^>]*>",
-            options: [.caseInsensitive, .dotMatchesLineSeparators]
-        ) else { return nil }
+        let re = CompiledPattern.linkTag
         let nsString = html as NSString
         let range = NSRange(location: 0, length: nsString.length)
         for match in re.matches(in: html, range: range) {
@@ -375,10 +404,7 @@ enum LinkPreviewFetcher {
         return nil
     }
 
-    private static func firstMatch(pattern: String, in html: String, group: Int) -> String? {
-        guard let re = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
-            return nil
-        }
+    private static func firstMatch(re: NSRegularExpression, in html: String, group: Int) -> String? {
         let range = NSRange(html.startIndex..<html.endIndex, in: html)
         guard let match = re.firstMatch(in: html, options: [], range: range),
               match.numberOfRanges > group

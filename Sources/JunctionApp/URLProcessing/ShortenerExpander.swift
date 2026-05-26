@@ -10,14 +10,29 @@ final class ShortenerExpander {
         "spoti.fi", "apple.co", "ift.tt",
     ]
 
+    /// Cap on the in-memory expansion cache. Picked to comfortably hold a
+    /// long browsing session's worth of distinct shortener URLs without
+    /// growing unbounded if the user pastes hundreds of unique links.
+    static let defaultCacheCapacity = 256
+
     static let shared = ShortenerExpander()
 
     private let networkExpand: (URL, TimeInterval, @escaping (URL) -> Void) -> Void
-    private var cache: [URL: URL] = [:]
+    private var cache = LRUCache<URL, URL>(capacity: ShortenerExpander.defaultCacheCapacity)
     private let lock = NSLock()
 
-    init(networkExpand: ((URL, TimeInterval, @escaping (URL) -> Void) -> Void)? = nil) {
+    init(
+        capacity: Int = ShortenerExpander.defaultCacheCapacity,
+        networkExpand: ((URL, TimeInterval, @escaping (URL) -> Void) -> Void)? = nil
+    ) {
+        self.cache = LRUCache<URL, URL>(capacity: capacity)
         self.networkExpand = networkExpand ?? ShortenerExpander.defaultNetworkExpand
+    }
+
+    // Convenience initializer matching the old signature so existing tests
+    // (and `ShortenerExpander.shared`) keep working.
+    convenience init(networkExpand: ((URL, TimeInterval, @escaping (URL) -> Void) -> Void)? = nil) {
+        self.init(capacity: ShortenerExpander.defaultCacheCapacity, networkExpand: networkExpand)
     }
 
     internal var cacheSize: Int {
@@ -118,6 +133,54 @@ final class ShortenerExpander {
             completion(resolved)
         }
         task.resume()
+    }
+}
+
+/// Minimal LRU dictionary used to bound the shortener cache. Insert/lookup
+/// promote the entry to most-recently-used; once `count` exceeds `capacity`
+/// the least-recently-used entry is evicted. Not thread-safe — callers
+/// hold an external lock (see `ShortenerExpander.lock`).
+struct LRUCache<Key: Hashable, Value> {
+    let capacity: Int
+    private var storage: [Key: Value] = [:]
+    private var order: [Key] = []
+
+    init(capacity: Int) {
+        self.capacity = max(capacity, 1)
+    }
+
+    var count: Int { storage.count }
+
+    subscript(key: Key) -> Value? {
+        mutating get {
+            guard let value = storage[key] else { return nil }
+            promote(key)
+            return value
+        }
+        set {
+            if let newValue {
+                storage[key] = newValue
+                promote(key)
+                evictIfNeeded()
+            } else {
+                storage.removeValue(forKey: key)
+                order.removeAll { $0 == key }
+            }
+        }
+    }
+
+    private mutating func promote(_ key: Key) {
+        if let idx = order.firstIndex(of: key) {
+            order.remove(at: idx)
+        }
+        order.append(key)
+    }
+
+    private mutating func evictIfNeeded() {
+        while order.count > capacity {
+            let evicted = order.removeFirst()
+            storage.removeValue(forKey: evicted)
+        }
     }
 }
 
