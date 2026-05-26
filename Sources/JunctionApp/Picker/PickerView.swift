@@ -708,6 +708,7 @@ struct PickerView: View {
                     isMultiSelected: isMultiSelected,
                     showIncognito: privateActive && supportsIncognito,
                     dimmed: privateActive && !supportsIncognito,
+                    favorite: appSettings.settings.favoriteTargetKey == option.target.storageKey,
                     startAngle: startAngle,
                     endAngle: endAngle,
                     innerRadius: innerRad,
@@ -780,6 +781,7 @@ private struct DialSegmentView: View {
     let isMultiSelected: Bool
     let showIncognito: Bool
     let dimmed: Bool
+    let favorite: Bool
     let startAngle: Double
     let endAngle: Double
     let innerRadius: CGFloat
@@ -840,6 +842,13 @@ private struct DialSegmentView: View {
                         if showIncognito {
                             IncognitoBadge(size: 18)
                                 .offset(x: 4, y: 4)
+                                .transition(.scale.combined(with: .opacity))
+                        }
+                    }
+                    .overlay(alignment: .topLeading) {
+                        if favorite {
+                            FavoriteStarBadge(size: 16)
+                                .offset(x: -3, y: -3)
                                 .transition(.scale.combined(with: .opacity))
                         }
                     }
@@ -1117,7 +1126,8 @@ private struct DialCenterHub: View {
             selected: idx == model.selectedIndex,
             multiSelected: model.multiSelection.contains(option.id),
             dimmed: incognitoUnsupported,
-            showIncognito: privateActive && supportsIncognito
+            showIncognito: privateActive && supportsIncognito,
+            favorite: appSettings.settings.favoriteTargetKey == option.target.storageKey
         )
         .help(incognitoUnsupported
               ? "\(option.browser.name) doesn't support private windows — it will open normally."
@@ -1126,6 +1136,7 @@ private struct DialCenterHub: View {
         .contextMenu {
             let key = option.target.storageKey
             let isPinned = appSettings.settings.pinnedTargetKey == key
+            let isFavorite = appSettings.settings.favoriteTargetKey == key
             if isPinned {
                 Button("Unpin") {
                     appSettings.setPinnedTargetKey(nil)
@@ -1134,6 +1145,10 @@ private struct DialCenterHub: View {
                 Button("Pin to first slot") {
                     appSettings.setPinnedTargetKey(key)
                 }
+            }
+            Divider()
+            Button(isFavorite ? "Remove favorite" : "Set as favorite") {
+                appSettings.setFavoriteTargetKey(isFavorite ? nil : key)
             }
         }
         .onTapGesture {
@@ -1195,6 +1210,7 @@ private struct DialCenterHub: View {
             multiSelected: model.multiSelection.contains(option.id),
             dimmed: incognitoUnsupported,
             showIncognito: privateActive && supportsIncognito,
+            favorite: appSettings.settings.favoriteTargetKey == option.target.storageKey,
             appearDelay: Double(idx) * 0.018
         )
         .help(incognitoUnsupported
@@ -1204,6 +1220,7 @@ private struct DialCenterHub: View {
         .contextMenu {
             let key = option.target.storageKey
             let isPinned = appSettings.settings.pinnedTargetKey == key
+            let isFavorite = appSettings.settings.favoriteTargetKey == key
             if isPinned {
                 Button("Unpin") {
                     appSettings.setPinnedTargetKey(nil)
@@ -1212,6 +1229,10 @@ private struct DialCenterHub: View {
                 Button("Pin to first slot") {
                     appSettings.setPinnedTargetKey(key)
                 }
+            }
+            Divider()
+            Button(isFavorite ? "Remove favorite" : "Set as favorite") {
+                appSettings.setFavoriteTargetKey(isFavorite ? nil : key)
             }
         }
         .onTapGesture {
@@ -1433,6 +1454,7 @@ private struct PickerTile: View {
     let multiSelected: Bool
     let dimmed: Bool
     let showIncognito: Bool
+    let favorite: Bool
     let appearDelay: Double
     @State private var hovered: Bool = false
     @State private var appeared: Bool = false
@@ -1449,6 +1471,13 @@ private struct PickerTile: View {
                         if showIncognito {
                             IncognitoBadge(size: 22)
                                 .offset(x: 5, y: 5)
+                                .transition(.scale.combined(with: .opacity))
+                        }
+                    }
+                    .overlay(alignment: .topLeading) {
+                        if favorite {
+                            FavoriteStarBadge(size: 18)
+                                .offset(x: -4, y: -4)
                                 .transition(.scale.combined(with: .opacity))
                         }
                     }
@@ -1585,6 +1614,7 @@ private struct PickerListRow: View {
     let multiSelected: Bool
     let dimmed: Bool
     let showIncognito: Bool
+    let favorite: Bool
     @State private var hovered: Bool = false
 
     var body: some View {
@@ -1598,6 +1628,12 @@ private struct PickerListRow: View {
                     IncognitoBadge(size: 14)
                         .offset(x: 3, y: 3)
                         .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                if favorite {
+                    FavoriteStarBadge(size: 13)
+                        .offset(x: -4, y: -4)
                 }
             }
             .frame(width: 32, height: 32)
