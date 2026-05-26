@@ -1,18 +1,6 @@
 import SwiftUI
 import AppKit
 
-extension Color {
-    init?(hexString: String) {
-        var hex = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
-        if hex.hasPrefix("#") { hex.removeFirst() }
-        guard hex.count == 6, let value = Int(hex, radix: 16) else { return nil }
-        let r = Double((value >> 16) & 0xFF) / 255.0
-        let g = Double((value >> 8) & 0xFF) / 255.0
-        let b = Double(value & 0xFF) / 255.0
-        self = Color(red: r, green: g, blue: b)
-    }
-}
-
 struct PickerView: View {
     @ObservedObject var model: PickerViewModel
     @ObservedObject private var appSettings = SettingsStore.shared
@@ -1598,45 +1586,6 @@ private struct PickerListRow: View {
         if selected { return Color.accentColor.opacity(0.8) }
         if hovered { return Color.white.opacity(0.16) }
         return Color.white.opacity(0.06)
-    }
-}
-
-struct IncognitoBadge: View {
-    let size: CGFloat
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(Color.black.opacity(0.78))
-                .overlay(
-                    Circle()
-                        .strokeBorder(Color.white.opacity(0.22), lineWidth: 0.5)
-                )
-            Image(systemName: "eyeglasses")
-                .font(.system(size: size * 0.55, weight: .semibold))
-                .foregroundColor(.white)
-        }
-        .frame(width: size, height: size)
-        .shadow(color: Color.black.opacity(0.35), radius: 2, x: 0, y: 1)
-    }
-}
-
-struct VisualEffectView: NSViewRepresentable {
-    let material: NSVisualEffectView.Material
-    let blendingMode: NSVisualEffectView.BlendingMode
-
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = material
-        view.blendingMode = blendingMode
-        view.state = .active
-        view.isEmphasized = true
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        nsView.material = material
-        nsView.blendingMode = blendingMode
     }
 }
 
