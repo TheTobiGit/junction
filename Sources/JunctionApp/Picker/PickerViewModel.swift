@@ -78,37 +78,20 @@ final class PickerViewModel: ObservableObject {
         // ``PickerPanelController.openOnce``: match against the URL before
         // global tracker stripping (so queryContains / per-rule overrides work),
         // then re-run the pipeline with rule-scoped tracker overrides if needed.
-        let globalSettings = SettingsStore.shared.settings
-        let globalTrace = URLTransformers.default.runTraced(url)
-        let matched = RulesStore.shared.match(
-            url: URLTransformers.urlForRuleMatching(url),
-            context: context
-        ).rule
-        let trace: URLTransformResult
-        if let ruleOverrides = matched?.trackerOverrides {
-            trace = URLTransformers.pipeline(
-                globalOverrides: globalSettings.trackerOverrides,
-                ruleOverrides: ruleOverrides
-            ).runTraced(url)
-        } else {
-            trace = globalTrace
-        }
+        let route = URLRouteResolver.resolve(url: url, context: context)
+        let trace = route.trace
         self.cleanedURL = trace.final
         self.cleaningTrace = trace
         self.options = options
         self.context = context
-        self.matchedRule = matched
+        self.matchedRule = route.match.rule
         // Risk flags follow the URL that's about to open, including the
         // per-rule `cleanOverride`. Otherwise a rule that forces "Always
         // clean" for a host would still warn against the raw URL's trackers.
-        let cleaningEnabled = DomainRule.resolveCleanFlag(
-            rule: matchedRule,
-            globalEnabled: SettingsStore.shared.settings.cleanURLsBeforeOpening
-        )
         self.riskFlags = PickerURLRisk.flags(
             for: url,
             cleanedURL: cleanedURL,
-            cleanURLsBeforeOpening: cleaningEnabled
+            cleanURLsBeforeOpening: route.cleaningEnabled
         )
         self.pickHandler = onPick
         self.pickMultiHandler = onPickMulti
