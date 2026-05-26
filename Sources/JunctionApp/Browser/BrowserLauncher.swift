@@ -102,19 +102,29 @@ struct BrowserLauncher: BrowserLaunching {
         url: URL,
         completion: @escaping (Bool) -> Void
     ) {
+        let args = BrowserLauncher.arguments(
+            profileDirectory: profileDirectory,
+            incognito: incognito,
+            url: url
+        )
+        BrowserLauncher.run(appURL: appURL, arguments: args, completion: completion)
+    }
+
+    /// Spawns the Mach-O binary inside `appURL` with `arguments` on a background
+    /// queue. `completion` is always delivered on the main queue.
+    static func run(
+        appURL: URL,
+        arguments: [String],
+        completion: @escaping (Bool) -> Void
+    ) {
         DispatchQueue.global(qos: .userInitiated).async {
-            guard let execURL = BrowserLauncher.resolveExecutable(for: appURL) else {
+            guard let execURL = resolveExecutable(for: appURL) else {
                 DispatchQueue.main.async { completion(false) }
                 return
             }
-            let args = BrowserLauncher.arguments(
-                profileDirectory: profileDirectory,
-                incognito: incognito,
-                url: url
-            )
             let process = Process()
             process.executableURL = execURL
-            process.arguments = args
+            process.arguments = arguments
             do {
                 try process.run()
                 DispatchQueue.main.async { completion(true) }
