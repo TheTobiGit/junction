@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import Darwin
 import UserNotifications
 
 enum URLOpener {
@@ -65,28 +66,33 @@ enum URLOpener {
                 return
             }
 
-            // Firefox-family profile path (Firefox, Zen, …). Launch via
-            // `--profile <abs-profile-path> --new-tab <url>`, with
-            // `--new-instance` added ONLY when the target profile is not
-            // already running.
+            // Firefox-family profile path (Firefox, Zen, …). Spawn the
+            // Mach-O binary directly via `Foundation.Process` rather than
+            // `NSWorkspace.openApplication`. Two reasons:
             //
-            // Why the conditional `--new-instance`:
-            // - When the target profile is already running, omitting
-            //   `--new-instance` lets Zen/Firefox IPC into the existing
-            //   process and deliver the URL to that profile's window —
-            //   exactly what the user wants on every link click.
-            // - When the target profile is NOT running but a different
-            //   profile is, `--new-instance` is required to spawn a fresh
-            //   process bound to the target profile. Without it, the URL
-            //   would be IPC'd into whichever profile is currently
-            //   foregrounded.
-            // - When no Firefox/Zen instance is running at all, either
-            //   works; we add `--new-instance` for consistency.
+            // 1. When the browser is already running,
+            //    `NSWorkspace.openApplication` with
+            //    `createsNewApplicationInstance = false` activates the
+            //    existing process and SILENTLY DROPS `config.arguments`.
+            //    The URL is never delivered — Zen just focuses and nothing
+            //    opens. This was the user-visible "subsequent clicks just
+            //    focus the window" bug.
             //
-            // `--profile <path>` is preferred over `-P <name>` because the
-            // path is stable (profiles.ini) and survives profile renames.
+            // 2. Firefox/Zen's launcher binary already does the right thing
+            //    on its own: cold-start → boot the browser with the URL;
+            //    warm-start → detect the running profile via the lock file,
+            //    IPC the URL over, exit. Doing it ourselves via NSWorkspace
+            //    fights that mechanism.
             //
-            // `--private-window` takes over when incognito is requested.
+            // Flag choices:
+            // - `--profile <abs-path>` is preferred over `-P <name>` because
+            //   the path is stable (profiles.ini) and survives renames.
+            // - `--new-instance` is added ONLY when the target profile is
+            //   NOT currently locked. Adding it to a locked profile makes
+            //   Firefox/Zen show the "already running but not responding"
+            //   dialog and refuse to open the URL.
+            // - `--new-tab` for normal URLs, `--private-window` for
+            //   incognito.
             //
             // Note on Zen Spaces (workspaces within a profile): Zen exposes
             // no public API to switch the active workspace at launch — not a
@@ -112,15 +118,8 @@ enum URLOpener {
                 }
                 args.append(contentsOf: ["--profile", absProfilePath, profileFlag, url.absoluteString])
 
-                let config = NSWorkspace.OpenConfiguration()
-                config.activates = true
-                config.arguments = args
-                config.createsNewApplicationInstance = !alreadyRunning
-                NSWorkspace.shared.openApplication(
-                    at: option.browser.url,
-                    configuration: config
-                ) { _, error in
-                    DispatchQueue.main.async { completion?(error == nil) }
+                BrowserLauncher.run(appURL: option.browser.url, arguments: args) { success in
+                    DispatchQueue.main.async { completion?(success) }
                 }
                 return
             }
@@ -162,17 +161,15 @@ enum URLOpener {
             return
         }
 
-        // Firefox incognito — preserved as-is via NSWorkspace + --private-window.
-        if incognito, let args = incognitoArguments(for: option.browser.bundleID, url: url) {
-            let config = NSWorkspace.OpenConfiguration()
-            config.activates = true
-            config.arguments = args
-            config.createsNewApplicationInstance = false
-            NSWorkspace.shared.openApplication(
-                at: option.browser.url,
-                configuration: config
-            ) { _, error in
-                DispatchQueue.main.async { completion?(error == nil) }
+        // Firefox-family no-profile incognito. Spawn the binary directly
+        // for the same reason as the profiled path: NSWorkspace silently
+        // drops arguments when the app is already running.
+        if incognito,
+           isFirefoxBundleID(option.browser.bundleID),
+           let args = incognitoArguments(for: option.browser.bundleID, url: url)
+        {
+            BrowserLauncher.run(appURL: option.browser.url, arguments: args) { success in
+                DispatchQueue.main.async { completion?(success) }
             }
             return
         }
@@ -485,26 +482,30 @@ enum URLOpener {
         return (raw, nil)
     }
 
-    /// Returns true when at least one Firefox-family process for `bundleID`
-    /// is currently bound to the profile at `absProfilePath`. Used to decide
-    /// whether `--new-instance` is needed on launch — if the target profile
-    /// is already running, omitting `--new-instance` lets the new URL IPC
-    /// into the existing window for that profile.
+    /// Returns true when the Firefox-family profile at `absProfilePath` is
+    /// currently in use by a running process. Used to decide whether
+    /// `--new-instance` is needed on launch — if the target profile is
+    /// already in use, omitting `--new-instance` lets the new URL IPC into
+    /// the existing process for that profile. Adding `--new-instance` when
+    /// the profile IS in use makes Firefox/Zen abort with the
+    /// "already running but not responding" dialog and refuse to open
+    /// anything — which is the bug this guards against.
     ///
-    /// NSRunningApplication only reports each app's main process (not the
-    /// plugin-container / GPU helper subprocesses), which is exactly what we
-    /// want. We then read each main process's argv via `ps -p <pid> -o
-    /// command=` and check for `--profile <absPath>`. `ps` is in the base
-    /// system, so this works in any sandbox configuration.
+    /// Primary signal: probe Firefox's profile lock files inside the
+    /// profile directory itself. This works regardless of how the browser
+    /// was launched (Dock click, Spotlight, Junction CLI, etc.), which the
+    /// previous argv-only check did not.
     ///
-    /// Best-effort: on any failure we return `false` (i.e. assume not
-    /// running, which falls back to spawning `--new-instance`). That's
-    /// strictly safer than the alternative (false positive → URL routed to
-    /// the wrong profile).
+    /// Fallback: keep the `ps -o command=` argv check for the rare case
+    /// where lock probing is inconclusive (e.g. sandboxed FS access denies
+    /// reading the profile dir) but Junction itself spawned the running
+    /// instance with `--profile <absPath>`.
     private static func isFirefoxFamilyProfileRunning(
         bundleID: String,
         absProfilePath: String
     ) -> Bool {
+        if isFirefoxProfileActivelyLocked(absProfilePath) { return true }
+
         let pids = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
             .map { Int($0.processIdentifier) }
             .filter { $0 > 0 }
@@ -535,6 +536,80 @@ enum URLOpener {
         }
     }
 
+    /// Returns true when a Firefox-family profile directory holds an active
+    /// lock — i.e. another process currently has the profile open.
+    ///
+    /// Firefox/Zen uses two lock primitives inside each active profile dir:
+    ///
+    /// - `.parentlock` (and historically `parent.lock`): a regular file
+    ///   guarded by an `fcntl` write lock. The file itself may persist
+    ///   across clean shutdowns, so its mere presence is NOT a reliable
+    ///   running signal — we must probe the lock state with
+    ///   `fcntl(F_GETLK)`.
+    ///
+    /// - `lock`: a symbolic link whose target is `"<host>:+<pid>"` (modern)
+    ///   or `"<host>:<pid>"` (legacy). The link target intentionally is not
+    ///   a real filesystem path. We parse the PID and probe it with
+    ///   `kill(pid, 0)`.
+    ///
+    /// Returns false if the directory can't be read or no lock is held;
+    /// false negatives cause the caller to fall through to the `ps`
+    /// fallback and ultimately to spawning `--new-instance`, which is the
+    /// pre-fix behaviour.
+    private static let firefoxParentLockNames = [".parentlock", "parent.lock"]
+
+    static func isFirefoxProfileActivelyLocked(_ absProfilePath: String) -> Bool {
+        let base = URL(fileURLWithPath: absProfilePath, isDirectory: true)
+
+        for name in firefoxParentLockNames where regularLockFileIsActive(
+            base.appendingPathComponent(name).path
+        ) {
+            return true
+        }
+
+        return symlinkLockIsActive(base.appendingPathComponent("lock").path)
+    }
+
+    /// Probes a regular lock file with `fcntl(F_GETLK, F_WRLCK)`. Returns
+    /// true when another process currently holds an exclusive lock on it.
+    private static func regularLockFileIsActive(_ path: String) -> Bool {
+        let fd = Darwin.open(path, O_RDONLY)
+        guard fd >= 0 else { return false }
+        defer { Darwin.close(fd) }
+
+        var lock = flock()
+        lock.l_start = 0
+        lock.l_len = 0
+        lock.l_type = Int16(F_WRLCK)
+        lock.l_whence = Int16(SEEK_SET)
+        lock.l_pid = 0
+
+        guard fcntl(fd, F_GETLK, &lock) != -1 else { return false }
+        return lock.l_type != Int16(F_UNLCK)
+    }
+
+    /// Reads a Firefox-style `lock` symlink (without following it) and
+    /// checks whether the encoded PID is still alive. The symlink target
+    /// format is `"<host>:+<pid>"` (modern) or `"<host>:<pid>"` (legacy).
+    private static func symlinkLockIsActive(_ path: String) -> Bool {
+        var buf = [CChar](repeating: 0, count: 1024)
+        let n = readlink(path, &buf, buf.count - 1)
+        guard n > 0 else { return false }
+        buf[n] = 0
+        let target = String(cString: buf)
+
+        guard let colon = target.lastIndex(of: ":") else { return false }
+        var pidPart = target[target.index(after: colon)...]
+        if pidPart.hasPrefix("+") { pidPart = pidPart.dropFirst() }
+        guard let pid = pid_t(pidPart) else {
+            // Unparseable target — treat as active to avoid spurious
+            // `--new-instance` if Firefox changes the lock format.
+            return true
+        }
+
+        return kill(pid, 0) == 0 || errno == EPERM
+    }
+
     /// Maps a Firefox-family relative profile path (from `profiles.ini`) to
     /// an absolute on-disk path under `~/Library/Application Support/<vendor>/`.
     /// Single source of truth for the bundleID→config-dir mapping lives in
@@ -543,6 +618,11 @@ enum URLOpener {
         bundleID: String,
         relativePath: String
     ) -> String {
+        // `profiles.ini` may store `IsRelative=0` with an absolute `Path`,
+        // in which case it's already the on-disk profile path and must not
+        // be re-rooted under Application Support.
+        if relativePath.hasPrefix("/") { return relativePath }
+
         let configDir = FirefoxProfileDiscovery.configRelativePath(forBundleID: bundleID) ?? "Firefox"
         let fm = FileManager.default
         guard let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {

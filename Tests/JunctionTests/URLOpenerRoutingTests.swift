@@ -182,6 +182,70 @@ final class URLOpenerRoutingTests: XCTestCase {
         XCTAssertFalse(script.contains("set currentURL to URL of active tab of front window"))
     }
 
+    // MARK: - Firefox/Zen profile lock detection
+    //
+    // Regression for the "Zen duplicate window open bug" where Junction
+    // detected only Junction-launched Zen instances (argv contained
+    // `--profile <path>`), missed Dock/Spotlight launches, and consequently
+    // added `--new-instance` to a profile that was already locked. Zen then
+    // aborted with "already running but not responding" and nothing opened.
+
+    private func makeTempProfileDir() -> URL {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("junction-profile-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    func test_firefoxProfileActivelyLocked_emptyDirectory_returnsFalse() {
+        let dir = makeTempProfileDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        XCTAssertFalse(URLOpener.isFirefoxProfileActivelyLocked(dir.path),
+                       "An empty profile directory must not be reported as locked.")
+    }
+
+    func test_firefoxProfileActivelyLocked_parentLockWithoutFcntlLock_returnsFalse() {
+        let dir = makeTempProfileDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // Firefox leaves `.parentlock` on disk after clean shutdown without
+        // an active fcntl lock. Presence alone must not be treated as
+        // "running" or we'd hit the original bug from the opposite side.
+        let parentLock = dir.appendingPathComponent(".parentlock")
+        XCTAssertTrue(FileManager.default.createFile(atPath: parentLock.path, contents: nil))
+
+        XCTAssertFalse(URLOpener.isFirefoxProfileActivelyLocked(dir.path),
+                       "Stale .parentlock without an fcntl lock must report as not running.")
+    }
+
+    func test_firefoxProfileActivelyLocked_symlinkToDeadPid_returnsFalse() {
+        let dir = makeTempProfileDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // A PID that almost certainly isn't alive. pid_t max is platform
+        // dependent but 2^22-ish PIDs are reserved by the kernel and rarely
+        // active in test environments.
+        let lockPath = dir.appendingPathComponent("lock").path
+        let target = "127.0.0.1:+2147483640"
+        try? FileManager.default.createSymbolicLink(atPath: lockPath, withDestinationPath: target)
+
+        XCTAssertFalse(URLOpener.isFirefoxProfileActivelyLocked(dir.path),
+                       "Symlink lock pointing at a dead PID must report as not running.")
+    }
+
+    func test_firefoxProfileActivelyLocked_symlinkToLivePid_returnsTrue() {
+        let dir = makeTempProfileDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let lockPath = dir.appendingPathComponent("lock").path
+        let target = "127.0.0.1:+\(getpid())"
+        try? FileManager.default.createSymbolicLink(atPath: lockPath, withDestinationPath: target)
+
+        XCTAssertTrue(URLOpener.isFirefoxProfileActivelyLocked(dir.path),
+                      "Symlink lock pointing at a live PID must report as running.")
+    }
+
     func test_diaWindowScript_usesPlainNewWindowMenuItemWithoutProfile() {
         let script = URLOpener.diaWindowScript(
             profileName: nil,
