@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.10.0](https://github.com/TheTobiGit/junction/compare/v0.9.0...v0.10.0) (2026-05-27)
+
+
+### Features
+
+* **browser:** add favorite browser/profile system with picker indicators ([ad8cc45](https://github.com/TheTobiGit/junction/commit/ad8cc45bba448332e900c7d1368f1f1b599f7c64))
+* **picker:** enlarge dial, center on open, arc-curve labels ([8b52447](https://github.com/TheTobiGit/junction/commit/8b52447158e30555a308e9bbc6c1bd3fcabe6ec5))
+
+
+### Bug Fixes
+
+* **browser:** address Copilot review on Zen/Firefox opener ([89853dd](https://github.com/TheTobiGit/junction/commit/89853dd0a5424287af247f74bcb60f494936bcdf))
+* **browser:** open Zen/Firefox URLs when profile is already running ([e6f5086](https://github.com/TheTobiGit/junction/commit/e6f5086a27be6ddbe3783d575b9fbf8c19004d41))
+* **browser:** synthesize bundle option for app-key favorite too ([e62d983](https://github.com/TheTobiGit/junction/commit/e62d9834e0202744f41bb11b516e18f2e58f8c76))
+* **browser:** synthesize bundle option for missing favorite profile ([3d0483b](https://github.com/TheTobiGit/junction/commit/3d0483bac515f3ceae1e10a68b4fee01f59bfbed))
+* **picker:** smooth dial hover without shifting sibling icons ([83fa4d3](https://github.com/TheTobiGit/junction/commit/83fa4d38e043572c70e3322ac982c2c823551b1c))
+* **refactor:** address Copilot review on resolver and preview fetcher ([248e772](https://github.com/TheTobiGit/junction/commit/248e772c3003fc79388a5444c0cb084ba49e7824))
+* **refactor:** address second Copilot review pass ([78c82b6](https://github.com/TheTobiGit/junction/commit/78c82b6cab5ff5a96dcaa7a7ca8cb774cfb02170))
+
+
+### Performance Improvements
+
+* **links:** cache regexes, share URLSession, bound shortener cache ([0f65465](https://github.com/TheTobiGit/junction/commit/0f65465694d36bb9c8f08a666abb3e1e41b6ac75))
+
 ## [0.9.0](https://github.com/TheTobiGit/junction/compare/v0.8.0...v0.9.0) (2026-05-25)
 
 
