@@ -17,6 +17,6 @@ struct FavoriteStarBadge: View {
         }
         .frame(width: size, height: size)
         .shadow(color: Color.black.opacity(0.35), radius: 2, x: 0, y: 1)
-        .help("Favorite browser")
+        .help("Favorite")
     }
 }

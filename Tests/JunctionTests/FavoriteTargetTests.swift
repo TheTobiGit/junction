@@ -148,6 +148,46 @@ final class FavoriteTargetTests: XCTestCase {
         XCTAssertNil(resolved)
     }
 
+    /// Regression: an `app:<bundleID>` favorite saved while the browser had
+    /// no profiles must keep resolving once discovery starts returning
+    /// per-profile options for the same bundle. The resolver synthesizes a
+    /// profile-less option so the user lands on the bundle-level target
+    /// rather than a profile they never picked or a nil result.
+    func test_resolveFavorite_appKey_whenOnlyProfileOptionsExist_returnsBundleOption() {
+        let braveWork = makeProfileOption(
+            bundleID: "com.brave.Browser",
+            name: "Brave",
+            profileID: "Profile 1",
+            profileLabel: "Work"
+        )
+        let bravePersonal = makeProfileOption(
+            bundleID: "com.brave.Browser",
+            name: "Brave",
+            profileID: "Profile 2",
+            profileLabel: "Personal"
+        )
+        let options = [braveWork, bravePersonal]
+
+        let resolved = LaunchOptionDiscovery.resolveFavorite(
+            favoriteKey: "app:com.brave.Browser",
+            in: options
+        )
+
+        XCTAssertEqual(resolved?.target.storageKey, "app:com.brave.Browser")
+        XCTAssertEqual(resolved?.browser.bundleID, "com.brave.Browser")
+        XCTAssertNil(resolved?.profile,
+                     "app:* favorite must not silently route into a surviving profile")
+    }
+
+    func test_resolveFavorite_appKey_whenBundleNotInstalled_returnsNil() {
+        let safari = makeOption(bundleID: "com.apple.Safari", name: "Safari")
+        let resolved = LaunchOptionDiscovery.resolveFavorite(
+            favoriteKey: "app:com.uninstalled.Browser",
+            in: [safari]
+        )
+        XCTAssertNil(resolved)
+    }
+
     // MARK: - Helpers
 
     private func makeOption(bundleID: String, name: String) -> LaunchOption {

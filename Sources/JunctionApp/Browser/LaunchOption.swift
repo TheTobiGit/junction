@@ -91,7 +91,11 @@ enum LaunchOptionDiscovery {
     /// synthesized bundle-level option (profile-less) for the same browser
     /// so "open in favorite" stays useful even after profile churn —
     /// importantly, this never silently routes the user into an unrelated
-    /// surviving profile of the same browser.
+    /// surviving profile of the same browser. The `app:<bundleID>` form
+    /// behaves the same way: when discovery has begun returning per-profile
+    /// options for the bundle (e.g. profiles created after the favorite was
+    /// saved), we synthesize a profile-less option rather than returning
+    /// nil or routing into a profile the user never picked.
     /// `favoriteKey` defaults to the shared settings store's value;
     /// tests inject an explicit key to avoid touching the singleton.
     static func resolveFavorite(
@@ -105,12 +109,27 @@ enum LaunchOptionDiscovery {
         if key.hasPrefix("profile:") {
             let rest = String(key.dropFirst("profile:".count))
             let bundleID = rest.split(separator: ":", maxSplits: 1).first.map(String.init) ?? ""
-            guard !bundleID.isEmpty,
-                  let bundleMatch = options.first(where: { $0.browser.bundleID == bundleID })
-            else { return nil }
-            return LaunchOption(browser: bundleMatch.browser, profile: nil)
+            return synthesizedBundleOption(forBundleID: bundleID, in: options)
+        }
+        if key.hasPrefix("app:") {
+            let bundleID = String(key.dropFirst("app:".count))
+            return synthesizedBundleOption(forBundleID: bundleID, in: options)
         }
         return nil
+    }
+
+    /// Returns a profile-less `LaunchOption` for `bundleID` when any option
+    /// for that bundle exists in `options`, copying the existing `Browser`
+    /// value (icon, name, install URL) instead of routing into an unrelated
+    /// profile that happens to share the bundle.
+    private static func synthesizedBundleOption(
+        forBundleID bundleID: String,
+        in options: [LaunchOption]
+    ) -> LaunchOption? {
+        guard !bundleID.isEmpty,
+              let bundleMatch = options.first(where: { $0.browser.bundleID == bundleID })
+        else { return nil }
+        return LaunchOption(browser: bundleMatch.browser, profile: nil)
     }
 
     private static func applyUserOrder(_ options: [LaunchOption]) -> [LaunchOption] {
