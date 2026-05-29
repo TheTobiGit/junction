@@ -48,6 +48,17 @@ enum ActivityRowDisplayBuilder {
         return f
     }()
 
+    /// Forces the lazy `relativeFormatter` to materialize. The first
+    /// call to `localizedString(for:relativeTo:)` triggers ICU and Foundation
+    /// locale work that can take 30-100 ms on cold launch; calling this
+    /// from a background queue at app start keeps that cost off of the
+    /// first Activity-tab render.
+    @discardableResult
+    static func warmFormatter() -> Bool {
+        _ = relativeFormatter.localizedString(for: Date(), relativeTo: Date())
+        return true
+    }
+
     private static func makeHaystack(
         entry: RoutingHistory.Entry,
         prettyTarget: String?
