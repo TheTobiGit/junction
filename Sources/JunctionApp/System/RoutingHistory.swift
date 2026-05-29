@@ -49,7 +49,18 @@ final class RoutingHistory: ObservableObject {
         let dir = base.appendingPathComponent(appSupportFolder, isDirectory: true)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         self.fileURL = fileURL ?? dir.appendingPathComponent("history.json")
-        self.entries = Self.load(from: self.fileURL)
+
+        let loaded = Self.load(from: self.fileURL)
+        let deduped = Self.removingDuplicates(loaded)
+        self.entries = deduped
+        if loaded.count != deduped.count {
+            // One-shot compaction: prior versions of Junction wrote one row
+            // per click, so an existing user's history.json may have many
+            // duplicate (cleanedURL, targetBundleID) entries. Rewrite the
+            // file in deduped form on first launch so the on-disk shape
+            // matches the new in-memory invariant.
+            self.persist(deduped)
+        }
     }
 
     func record(
@@ -81,7 +92,21 @@ final class RoutingHistory: ObservableObject {
         )
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            var next = [entry] + self.entries
+            // Auto-dedupe: a re-open of the same URL+target should refresh
+            // the existing row in place rather than pushing a new row that
+            // pushes the old one further down. Preserve the prior row's
+            // UUID so SwiftUI animates the move-to-top instead of treating
+            // it as a row destroyed + a new row created.
+            let key = Self.dedupeKey(for: entry)
+            var next = self.entries
+            var promotedID: UUID? = nil
+            if let priorIndex = next.firstIndex(where: { Self.dedupeKey(for: $0) == key }) {
+                promotedID = next[priorIndex].id
+                next.remove(at: priorIndex)
+            }
+            var promoted = entry
+            if let promotedID { promoted.id = promotedID }
+            next.insert(promoted, at: 0)
             if next.count > Self.maxEntries {
                 next.removeLast(next.count - Self.maxEntries)
             }
@@ -124,5 +149,38 @@ final class RoutingHistory: ObservableObject {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return (try? decoder.decode([Entry].self, from: data)) ?? []
+    }
+
+    /// Stable identity used to collapse repeated opens into a single row.
+    /// Two entries with the same cleaned URL routed to the same target
+    /// represent the "same" link in the user's mind; the rule label and
+    /// outcome can drift over time (rule edits, cleaning toggles) but
+    /// shouldn't fragment the row.
+    static func dedupeKey(for entry: Entry) -> String {
+        entry.cleanedURL + "\u{1F}" + (entry.targetBundleID ?? "")
+    }
+
+    /// Compacts an entries array so each `dedupeKey` appears at most once,
+    /// keeping the most recent occurrence and preserving the input ordering
+    /// of those survivors. Used at load time to migrate legacy
+    /// pre-dedupe history.json files in place.
+    static func removingDuplicates(_ entries: [Entry]) -> [Entry] {
+        var keptIndexByKey: [String: Int] = [:]
+        var kept: [Entry] = []
+        kept.reserveCapacity(entries.count)
+        for entry in entries {
+            let key = dedupeKey(for: entry)
+            if let existingIndex = keptIndexByKey[key] {
+                if entry.timestamp > kept[existingIndex].timestamp {
+                    var promoted = entry
+                    promoted.id = kept[existingIndex].id
+                    kept[existingIndex] = promoted
+                }
+            } else {
+                keptIndexByKey[key] = kept.count
+                kept.append(entry)
+            }
+        }
+        return kept
     }
 }
