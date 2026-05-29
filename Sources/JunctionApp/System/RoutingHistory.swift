@@ -38,6 +38,9 @@ final class RoutingHistory: ObservableObject {
     let persistQueue = DispatchQueue(label: "dev.gideonsarfo.Junction.history.persist")
     private let fileURL: URL
 
+    private let persistLock = NSLock()
+    private var persistSequence: UInt64 = 0
+
     init(fileURL: URL? = nil) {
         let fm = FileManager.default
         let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -96,10 +99,20 @@ final class RoutingHistory: ObservableObject {
     }
 
     private func persist(_ entries: [Entry]) {
+        persistLock.lock()
+        persistSequence &+= 1
+        let mySeq = persistSequence
+        persistLock.unlock()
+
         let url = fileURL
-        persistQueue.async {
+        persistQueue.async { [weak self] in
+            guard let self else { return }
+            self.persistLock.lock()
+            let isLatest = (mySeq == self.persistSequence)
+            self.persistLock.unlock()
+            guard isLatest else { return }
+
             let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
             guard let data = try? encoder.encode(entries) else { return }
             try? data.write(to: url, options: .atomic)
