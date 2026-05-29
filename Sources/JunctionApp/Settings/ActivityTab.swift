@@ -135,6 +135,7 @@ private struct ActivityRow: View {
             Circle()
                 .fill(outcomeColor)
                 .frame(width: 7, height: 7)
+                .help(outcomeTooltip)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(entry.cleanedURL)
@@ -161,50 +162,54 @@ private struct ActivityRow: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                .lineLimit(1)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .help(linkTooltip)
 
-            Spacer()
-
-            Button {
-                copy(entry.cleanedURL)
-            } label: {
-                Image(systemName: "doc.on.doc")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 22, height: 22)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Copy URL")
-
-            Button {
-                if let url = URL(string: entry.cleanedURL) {
-                    NSWorkspace.shared.open(url)
+            HStack(spacing: 0) {
+                Button {
+                    copy(entry.cleanedURL)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
                 }
-            } label: {
-                Image(systemName: "arrow.up.right.square")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 22, height: 22)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Open again")
+                .buttonStyle(.plain)
+                .help("Copy \(entry.cleanedURL)")
 
-            Button {
-                showingPromoteSheet = true
-            } label: {
-                Image(systemName: "plus.circle")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 22, height: 22)
-                    .contentShape(Rectangle())
+                Button {
+                    if let url = URL(string: entry.cleanedURL) {
+                        NSWorkspace.shared.open(url)
+                    }
+                } label: {
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(reopenTooltip)
+
+                Button {
+                    showingPromoteSheet = true
+                } label: {
+                    Image(systemName: "plus.circle")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Create a rule from this link")
             }
-            .buttonStyle(.plain)
-            .help("Promote to rule")
+            .layoutPriority(1)
+            .fixedSize()
         }
         .padding(.vertical, 12)
-        .help(toolTip)
         .sheet(isPresented: $showingPromoteSheet) {
             let opts = LaunchOptionDiscovery.options()
             AddRuleSheet(options: opts, prefill: AddRuleSheet.prefill(for: entry, options: opts))
@@ -221,7 +226,24 @@ private struct ActivityRow: View {
         }
     }
 
-    private var toolTip: String {
+    private var outcomeTooltip: String {
+        switch entry.outcome {
+        case .opened:           return "Opened"
+        case .openedIncognito:  return "Opened in private window"
+        case .opened_appScheme: return "Opened in app"
+        case .blocked:          return "Blocked"
+        case .picker:           return "Showed picker"
+        }
+    }
+
+    private var reopenTooltip: String {
+        if let pretty = row.prettyTargetBundleName {
+            return "Reopen in \(pretty)"
+        }
+        return "Reopen link"
+    }
+
+    private var linkTooltip: String {
         var lines: [String] = []
         if entry.didClean {
             lines.append("Original: \(entry.originalURL)")
