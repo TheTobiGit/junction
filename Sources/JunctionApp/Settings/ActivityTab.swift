@@ -7,9 +7,11 @@ struct ActivityTab: View {
     @State private var query: String = ""
     @State private var debouncedQuery: String = ""
     @State private var confirmingClear: Bool = false
-    @State private var allRows: [ActivityRowDisplay] = []
-    @State private var visibleRows: [ActivityRowDisplay] = []
     @State private var debounceWorkItem: DispatchWorkItem?
+
+    private var visibleRows: [ActivityRowDisplay] {
+        ActivityRowDisplayBuilder.filter(history.displayRows, query: debouncedQuery)
+    }
 
     var body: some View {
         Group {
@@ -25,38 +27,21 @@ struct ActivityTab: View {
             } else {
                 LazyVStack(alignment: .leading, spacing: 12, pinnedViews: [.sectionHeaders]) {
                     Section {
-                        rowsBlock
+                        rowsList
                     } header: {
                         searchHeader
                     }
                 }
             }
         }
-        .onAppear {
-            rebuildRows()
-            applyQuery()
-        }
-        .onChange(of: history.entries) { _ in
-            rebuildRows()
-            applyQuery()
-        }
         .onChange(of: query) { newValue in
             debounceWorkItem?.cancel()
             let work = DispatchWorkItem { [newValue] in
                 debouncedQuery = newValue
-                applyQuery()
             }
             debounceWorkItem = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
         }
-    }
-
-    private func rebuildRows() {
-        allRows = ActivityRowDisplayBuilder.build(entries: history.entries)
-    }
-
-    private func applyQuery() {
-        visibleRows = ActivityRowDisplayBuilder.filter(allRows, query: debouncedQuery)
     }
 
     private var searchHeader: some View {
@@ -126,8 +111,9 @@ struct ActivityTab: View {
     }
 
     @ViewBuilder
-    private var rowsBlock: some View {
-        if visibleRows.isEmpty {
+    private var rowsList: some View {
+        let rows = visibleRows
+        if rows.isEmpty {
             PrefsBlock {
                 PrefsEmptyState(
                     title: "No matches",
@@ -137,14 +123,36 @@ struct ActivityTab: View {
                 )
             }
         } else {
-            PrefsBlock {
-                ForEach(visibleRows) { row in
+            // The rows live directly inside the parent LazyVStack section
+            // body (no PrefsBlock wrapper) so each row is materialized only
+            // when it's about to enter the viewport. The rounded "block"
+            // chrome is rebuilt around the row strip via background +
+            // overlay, which doesn't force eager construction.
+            VStack(spacing: 0) {
+                ForEach(rows) { row in
                     ActivityRow(row: row, colorScheme: colorScheme)
-                    if row.id != visibleRows.last?.id {
+                        .padding(.horizontal, 16)
+                    if row.id != rows.last?.id {
                         PrefsHairline()
                     }
                 }
             }
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.14), Color.white.opacity(0.04)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.5
+                    )
+            )
         }
     }
 }
