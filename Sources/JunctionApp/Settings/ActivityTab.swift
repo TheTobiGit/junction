@@ -6,22 +6,30 @@ struct ActivityTab: View {
     @ObservedObject private var history = RoutingHistory.shared
     @State private var query: String = ""
     @State private var debouncedQuery: String = ""
-    @State private var groupDuplicates: Bool = false
     @State private var confirmingClear: Bool = false
     @State private var allRows: [ActivityRowDisplay] = []
     @State private var visibleRows: [ActivityRowDisplay] = []
     @State private var debounceWorkItem: DispatchWorkItem?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            if !history.entries.isEmpty {
+        Group {
+            if history.entries.isEmpty {
                 PrefsBlock {
-                    searchBar
+                    PrefsEmptyState(
+                        title: "Nothing here yet",
+                        message: "Links you open through Junction will appear in this list.",
+                        actionTitle: nil,
+                        action: nil
+                    )
                 }
-            }
-
-            PrefsBlock {
-                content
+            } else {
+                LazyVStack(alignment: .leading, spacing: 12, pinnedViews: [.sectionHeaders]) {
+                    Section {
+                        rowsBlock
+                    } header: {
+                        searchHeader
+                    }
+                }
             }
         }
         .onAppear {
@@ -29,10 +37,6 @@ struct ActivityTab: View {
             applyQuery()
         }
         .onChange(of: history.entries) { _ in
-            rebuildRows()
-            applyQuery()
-        }
-        .onChange(of: groupDuplicates) { _ in
             rebuildRows()
             applyQuery()
         }
@@ -48,14 +52,29 @@ struct ActivityTab: View {
     }
 
     private func rebuildRows() {
-        allRows = ActivityRowDisplayBuilder.build(
-            entries: history.entries,
-            groupDuplicates: groupDuplicates
-        )
+        allRows = ActivityRowDisplayBuilder.build(entries: history.entries)
     }
 
     private func applyQuery() {
         visibleRows = ActivityRowDisplayBuilder.filter(allRows, query: debouncedQuery)
+    }
+
+    private var searchHeader: some View {
+        PrefsBlock {
+            searchBar
+        }
+        .padding(.bottom, 12)
+        .padding(.top, 4)
+        .background(
+            // Cover the whole pinned strip including the parent's
+            // horizontal page padding, so scrolled rows can't bleed
+            // through under the search field once it sticks to the top.
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .padding(.horizontal, -28)
+                .padding(.top, -20)
+                .padding(.bottom, -2)
+        )
     }
 
     private var searchBar: some View {
@@ -75,14 +94,6 @@ struct ActivityTab: View {
             )
 
             Spacer()
-
-            Toggle(isOn: $groupDuplicates) {
-                Text("Group duplicates")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-            .toggleStyle(.switch)
-            .controlSize(.mini)
 
             Button(role: .destructive) {
                 confirmingClear = true
@@ -115,23 +126,18 @@ struct ActivityTab: View {
     }
 
     @ViewBuilder
-    private var content: some View {
-        if history.entries.isEmpty {
-            PrefsEmptyState(
-                title: "Nothing here yet",
-                message: "Links you open through Junction will appear in this list.",
-                actionTitle: nil,
-                action: nil
-            )
-        } else if visibleRows.isEmpty {
-            PrefsEmptyState(
-                title: "No matches",
-                message: "Try a different search term.",
-                actionTitle: nil,
-                action: nil
-            )
+    private var rowsBlock: some View {
+        if visibleRows.isEmpty {
+            PrefsBlock {
+                PrefsEmptyState(
+                    title: "No matches",
+                    message: "Try a different search term.",
+                    actionTitle: nil,
+                    action: nil
+                )
+            }
         } else {
-            LazyVStack(spacing: 0) {
+            PrefsBlock {
                 ForEach(visibleRows) { row in
                     ActivityRow(row: row, colorScheme: colorScheme)
                     if row.id != visibleRows.last?.id {
@@ -186,17 +192,6 @@ private struct ActivityRow: View {
                         Text(rule)
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
-                    }
-                    if row.isGrouped {
-                        Text("·").foregroundStyle(.secondary.opacity(0.5))
-                        Text("\(row.groupedCount)×")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(
-                                Capsule().fill(Color.primary.opacity(0.08))
-                            )
                     }
                 }
             }
@@ -269,9 +264,6 @@ private struct ActivityRow: View {
             }
         } else {
             lines.append(entry.cleanedURL)
-        }
-        if row.isGrouped {
-            lines.append("Opened \(row.groupedCount) times")
         }
         return lines.joined(separator: "\n")
     }

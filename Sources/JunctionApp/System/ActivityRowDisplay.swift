@@ -12,88 +12,23 @@ struct ActivityRowDisplay: Identifiable, Hashable {
     let relativeTimeString: String
     let prettyTargetBundleName: String?
     let lowercasedHaystack: String
-    let groupedCount: Int
-
-    var isGrouped: Bool { groupedCount > 1 }
 }
 
 enum ActivityRowDisplayBuilder {
     static func build(
         entries: [RoutingHistory.Entry],
-        groupDuplicates: Bool = false,
         now: Date = Date()
     ) -> [ActivityRowDisplay] {
         guard !entries.isEmpty else { return [] }
         let formatter = relativeFormatter
-
-        if !groupDuplicates {
-            return entries.map { entry in
-                let pretty = entry.targetBundleID.flatMap(BundleDisplayNameCache.shared.name(for:))
-                return ActivityRowDisplay(
-                    id: entry.id,
-                    entry: entry,
-                    relativeTimeString: formatter.localizedString(for: entry.timestamp, relativeTo: now),
-                    prettyTargetBundleName: pretty,
-                    lowercasedHaystack: makeHaystack(entry: entry, prettyTarget: pretty),
-                    groupedCount: 1
-                )
-            }
-        }
-
-        struct Group {
-            var representative: RoutingHistory.Entry
-            var count: Int
-            var extraHaystack: [String]
-        }
-
-        var insertionOrder: [String] = []
-        var groups: [String: Group] = [:]
-
-        for entry in entries {
-            let key = groupKey(for: entry)
-            if var existing = groups[key] {
-                existing.count += 1
-                let priorOriginalURL = existing.representative.originalURL
-                let priorRuleLabel = existing.representative.ruleLabel
-                if entry.timestamp > existing.representative.timestamp {
-                    existing.representative = entry
-                    if priorOriginalURL != entry.originalURL {
-                        existing.extraHaystack.append(priorOriginalURL.lowercased())
-                    }
-                    if let priorRuleLabel, priorRuleLabel != entry.ruleLabel {
-                        existing.extraHaystack.append(priorRuleLabel.lowercased())
-                    }
-                } else {
-                    if entry.originalURL != existing.representative.originalURL {
-                        existing.extraHaystack.append(entry.originalURL.lowercased())
-                    }
-                    if let label = entry.ruleLabel,
-                       label != existing.representative.ruleLabel {
-                        existing.extraHaystack.append(label.lowercased())
-                    }
-                }
-                groups[key] = existing
-            } else {
-                insertionOrder.append(key)
-                groups[key] = Group(representative: entry, count: 1, extraHaystack: [])
-            }
-        }
-
-        return insertionOrder.compactMap { key in
-            guard let group = groups[key] else { return nil }
-            let entry = group.representative
+        return entries.map { entry in
             let pretty = entry.targetBundleID.flatMap(BundleDisplayNameCache.shared.name(for:))
             return ActivityRowDisplay(
                 id: entry.id,
                 entry: entry,
                 relativeTimeString: formatter.localizedString(for: entry.timestamp, relativeTo: now),
                 prettyTargetBundleName: pretty,
-                lowercasedHaystack: makeHaystack(
-                    entry: entry,
-                    prettyTarget: pretty,
-                    extras: group.extraHaystack
-                ),
-                groupedCount: group.count
+                lowercasedHaystack: makeHaystack(entry: entry, prettyTarget: pretty)
             )
         }
     }
@@ -113,15 +48,9 @@ enum ActivityRowDisplayBuilder {
         return f
     }()
 
-    private static func groupKey(for entry: RoutingHistory.Entry) -> String {
-        // `\u{1F}` is unit separator, can't appear in URLs or bundle IDs.
-        return entry.cleanedURL + "\u{1F}" + (entry.targetBundleID ?? "")
-    }
-
     private static func makeHaystack(
         entry: RoutingHistory.Entry,
-        prettyTarget: String?,
-        extras: [String] = []
+        prettyTarget: String?
     ) -> String {
         var parts: [String] = [
             entry.originalURL.lowercased(),
@@ -130,7 +59,6 @@ enum ActivityRowDisplayBuilder {
         if let target = entry.targetBundleID { parts.append(target.lowercased()) }
         if let pretty = prettyTarget { parts.append(pretty.lowercased()) }
         if let rule = entry.ruleLabel { parts.append(rule.lowercased()) }
-        parts.append(contentsOf: extras)
         return parts.joined(separator: "\u{1F}")
     }
 }
