@@ -634,7 +634,6 @@ struct PreferencesView: View {
     private func targetRow(_ option: LaunchOption) -> some View {
         let key = option.target.storageKey
         let hidden = settings.settings.hiddenTargetKeys.contains(key)
-        let pinned = settings.settings.pinnedTargetKey == key
         let favorite = settings.settings.favoriteTargetKey == key
         return HStack(spacing: 12) {
             grip
@@ -643,20 +642,16 @@ struct PreferencesView: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(hidden ? .secondary : .primary)
             Spacer()
-            Button { settings.setFavoriteTargetKey(favorite ? nil : key) } label: {
+            Button {
+                settings.setFavoriteTargetKey(favorite ? nil : key)
+                options = LaunchOptionDiscovery.options()
+            } label: {
                 Image(systemName: favorite ? "star.fill" : "star")
                     .font(.system(size: 12))
                     .foregroundStyle(favorite ? Color.yellow : .secondary)
             }
             .buttonStyle(.plain)
             .help(favorite ? "Remove favorite" : "Set as favorite")
-            Button { settings.setPinnedTargetKey(pinned ? nil : key) } label: {
-                Image(systemName: pinned ? "pin.fill" : "pin")
-                    .font(.system(size: 12))
-                    .foregroundStyle(pinned ? Color.accentColor : .secondary)
-            }
-            .buttonStyle(.plain)
-            .help(pinned ? "Unpin" : "Pin to top")
             Toggle("", isOn: Binding(
                 get: { !hidden },
                 set: { settings.setHidden(!$0, for: key) }
@@ -737,7 +732,7 @@ struct PreferencesView: View {
         shadowedRuleIDs = RuleConflictDetector.shadowed(rules: rulesFile.rules)
         expandedTargetGroupIDs = LaunchOptionGrouping.defaultExpandedGroupIDs(
             grouped: LaunchOptionGrouping.group(options: options),
-            pinnedTargetKey: settings.settings.pinnedTargetKey
+            favoriteTargetKey: settings.settings.favoriteTargetKey
         )
     }
 }

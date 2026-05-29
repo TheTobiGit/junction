@@ -136,15 +136,15 @@ enum LaunchOptionGrouping {
     }
 
     /// Returns the set of group IDs that should be expanded by default, based on
-    /// whether the pinned target key lives inside a group.
+    /// whether the favorite target key lives inside a group.
     static func defaultExpandedGroupIDs(
         grouped: [GroupedLaunchOption],
-        pinnedTargetKey: String?
+        favoriteTargetKey: String?
     ) -> Set<String> {
-        guard let pinnedKey = pinnedTargetKey else { return [] }
+        guard let favoriteKey = favoriteTargetKey else { return [] }
         for item in grouped {
             if case .group(let browser, let opts) = item {
-                if opts.contains(where: { $0.target.storageKey == pinnedKey }) {
+                if opts.contains(where: { $0.target.storageKey == favoriteKey }) {
                     return ["group:\(browser.bundleID)"]
                 }
             }

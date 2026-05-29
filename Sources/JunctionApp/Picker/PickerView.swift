@@ -1135,18 +1135,7 @@ private struct DialCenterHub: View {
         .contentShape(Rectangle())
         .contextMenu {
             let key = option.target.storageKey
-            let isPinned = appSettings.settings.pinnedTargetKey == key
             let isFavorite = appSettings.settings.favoriteTargetKey == key
-            if isPinned {
-                Button("Unpin") {
-                    appSettings.setPinnedTargetKey(nil)
-                }
-            } else {
-                Button("Pin to first slot") {
-                    appSettings.setPinnedTargetKey(key)
-                }
-            }
-            Divider()
             Button(isFavorite ? "Remove favorite" : "Set as favorite") {
                 appSettings.setFavoriteTargetKey(isFavorite ? nil : key)
             }
@@ -1219,18 +1208,7 @@ private struct DialCenterHub: View {
         .contentShape(Rectangle())
         .contextMenu {
             let key = option.target.storageKey
-            let isPinned = appSettings.settings.pinnedTargetKey == key
             let isFavorite = appSettings.settings.favoriteTargetKey == key
-            if isPinned {
-                Button("Unpin") {
-                    appSettings.setPinnedTargetKey(nil)
-                }
-            } else {
-                Button("Pin to first slot") {
-                    appSettings.setPinnedTargetKey(key)
-                }
-            }
-            Divider()
             Button(isFavorite ? "Remove favorite" : "Set as favorite") {
                 appSettings.setFavoriteTargetKey(isFavorite ? nil : key)
             }
