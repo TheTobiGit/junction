@@ -131,17 +131,14 @@ struct ActivityTab: View {
                 action: nil
             )
         } else {
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(visibleRows) { row in
-                        ActivityRow(row: row, colorScheme: colorScheme)
-                        if row.id != visibleRows.last?.id {
-                            PrefsHairline()
-                        }
+            LazyVStack(spacing: 0) {
+                ForEach(visibleRows) { row in
+                    ActivityRow(row: row, colorScheme: colorScheme)
+                    if row.id != visibleRows.last?.id {
+                        PrefsHairline()
                     }
                 }
             }
-            .frame(maxHeight: 520)
         }
     }
 }
