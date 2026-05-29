@@ -36,15 +36,14 @@ final class OnboardingWindowController {
 }
 
 private enum OnboardingStep: Int, CaseIterable {
-    case welcome, defaultBrowser, permissions, appSchemes, hotkeys, done
+    case welcome, setup, browsers, power, done
 
     var headline: String {
         switch self {
         case .welcome: return "Every link.\nRight place."
-        case .defaultBrowser: return "Make Junction\nyour default."
-        case .permissions: return "A couple of\nquick permissions."
-        case .appSchemes: return "Skip the browser\nwhen you can."
-        case .hotkeys: return "Summon the picker\nfrom anywhere."
+        case .setup: return "Set up Junction."
+        case .browsers: return "Pick your browsers."
+        case .power: return "Work faster."
         case .done: return "You're all set."
         }
     }
@@ -52,10 +51,9 @@ private enum OnboardingStep: Int, CaseIterable {
     var caption: String {
         switch self {
         case .welcome: return "Junction catches every link click and lets you choose where it lands. Local. Private. Fast."
-        case .defaultBrowser: return "macOS will ask once. Junction needs this to catch links from other apps."
-        case .permissions: return "Optional, but they unlock the smartest routing."
-        case .appSchemes: return "Send Slack, Figma, and Notion links straight to the desktop app."
-        case .hotkeys: return "Two shortcuts. Pick a browser or paste-and-go without lifting your hands."
+        case .setup: return "Make Junction your default, then grant a couple of optional permissions for the smartest routing."
+        case .browsers: return "Hide what you don't use, drag to reorder, and star your default. The favorite lands at slot 1."
+        case .power: return "Send Slack, Figma, and Notion links straight to the app, and set shortcuts to summon the picker or paste-and-go."
         case .done: return "Tweak rules, profiles, and rewrites anytime from the menu bar."
         }
     }
@@ -71,11 +69,7 @@ struct OnboardingView: View {
     private var accent: Color { settings.settings.accentPreset.swiftUIColor }
 
     private var visibleSteps: [OnboardingStep] {
-        if permissions.isJunctionDefaultBrowser && step != .defaultBrowser {
-            OnboardingStep.allCases.filter { $0 != .defaultBrowser }
-        } else {
-            Array(OnboardingStep.allCases)
-        }
+        Array(OnboardingStep.allCases)
     }
 
     private var visibleStepIndex: Int {
@@ -90,7 +84,7 @@ struct OnboardingView: View {
             VStack(spacing: 0) {
                 topBar
                 heroArea
-                    .frame(height: 240)
+                    .frame(height: (step == .browsers || step == .setup || step == .power) ? 130 : 240)
                     .frame(maxWidth: .infinity)
                 contentArea
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -182,10 +176,9 @@ struct OnboardingView: View {
         ZStack {
             switch step {
             case .welcome: WelcomeHero(accent: accent, pulse: heroPulse)
-            case .defaultBrowser: DefaultBrowserHero(accent: accent, isDefault: permissions.isJunctionDefaultBrowser, pulse: heroPulse)
-            case .permissions: PermissionsHero(accent: accent, pulse: heroPulse)
-            case .appSchemes: AppSchemesHero(accent: accent, pulse: heroPulse)
-            case .hotkeys: HotkeysHero(accent: accent, pulse: heroPulse)
+            case .setup: DefaultBrowserHero(accent: accent, isDefault: permissions.isJunctionDefaultBrowser, pulse: heroPulse)
+            case .browsers: BrowsersHero(accent: accent, pulse: heroPulse)
+            case .power: AppSchemesHero(accent: accent, pulse: heroPulse)
             case .done: DoneHero(accent: accent, pulse: heroPulse)
             }
         }
@@ -215,6 +208,7 @@ struct OnboardingView: View {
                     .frame(maxWidth: 480)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(minHeight: 92, alignment: .top)
             .padding(.horizontal, 40)
             .padding(.top, 4)
             .padding(.bottom, 18)
@@ -229,17 +223,46 @@ struct OnboardingView: View {
         switch step {
         case .welcome:
             EmptyView()
-        case .defaultBrowser:
-            defaultBrowserAction
-        case .permissions:
-            permissionsActions
-        case .appSchemes:
-            appSchemesPicker
-        case .hotkeys:
-            hotkeysList
+        case .setup:
+            setupActions
+        case .browsers:
+            OnboardingBrowsersConfigurator(accent: accent)
+        case .power:
+            powerActions
         case .done:
             EmptyView()
         }
+    }
+
+    private var setupActions: some View {
+        VStack(spacing: 18) {
+            defaultBrowserAction
+            VStack(alignment: .leading, spacing: 8) {
+                sectionLabel("Optional permissions")
+                permissionsActions
+            }
+        }
+    }
+
+    private var powerActions: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 8) {
+                sectionLabel("Open in apps")
+                appSchemesPicker
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                sectionLabel("Shortcuts")
+                hotkeysList
+            }
+        }
+    }
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 10, weight: .bold))
+            .foregroundColor(.secondary)
+            .kerning(0.6)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var defaultBrowserAction: some View {
@@ -671,6 +694,151 @@ private struct DefaultBrowserHero: View {
     }
 }
 
+private struct OnboardingBrowsersConfigurator: View {
+    let accent: Color
+    @ObservedObject private var settings = SettingsStore.shared
+    @State private var options: [LaunchOption] = LaunchOptionDiscovery.options()
+
+    var body: some View {
+        Group {
+            if options.isEmpty {
+                Text("No browsers detected yet. You can configure these later from Preferences.")
+                    .font(.system(size: 11.5))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+            } else {
+                ScrollView {
+                    VStack(spacing: 6) {
+                        ForEach(options, id: \.id) { option in
+                            row(for: option)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                .frame(maxHeight: 280)
+            }
+        }
+        .onAppear { reloadOptions() }
+    }
+
+    private func row(for option: LaunchOption) -> some View {
+        let key = option.target.storageKey
+        let isHidden = settings.isHidden(key)
+        let isFavorite = settings.settings.favoriteTargetKey == key
+        let myIndex = options.firstIndex(where: { $0.id == option.id })
+        let favoriteSet = settings.settings.favoriteTargetKey != nil
+        let idx = myIndex ?? 0
+        let upDisabled = idx == 0 || (favoriteSet && idx == 1 && !isFavorite)
+        let downDisabled = idx >= options.count - 1 || (favoriteSet && isFavorite)
+        return HStack(spacing: 10) {
+            Image(nsImage: option.icon)
+                .resizable()
+                .frame(width: 22, height: 22)
+                .opacity(isHidden ? 0.4 : 1.0)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(option.browser.name)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundColor(isHidden ? .secondary : .primary)
+                    .lineLimit(1)
+                if let profile = option.profile {
+                    Text(profile.displayName)
+                        .font(.system(size: 10.5))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            HStack(spacing: 4) {
+                Button {
+                    moveOption(at: myIndex, by: -1)
+                } label: {
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 10, weight: .bold))
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(upDisabled ? Color.secondary.opacity(0.4) : .secondary)
+                .disabled(upDisabled)
+                .help(upDisabled && favoriteSet && idx == 1 && !isFavorite
+                      ? "Favorite stays in slot 1"
+                      : "Move up")
+
+                Button {
+                    moveOption(at: myIndex, by: 1)
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .bold))
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(downDisabled ? Color.secondary.opacity(0.4) : .secondary)
+                .disabled(downDisabled)
+                .help(downDisabled && favoriteSet && isFavorite
+                      ? "Favorite stays in slot 1"
+                      : "Move down")
+            }
+
+            Button {
+                settings.setFavoriteTargetKey(isFavorite ? nil : key)
+                reloadOptions()
+            } label: {
+                Image(systemName: isFavorite ? "star.fill" : "star")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(isFavorite ? Color.yellow : .secondary)
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.plain)
+            .help(isFavorite ? "Remove favorite" : "Set as favorite (moves to slot 1)")
+
+            Toggle("", isOn: Binding(
+                get: { !isHidden },
+                set: { newValue in
+                    settings.setHidden(!newValue, for: key)
+                }
+            ))
+            .toggleStyle(.switch)
+            .labelsHidden()
+            .controlSize(.mini)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.primary.opacity(0.04))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
+        )
+    }
+
+    private func reloadOptions() {
+        options = LaunchOptionDiscovery.options()
+    }
+
+    private func moveOption(at index: Int?, by delta: Int) {
+        guard let index else { return }
+        let target = index + delta
+        guard target >= 0, target < options.count else { return }
+        var keys = options.map { $0.target.storageKey }
+        let moved = keys.remove(at: index)
+        keys.insert(moved, at: target)
+        if let favorite = settings.settings.favoriteTargetKey,
+           keys.contains(favorite),
+           keys.first != favorite {
+            keys.removeAll { $0 == favorite }
+            keys.insert(favorite, at: 0)
+        }
+        settings.setTargetOrder(keys)
+        reloadOptions()
+    }
+}
+
 private struct PermissionsHero: View {
     let accent: Color
     let pulse: Bool
@@ -717,6 +885,59 @@ private struct PermissionsHero: View {
             Text(label)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(.secondary)
+        }
+    }
+}
+
+private struct BrowsersHero: View {
+    let accent: Color
+    let pulse: Bool
+
+    private let icons: [(String, Color)] = [
+        ("safari", .blue),
+        ("globe", .gray),
+        ("globe.americas.fill", .green),
+        ("network", .purple),
+        ("macwindow", .orange)
+    ]
+
+    var body: some View {
+        HeroFrame(accent: accent) {
+            HStack(spacing: 12) {
+                ForEach(Array(icons.enumerated()), id: \.offset) { idx, item in
+                    browserCard(symbol: item.0, color: item.1, favored: idx == 0, pulse: pulse)
+                }
+            }
+        }
+    }
+
+    private func browserCard(symbol: String, color: Color, favored: Bool, pulse: Bool) -> some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(LinearGradient(
+                    colors: [color, color.opacity(0.65)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ))
+                .frame(width: 64, height: 76)
+                .shadow(color: color.opacity(0.4), radius: 10, y: 4)
+
+            VStack(spacing: 4) {
+                Image(systemName: symbol)
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundColor(.white)
+            }
+            .frame(width: 64, height: 76)
+
+            if favored {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.yellow)
+                    .padding(4)
+                    .background(Circle().fill(Color.black.opacity(0.4)))
+                    .offset(x: -4, y: -4)
+                    .scaleEffect(pulse ? 1.08 : 1.0)
+            }
         }
     }
 }

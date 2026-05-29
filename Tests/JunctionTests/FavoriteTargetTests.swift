@@ -44,28 +44,27 @@ final class FavoriteTargetTests: XCTestCase {
         XCTAssertNil(decoded.favoriteTargetKey)
     }
 
-    func test_favoriteTargetKey_isIndependentOfPinnedTargetKey() {
+    func test_setFavoriteTargetKey_movesToFirstSlot() {
         var settings = JunctionSettings()
         settings.targetOrder = ["app:com.apple.Safari", "app:com.brave.Browser"]
-        settings.setPinnedTargetKey("app:com.apple.Safari")
-        settings.favoriteTargetKey = "app:com.brave.Browser"
+        settings.setFavoriteTargetKey("app:com.brave.Browser")
 
-        XCTAssertEqual(settings.pinnedTargetKey, "app:com.apple.Safari")
         XCTAssertEqual(settings.favoriteTargetKey, "app:com.brave.Browser")
-        XCTAssertEqual(settings.targetOrder.first, "app:com.apple.Safari",
-                       "favorite must not reorder targets")
+        XCTAssertEqual(settings.targetOrder.first, "app:com.brave.Browser",
+                       "favorite must reorder to slot 1")
     }
 
-    func test_clearingFavorite_setsNilWithoutAffectingPin() {
+    func test_clearingFavorite_setsNilWithoutReorder() {
         var settings = JunctionSettings()
         settings.targetOrder = ["app:com.apple.Safari", "app:com.brave.Browser"]
-        settings.setPinnedTargetKey("app:com.apple.Safari")
-        settings.favoriteTargetKey = "app:com.brave.Browser"
+        settings.setFavoriteTargetKey("app:com.brave.Browser")
+        let orderAfterFavorite = settings.targetOrder
 
-        settings.favoriteTargetKey = nil
+        settings.setFavoriteTargetKey(nil)
 
         XCTAssertNil(settings.favoriteTargetKey)
-        XCTAssertEqual(settings.pinnedTargetKey, "app:com.apple.Safari")
+        XCTAssertEqual(settings.targetOrder, orderAfterFavorite,
+                       "clearing the favorite must not change targetOrder")
     }
 
     func test_resolveFavorite_returnsExactProfileMatch() {
