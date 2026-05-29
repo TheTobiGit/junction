@@ -33,6 +33,13 @@ final class RoutingHistory: ObservableObject {
     static let maxEntries = 200
 
     @Published private(set) var entries: [Entry] = []
+    /// Display-ready rows precomputed off `entries`. Owning this cache here
+    /// (rather than rebuilding inside the SwiftUI view on tab focus) means
+    /// switching to Settings → Activity is a pure observation: no
+    /// per-row `RelativeDateTimeFormatter` calls, no `NSWorkspace` lookups,
+    /// no haystack-string allocations on the main thread when the user
+    /// expects the panel to feel instant.
+    @Published private(set) var displayRows: [ActivityRowDisplay] = []
 
     private let queue = DispatchQueue(label: "dev.gideonsarfo.Junction.history")
     let persistQueue = DispatchQueue(label: "dev.gideonsarfo.Junction.history.persist")
@@ -51,6 +58,7 @@ final class RoutingHistory: ObservableObject {
         let loaded = Self.load(from: self.fileURL)
         let deduped = Self.removingDuplicates(loaded)
         self.entries = deduped
+        self.displayRows = ActivityRowDisplayBuilder.build(entries: deduped)
         if loaded.count != deduped.count {
             // One-shot compaction: prior versions of Junction wrote one row
             // per click, so an existing user's history.json may have many
@@ -109,6 +117,7 @@ final class RoutingHistory: ObservableObject {
                 next.removeLast(next.count - Self.maxEntries)
             }
             self.entries = next
+            self.displayRows = ActivityRowDisplayBuilder.build(entries: next)
             self.persist(next)
         }
     }
@@ -117,7 +126,23 @@ final class RoutingHistory: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.entries = []
+            self.displayRows = []
             self.persist([])
+        }
+    }
+
+    /// Pre-warms the bundle-name and relative-formatter caches off the main
+    /// thread. Call once at app launch so the first time the user clicks
+    /// Settings → Activity is paying near-zero startup cost.
+    func warmDisplayCaches() {
+        let snapshot = displayRows
+        DispatchQueue.global(qos: .utility).async {
+            for row in snapshot {
+                if let bundleID = row.entry.targetBundleID {
+                    _ = BundleDisplayNameCache.shared.name(for: bundleID)
+                }
+            }
+            _ = ActivityRowDisplayBuilder.warmFormatter()
         }
     }
 

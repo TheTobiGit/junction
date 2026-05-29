@@ -37,6 +37,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         flushPendingURLs()
         maybeShowOnboarding()
         UpdateChecker.shared.start()
+        // Pre-warm the Activity tab's display caches off the main thread
+        // so the first time the user opens Settings → Activity is paying
+        // near-zero startup cost (no cold ICU/locale spin, no NSWorkspace
+        // bundle lookups during the SwiftUI render pass).
+        RoutingHistory.shared.warmDisplayCaches()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
