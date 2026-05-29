@@ -1,69 +1,19 @@
 import SwiftUI
 import AppKit
 
-struct ActivityTab: View {
-    @Environment(\.colorScheme) private var colorScheme
+/// Search field + Clear button rendered in the page header (next to the
+/// "Activity" title), matching how the Redirects tab puts its "Add" button
+/// in the same slot. Hoisting these controls out of the rows panel means
+/// they never participate in the page's scroll view; the box below scrolls
+/// independently.
+struct ActivityHeaderControls: View {
+    @Binding var query: String
+    @Binding var confirmingClear: Bool
     @ObservedObject private var history = RoutingHistory.shared
-    @State private var query: String = ""
-    @State private var debouncedQuery: String = ""
-    @State private var confirmingClear: Bool = false
-    @State private var debounceWorkItem: DispatchWorkItem?
-
-    private var visibleRows: [ActivityRowDisplay] {
-        ActivityRowDisplayBuilder.filter(history.displayRows, query: debouncedQuery)
-    }
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        Group {
-            if history.entries.isEmpty {
-                PrefsBlock {
-                    PrefsEmptyState(
-                        title: "Nothing here yet",
-                        message: "Links you open through Junction will appear in this list.",
-                        actionTitle: nil,
-                        action: nil
-                    )
-                }
-            } else {
-                LazyVStack(alignment: .leading, spacing: 12, pinnedViews: [.sectionHeaders]) {
-                    Section {
-                        rowsList
-                    } header: {
-                        searchHeader
-                    }
-                }
-            }
-        }
-        .onChange(of: query) { newValue in
-            debounceWorkItem?.cancel()
-            let work = DispatchWorkItem { [newValue] in
-                debouncedQuery = newValue
-            }
-            debounceWorkItem = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
-        }
-    }
-
-    private var searchHeader: some View {
-        PrefsBlock {
-            searchBar
-        }
-        .padding(.bottom, 12)
-        .padding(.top, 4)
-        .background(
-            // Cover the whole pinned strip including the parent's
-            // horizontal page padding, so scrolled rows can't bleed
-            // through under the search field once it sticks to the top.
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .padding(.horizontal, -28)
-                .padding(.top, -20)
-                .padding(.bottom, -2)
-        )
-    }
-
-    private var searchBar: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(spacing: 10) {
             HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 11, weight: .medium))
@@ -71,32 +21,19 @@ struct ActivityTab: View {
                 TextField("Search links…", text: $query)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
+                    .frame(width: 180)
             }
-            .padding(.horizontal, 10).padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05))
             )
 
-            Spacer()
-
-            Button(role: .destructive) {
+            PrefsButton(title: "Clear", symbol: "trash") {
                 confirmingClear = true
-            } label: {
-                Text("Clear")
-                    .font(.system(size: 11, weight: .semibold))
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .foregroundStyle(.primary)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-                    )
             }
-            .buttonStyle(.plain)
+            .disabled(history.entries.isEmpty)
             .confirmationDialog(
                 "Clear all \(history.entries.count) entries?",
                 isPresented: $confirmingClear,
@@ -109,11 +46,29 @@ struct ActivityTab: View {
             }
         }
     }
+}
 
-    @ViewBuilder
-    private var rowsList: some View {
-        let rows = visibleRows
-        if rows.isEmpty {
+struct ActivityTab: View {
+    let debouncedQuery: String
+
+    @Environment(\.colorScheme) private var colorScheme
+    @ObservedObject private var history = RoutingHistory.shared
+
+    private var visibleRows: [ActivityRowDisplay] {
+        ActivityRowDisplayBuilder.filter(history.displayRows, query: debouncedQuery)
+    }
+
+    var body: some View {
+        if history.entries.isEmpty {
+            PrefsBlock {
+                PrefsEmptyState(
+                    title: "Nothing here yet",
+                    message: "Links you open through Junction will appear in this list.",
+                    actionTitle: nil,
+                    action: nil
+                )
+            }
+        } else if visibleRows.isEmpty {
             PrefsBlock {
                 PrefsEmptyState(
                     title: "No matches",
@@ -123,21 +78,25 @@ struct ActivityTab: View {
                 )
             }
         } else {
-            // The rows live directly inside the parent LazyVStack section
-            // body (no PrefsBlock wrapper) so each row is materialized only
-            // when it's about to enter the viewport. The rounded "block"
-            // chrome is rebuilt around the row strip via background +
-            // overlay, which doesn't force eager construction.
+            // Single fixed-height block whose interior is the scroll
+            // surface. The page itself doesn't scroll on this tab —
+            // only the rows do.
             VStack(spacing: 0) {
-                ForEach(rows) { row in
-                    ActivityRow(row: row, colorScheme: colorScheme)
-                        .padding(.horizontal, 16)
-                    if row.id != rows.last?.id {
-                        PrefsHairline()
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(visibleRows) { row in
+                            ActivityRow(row: row, colorScheme: colorScheme)
+                                .padding(.horizontal, 16)
+                            if row.id != visibleRows.last?.id {
+                                PrefsHairline()
+                            }
+                        }
                     }
+                    .padding(.vertical, 6)
                 }
+                .scrollIndicators(.automatic)
             }
-            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(Color.white.opacity(0.06))
