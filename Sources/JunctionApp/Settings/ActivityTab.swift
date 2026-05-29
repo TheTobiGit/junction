@@ -5,11 +5,12 @@ struct ActivityTab: View {
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var history = RoutingHistory.shared
     @State private var query: String = ""
+    @State private var debouncedQuery: String = ""
+    @State private var groupDuplicates: Bool = false
     @State private var confirmingClear: Bool = false
-
-    private var filteredEntries: [RoutingHistory.Entry] {
-        ActivityFilter.filter(history.entries, criteria: .init(query: query))
-    }
+    @State private var allRows: [ActivityRowDisplay] = []
+    @State private var visibleRows: [ActivityRowDisplay] = []
+    @State private var debounceWorkItem: DispatchWorkItem?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -23,6 +24,38 @@ struct ActivityTab: View {
                 content
             }
         }
+        .onAppear {
+            rebuildRows()
+            applyQuery()
+        }
+        .onChange(of: history.entries) { _ in
+            rebuildRows()
+            applyQuery()
+        }
+        .onChange(of: groupDuplicates) { _ in
+            rebuildRows()
+            applyQuery()
+        }
+        .onChange(of: query) { newValue in
+            debounceWorkItem?.cancel()
+            let work = DispatchWorkItem { [newValue] in
+                debouncedQuery = newValue
+                applyQuery()
+            }
+            debounceWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
+        }
+    }
+
+    private func rebuildRows() {
+        allRows = ActivityRowDisplayBuilder.build(
+            entries: history.entries,
+            groupDuplicates: groupDuplicates
+        )
+    }
+
+    private func applyQuery() {
+        visibleRows = ActivityRowDisplayBuilder.filter(allRows, query: debouncedQuery)
     }
 
     private var searchBar: some View {
@@ -42,6 +75,14 @@ struct ActivityTab: View {
             )
 
             Spacer()
+
+            Toggle(isOn: $groupDuplicates) {
+                Text("Group duplicates")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .toggleStyle(.switch)
+            .controlSize(.mini)
 
             Button(role: .destructive) {
                 confirmingClear = true
@@ -82,7 +123,7 @@ struct ActivityTab: View {
                 actionTitle: nil,
                 action: nil
             )
-        } else if filteredEntries.isEmpty {
+        } else if visibleRows.isEmpty {
             PrefsEmptyState(
                 title: "No matches",
                 message: "Try a different search term.",
@@ -90,21 +131,28 @@ struct ActivityTab: View {
                 action: nil
             )
         } else {
-            VStack(spacing: 0) {
-                ForEach(Array(filteredEntries.enumerated()), id: \.element.id) { idx, entry in
-                    ActivityRow(entry: entry, colorScheme: colorScheme)
-                    if idx < filteredEntries.count - 1 { PrefsHairline() }
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(visibleRows) { row in
+                        ActivityRow(row: row, colorScheme: colorScheme)
+                        if row.id != visibleRows.last?.id {
+                            PrefsHairline()
+                        }
+                    }
                 }
             }
+            .frame(maxHeight: 520)
         }
     }
 }
 
 private struct ActivityRow: View {
-    let entry: RoutingHistory.Entry
+    let row: ActivityRowDisplay
     var colorScheme: ColorScheme = .light
 
     @State private var showingPromoteSheet: Bool = false
+
+    private var entry: RoutingHistory.Entry { row.entry }
 
     private var linkColor: Color {
         colorScheme == .dark
@@ -127,12 +175,12 @@ private struct ActivityRow: View {
                     .textSelection(.enabled)
 
                 HStack(spacing: 8) {
-                    Text(relativeTime)
+                    Text(row.relativeTimeString)
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.secondary)
-                    if let target = entry.targetBundleID {
+                    if let prettyTarget = row.prettyTargetBundleName {
                         Text("·").foregroundStyle(.secondary.opacity(0.5))
-                        Text(prettyBundleID(target))
+                        Text(prettyTarget)
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
                     }
@@ -141,6 +189,17 @@ private struct ActivityRow: View {
                         Text(rule)
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
+                    }
+                    if row.isGrouped {
+                        Text("·").foregroundStyle(.secondary.opacity(0.5))
+                        Text("\(row.groupedCount)×")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(
+                                Capsule().fill(Color.primary.opacity(0.08))
+                            )
                     }
                 }
             }
@@ -203,12 +262,6 @@ private struct ActivityRow: View {
         }
     }
 
-    private var relativeTime: String {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .short
-        return f.localizedString(for: entry.timestamp, relativeTo: Date())
-    }
-
     private var toolTip: String {
         var lines: [String] = []
         if entry.didClean {
@@ -220,6 +273,9 @@ private struct ActivityRow: View {
         } else {
             lines.append(entry.cleanedURL)
         }
+        if row.isGrouped {
+            lines.append("Opened \(row.groupedCount) times")
+        }
         return lines.joined(separator: "\n")
     }
 
@@ -227,14 +283,5 @@ private struct ActivityRow: View {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(s, forType: .string)
-    }
-
-    private func prettyBundleID(_ id: String) -> String {
-        if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id),
-           let bundle = Bundle(url: app),
-           let name = bundle.infoDictionary?["CFBundleName"] as? String {
-            return name
-        }
-        return id
     }
 }
