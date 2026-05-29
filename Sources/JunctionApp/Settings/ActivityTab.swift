@@ -165,6 +165,12 @@ private struct ActivityRow: View {
                 .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            // Selecting the URL toggles the underlying NSTextView into a
+            // mode that draws the full string regardless of lineLimit /
+            // truncationMode, so it can paint past the column's frame and
+            // overlap the trailing icons. Clip explicitly to keep the
+            // selection drawing contained to the column.
+            .clipped()
             .help(linkTooltip)
 
             HStack(spacing: 0) {
