@@ -125,6 +125,11 @@ struct PreferencesView: View {
     @State var newTrackerEntry = ""
     @State var expandedTargetGroupIDs: Set<String> = []
 
+    @State var activityQuery: String = ""
+    @State var debouncedActivityQuery: String = ""
+    @State var confirmingClearActivity: Bool = false
+    @State private var activityDebounceWorkItem: DispatchWorkItem?
+
     private var accent: Color { settings.settings.accentPreset.swiftUIColor }
     private var theme: ChromeTheme { settings.settings.chromeTheme }
 
@@ -143,17 +148,30 @@ struct PreferencesView: View {
 
                 PrefsHairline()
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
+                if selection == .activity {
+                    // Activity owns its own height: the rows box scrolls
+                    // internally, the page itself stays put. Bypass the
+                    // outer ScrollView used by the other panels.
+                    VStack(alignment: .leading, spacing: 0) {
                         sectionContent
-                        Spacer(minLength: 24)
                     }
                     .padding(.horizontal, 28)
                     .padding(.top, 20)
                     .padding(.bottom, 28)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 20) {
+                            sectionContent
+                            Spacer(minLength: 24)
+                        }
+                        .padding(.horizontal, 28)
+                        .padding(.top, 20)
+                        .padding(.bottom, 28)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                    .scrollIndicators(.hidden)
                 }
-                .scrollIndicators(.hidden)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
@@ -170,6 +188,14 @@ struct PreferencesView: View {
             guard let raw = note.userInfo?["section"] as? String,
                   let target = PrefsSection(rawValue: raw) else { return }
             selection = target
+        }
+        .onChange(of: activityQuery) { newValue in
+            activityDebounceWorkItem?.cancel()
+            let work = DispatchWorkItem { [newValue] in
+                debouncedActivityQuery = newValue
+            }
+            activityDebounceWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
         }
         .sheet(isPresented: $showingAddRuleSheet) {
             AddRuleSheet(options: options)
@@ -191,6 +217,11 @@ struct PreferencesView: View {
             Text("\(visibleCount) shown")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
+        case .activity:
+            ActivityHeaderControls(
+                query: $activityQuery,
+                confirmingClear: $confirmingClearActivity
+            )
         default:
             EmptyView()
         }
@@ -205,7 +236,7 @@ struct PreferencesView: View {
         case .rules: rulesPanel
         case .appSchemes: appSchemesPanel
         case .hotkeys: hotkeysPanel
-        case .activity: ActivityTab()
+        case .activity: ActivityTab(debouncedQuery: debouncedActivityQuery)
         case .trackers: trackersPanel
         }
     }
