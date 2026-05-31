@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+@theme {
+  /* Impeccable palette: cream + ink + ONE tangerine accent */
+  --color-paper: oklch(96.5% 0.012 80);
+  --color-paper-2: oklch(94% 0.014 80);
+  --color-paper-3: oklch(91% 0.015 80);
+  --color-ink: oklch(16% 0.012 260);
+  --color-ink-2: oklch(34% 0.012 260);
+  --color-ink-dim: oklch(54% 0.012 260);
+  --color-rule: oklch(86% 0.01 80);
+  --color-tang: oklch(68% 0.20 48);
+  --color-tang-soft: oklch(78% 0.14 55);
+  --color-tang-deep: oklch(54% 0.20 36);
+  --color-priv: oklch(56% 0.18 305);
+
+  --font-display: "Bebas Neue", "Anton", Impact, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-serif: "Spectral", Georgia, serif;
+
+  --radius-pkr: 14px;
+
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html,
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.005em;
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Utility: hand-set display type */
+.display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0.005em;
+  line-height: 0.86;
+  text-transform: uppercase;
+}
+
+/* Paper grain (subtle, multiply blend) */
+.paper-grain::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+  opacity: 0.04;
+  mix-blend-mode: multiply;
+  background-image:
+    radial-gradient(1px 1px at 20% 30%, var(--color-ink) 1px, transparent 2px),
+    radial-gradient(1px 1px at 60% 70%, var(--color-ink) 1px, transparent 2px),
+    radial-gradient(1px 1px at 80% 20%, var(--color-ink) 1px, transparent 2px),
+    radial-gradient(1px 1px at 40% 90%, var(--color-ink) 1px, transparent 2px);
+  background-size: 320px 320px, 240px 240px, 280px 280px, 200px 200px;
+}
+
+/* Keyboard key chip */
+.kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  background: transparent;
+  color: var(--color-ink);
+  border: 1px solid var(--color-ink);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 2px 7px;
+  min-width: 22px;
+  display: inline-block;
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* Reduce motion respects */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}
