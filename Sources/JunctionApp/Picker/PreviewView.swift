@@ -399,7 +399,19 @@ private struct WebContainer: NSViewRepresentable {
         let webView = PreviewWebViewFactory.makeWebView(readerEnabled: readerEnabled)
         webView.navigationDelegate = context.coordinator
         context.coordinator.observe(webView: webView)
-        webView.load(URLRequest(url: url))
+        if url.scheme?.lowercased() == "file" {
+            let readAccessURL: URL
+            if var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+                comps.query = nil
+                comps.fragment = nil
+                readAccessURL = (comps.url ?? url).deletingLastPathComponent()
+            } else {
+                readAccessURL = url.deletingLastPathComponent()
+            }
+            webView.loadFileURL(url, allowingReadAccessTo: readAccessURL)
+        } else {
+            webView.load(URLRequest(url: url))
+        }
         // Register a deterministic teardown so the controller can stop media
         // even when SwiftUI defers ``dismantleNSView`` (e.g. during the
         // panel-dismiss animation).
@@ -410,7 +422,19 @@ private struct WebContainer: NSViewRepresentable {
     func updateNSView(_ nsView: WKWebView, context: Context) {
         guard !context.coordinator.didTearDown else { return }
         if nsView.url != url {
-            nsView.load(URLRequest(url: url))
+            if url.scheme?.lowercased() == "file" {
+                let readAccessURL: URL
+                if var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+                    comps.query = nil
+                    comps.fragment = nil
+                    readAccessURL = (comps.url ?? url).deletingLastPathComponent()
+                } else {
+                    readAccessURL = url.deletingLastPathComponent()
+                }
+                nsView.loadFileURL(url, allowingReadAccessTo: readAccessURL)
+            } else {
+                nsView.load(URLRequest(url: url))
+            }
         }
     }
 
