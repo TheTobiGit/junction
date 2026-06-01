@@ -41,7 +41,9 @@ final class RoutingHistory: ObservableObject {
     init(fileURL: URL? = nil) {
         let fm = FileManager.default
         let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = base.appendingPathComponent("Junction", isDirectory: true)
+        let bundleID = Bundle.main.bundleIdentifier ?? "dev.gideonsarfo.Junction"
+        let appSupportFolder = bundleID.contains("Preview") ? "JunctionPreview" : "Junction"
+        let dir = base.appendingPathComponent(appSupportFolder, isDirectory: true)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         self.fileURL = fileURL ?? dir.appendingPathComponent("history.json")
         self.entries = Self.load(from: self.fileURL)

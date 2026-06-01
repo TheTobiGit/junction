@@ -5,8 +5,10 @@ public enum AgentConstants {
 
     public static var socketURL: URL {
         let home = FileManager.default.homeDirectoryForCurrentUser
+        let bundleID = Bundle.main.bundleIdentifier ?? "dev.gideonsarfo.Junction"
+        let appSupportFolder = bundleID.contains("Preview") ? "JunctionPreview" : "Junction"
         return home
-            .appendingPathComponent("Library/Application Support/Junction", isDirectory: true)
+            .appendingPathComponent("Library/Application Support/\(appSupportFolder)", isDirectory: true)
             .appendingPathComponent(socketName)
     }
 }
