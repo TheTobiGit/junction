@@ -399,6 +399,22 @@ private struct WebContainer: NSViewRepresentable {
         let webView = PreviewWebViewFactory.makeWebView(readerEnabled: readerEnabled)
         webView.navigationDelegate = context.coordinator
         context.coordinator.observe(webView: webView)
+        load(url, into: webView)
+        // Register a deterministic teardown so the controller can stop media
+        // even when SwiftUI defers ``dismantleNSView`` (e.g. during the
+        // panel-dismiss animation).
+        context.coordinator.installTeardown(on: model, webView: webView)
+        return webView
+    }
+
+    func updateNSView(_ nsView: WKWebView, context: Context) {
+        guard !context.coordinator.didTearDown else { return }
+        if nsView.url != url {
+            load(url, into: nsView)
+        }
+    }
+
+    private func load(_ url: URL, into webView: WKWebView) {
         if url.scheme?.lowercased() == "file" {
             let readAccessURL: URL
             if var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) {
@@ -412,31 +428,8 @@ private struct WebContainer: NSViewRepresentable {
         } else {
             webView.load(URLRequest(url: url))
         }
-        // Register a deterministic teardown so the controller can stop media
-        // even when SwiftUI defers ``dismantleNSView`` (e.g. during the
-        // panel-dismiss animation).
-        context.coordinator.installTeardown(on: model, webView: webView)
-        return webView
     }
 
-    func updateNSView(_ nsView: WKWebView, context: Context) {
-        guard !context.coordinator.didTearDown else { return }
-        if nsView.url != url {
-            if url.scheme?.lowercased() == "file" {
-                let readAccessURL: URL
-                if var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) {
-                    comps.query = nil
-                    comps.fragment = nil
-                    readAccessURL = (comps.url ?? url).deletingLastPathComponent()
-                } else {
-                    readAccessURL = url.deletingLastPathComponent()
-                }
-                nsView.loadFileURL(url, allowingReadAccessTo: readAccessURL)
-            } else {
-                nsView.load(URLRequest(url: url))
-            }
-        }
-    }
 
     static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
         coordinator.tearDown(webView: nsView)
