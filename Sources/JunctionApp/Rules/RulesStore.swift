@@ -20,7 +20,9 @@ final class RulesStore {
     private init() {
         let fm = FileManager.default
         let home = fm.homeDirectoryForCurrentUser
-        let dir = home.appendingPathComponent(".config/junction", isDirectory: true)
+        let bundleID = Bundle.main.bundleIdentifier ?? "dev.gideonsarfo.Junction"
+        let folderName = bundleID.contains("Preview") ? "junction-preview" : "junction"
+        let dir = home.appendingPathComponent(".config/\(folderName)", isDirectory: true)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         self.fileURL = dir.appendingPathComponent("rules.json")
 
