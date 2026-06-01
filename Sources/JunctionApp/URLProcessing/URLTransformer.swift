@@ -25,12 +25,16 @@ struct URLTransformPipeline {
     var transformers: [URLTransformer]
 
     func run(_ url: URL) -> URL {
-        transformers.reduce(url) { current, transformer in
+        if url.scheme?.lowercased() == "file" { return url }
+        return transformers.reduce(url) { current, transformer in
             transformer.transform(current)
         }
     }
 
     func runTraced(_ url: URL) -> URLTransformResult {
+        if url.scheme?.lowercased() == "file" {
+            return URLTransformResult(original: url, final: url, steps: [])
+        }
         var current = url
         var steps: [URLTransformResult.Step] = []
         for transformer in transformers {
