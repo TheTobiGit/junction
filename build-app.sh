@@ -13,11 +13,37 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     fi
 fi
 
-CONFIG="${1:-release}"
+PREVIEW_MODE=false
+REGISTER=false
+INSTALL_CLI=false
+CONFIG="release"
+
+for arg in "$@"; do
+    case "$arg" in
+        debug|release)
+            CONFIG="$arg"
+            ;;
+        --preview)
+            PREVIEW_MODE=true
+            ;;
+        --register)
+            REGISTER=true
+            ;;
+        --install-cli)
+            INSTALL_CLI=true
+            ;;
+    esac
+done
+
 APP_NAME="Junction"
-APP_BUNDLE="build/${APP_NAME}.app"
+if [[ "${PREVIEW_MODE}" == "true" ]]; then
+    APP_BUNDLE="build/Junction Preview.app"
+    CLI_NAME="junction-preview"
+else
+    APP_BUNDLE="build/${APP_NAME}.app"
+    CLI_NAME="junction"
+fi
 APP_PLIST="${APP_BUNDLE}/Contents/Info.plist"
-CLI_NAME="junction"
 CLI_OUT="build/${CLI_NAME}"
 ENTITLEMENTS="Resources/Junction.entitlements"
 CODE_SIGN_IDENTITY="${JUNCTION_CODESIGN_IDENTITY:-}"
@@ -80,6 +106,13 @@ mkdir -p "${APP_BUNDLE}/Contents/Frameworks"
 
 cp "${APP_EXEC_SRC}" "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
 cp "Resources/Info.plist" "${APP_PLIST}"
+
+if [[ "${PREVIEW_MODE}" == "true" ]]; then
+    /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName 'Junction Preview'" "${APP_PLIST}"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier 'dev.gideonsarfo.JunctionPreview'" "${APP_PLIST}"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleName 'Junction Preview'" "${APP_PLIST}"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleURLTypes:1:CFBundleURLSchemes:0 'junction-preview'" "${APP_PLIST}"
+fi
 
 # Sparkle reads update feed settings from Info.plist. The public EdDSA key
 # is intentionally injected at build/release time so the private signing key
@@ -148,12 +181,12 @@ echo "Built ${APP_BUNDLE}"
 echo "Built ${CLI_OUT}"
 echo "Signed with ${CODE_SIGN_IDENTITY}"
 
-if [[ "${2:-}" == "--register" ]]; then
+if [[ "${REGISTER}" == "true" ]]; then
     /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "${APP_BUNDLE}"
     echo "Registered with LaunchServices."
 fi
 
-if [[ "${2:-}" == "--install-cli" || "${3:-}" == "--install-cli" ]]; then
+if [[ "${INSTALL_CLI}" == "true" ]]; then
     INSTALL_DIR="/usr/local/bin"
     if [[ ! -d "${INSTALL_DIR}" ]]; then
         sudo mkdir -p "${INSTALL_DIR}"
