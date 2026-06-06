@@ -111,6 +111,11 @@ if [[ "${PREVIEW_MODE}" == "true" ]]; then
     /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName 'Junction Preview'" "${APP_PLIST}"
     /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier 'dev.gideonsarfo.JunctionPreview'" "${APP_PLIST}"
     /usr/libexec/PlistBuddy -c "Set :CFBundleName 'Junction Preview'" "${APP_PLIST}"
+    url_type_name="$(/usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:1:CFBundleURLName" "${APP_PLIST}" 2>/dev/null || true)"
+    if [[ "${url_type_name}" != "Junction" ]]; then
+        echo "error: expected CFBundleURLTypes[1].CFBundleURLName to be 'Junction' before setting preview URL scheme." >&2
+        exit 1
+    fi
     /usr/libexec/PlistBuddy -c "Set :CFBundleURLTypes:1:CFBundleURLSchemes:0 'junction-preview'" "${APP_PLIST}"
 fi
 
