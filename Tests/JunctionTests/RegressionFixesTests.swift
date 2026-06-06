@@ -86,7 +86,7 @@ final class RegressionFixesTests: XCTestCase {
 
     func test_appDelegate_acceptsFileScheme() {
         let delegate = AppDelegate()
-        XCTAssertTrue(delegate.isAcceptableScheme(URL(string: "file:///Users/z/test.html")!))
+        XCTAssertTrue(delegate.isAcceptableScheme(URL(string: "file:///tmp/test.html")!))
         XCTAssertTrue(delegate.isAcceptableScheme(URL(string: "http://example.com")!))
         XCTAssertTrue(delegate.isAcceptableScheme(URL(string: "https://example.com")!))
         XCTAssertFalse(delegate.isAcceptableScheme(URL(string: "javascript:alert(1)")!))
