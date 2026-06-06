@@ -66,10 +66,8 @@ enum ActivityRowDisplayBuilder {
 
     /// Warms ICU and Foundation locale work with a temporary formatter so the
     /// first Activity-tab render doesn't pay the cold-start cost.
-    @discardableResult
-    static func warmFormatter() -> Bool {
+    static func warmFormatter() {
         _ = makeRelativeFormatter().localizedString(for: Date(), relativeTo: Date())
-        return true
     }
 
     private static func makeHaystack(
