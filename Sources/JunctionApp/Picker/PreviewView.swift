@@ -430,6 +430,7 @@ private struct WebContainer: NSViewRepresentable {
             return url
         }
 
+        // WKWebView file loads expect a filesystem URL without query or fragment.
         comps.query = nil
         comps.fragment = nil
         return comps.url ?? url
