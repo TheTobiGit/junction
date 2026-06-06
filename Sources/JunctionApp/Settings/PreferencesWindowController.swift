@@ -643,8 +643,13 @@ struct PreferencesView: View {
                 .foregroundStyle(hidden ? .secondary : .primary)
             Spacer()
             Button {
-                settings.setFavoriteTargetKey(favorite ? nil : key)
+                let favoriteKey = favorite ? nil : key
+                settings.setFavoriteTargetKey(favoriteKey)
                 options = LaunchOptionDiscovery.options()
+                expandedTargetGroupIDs.formUnion(LaunchOptionGrouping.defaultExpandedGroupIDs(
+                    grouped: LaunchOptionGrouping.group(options: options),
+                    favoriteTargetKey: favoriteKey
+                ))
             } label: {
                 Image(systemName: favorite ? "star.fill" : "star")
                     .font(.system(size: 12))
