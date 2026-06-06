@@ -92,13 +92,12 @@ final class URLTransformPipelineTests: XCTestCase {
             globalOverrides: TrackerOverrides(),
             ruleOverrides: nil
         )
-        let url = URL(string: "file:///Users/z/project/index.amp?utm_source=newsletter&fbclid=abc123")!
+        let url = URL(string: "file:///tmp/project/index.amp?utm_source=newsletter&fbclid=abc123")!
         let result = pipeline.run(url)
-        XCTAssertEqual(result.absoluteString, "file:///Users/z/project/index.amp?utm_source=newsletter&fbclid=abc123")
-        
+        XCTAssertEqual(result, url)
+
         let trace = pipeline.runTraced(url)
-        XCTAssertEqual(trace.final.absoluteString, "file:///Users/z/project/index.amp?utm_source=newsletter&fbclid=abc123")
+        XCTAssertEqual(trace.final, url)
         XCTAssertTrue(trace.steps.isEmpty)
     }
 }
-
