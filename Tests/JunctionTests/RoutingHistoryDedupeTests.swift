@@ -35,7 +35,8 @@ final class RoutingHistoryDedupeTests: XCTestCase {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("dedupe-history-\(UUID().uuidString).json")
         addTeardownBlock {
-            try? FileManager.default.removeItem(at: url)
+            guard FileManager.default.fileExists(atPath: url.path) else { return }
+            XCTAssertNoThrow(try FileManager.default.removeItem(at: url))
         }
         if !seed.isEmpty {
             let encoder = JSONEncoder()

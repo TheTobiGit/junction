@@ -115,6 +115,8 @@ enum PrefsSection: String, CaseIterable, Identifiable {
 // MARK: - Root view
 
 struct PreferencesView: View {
+    private static let activitySearchDebounceDelay: TimeInterval = 0.12
+
     @ObservedObject var settings = SettingsStore.shared
 
     @State var options: [LaunchOption] = []
@@ -196,7 +198,10 @@ struct PreferencesView: View {
                 debouncedActivityQuery = newValue
             }
             activityDebounceWorkItem = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + Self.activitySearchDebounceDelay,
+                execute: work
+            )
         }
         .sheet(isPresented: $showingAddRuleSheet) {
             AddRuleSheet(options: options)

@@ -85,6 +85,8 @@ enum ActivityRowDisplayBuilder {
         if let target = entry.targetBundleID { parts.append(target.lowercased()) }
         if let pretty = prettyTarget { parts.append(pretty.lowercased()) }
         if let rule = entry.ruleLabel { parts.append(rule.lowercased()) }
+        // Use Unit Separator for the cached haystack too so we can concatenate
+        // fields without risking collisions with the printable row content.
         return parts.joined(separator: "\u{1F}")
     }
 
