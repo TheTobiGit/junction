@@ -122,7 +122,7 @@ final class RoutingHistory: ObservableObject {
                     _ = BundleDisplayNameCache.shared.name(for: bundleID)
                 }
             }
-            _ = ActivityRowDisplayBuilder.warmFormatter()
+            ActivityRowDisplayBuilder.warmFormatter()
         }
     }
 
