@@ -45,9 +45,8 @@ enum ActivityRowDisplayBuilder {
         groupDuplicates: Bool = false
     ) -> [ActivityRowDisplay] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let filtered = q.isEmpty ? rows : rows.filter { $0.lowercasedHaystack.contains(q) }
-        guard groupDuplicates else { return filtered }
-        return group(filtered)
+        let displayRows = groupDuplicates ? group(rows) : rows
+        return q.isEmpty ? displayRows : displayRows.filter { $0.lowercasedHaystack.contains(q) }
     }
 
     static func relativeTimeString(
@@ -57,20 +56,19 @@ enum ActivityRowDisplayBuilder {
         relativeFormatter.localizedString(for: date, relativeTo: now)
     }
 
-    private static let relativeFormatter: RelativeDateTimeFormatter = {
+    private static let relativeFormatter: RelativeDateTimeFormatter = makeRelativeFormatter()
+
+    private static func makeRelativeFormatter() -> RelativeDateTimeFormatter {
         let f = RelativeDateTimeFormatter()
         f.unitsStyle = .short
         return f
-    }()
+    }
 
-    /// Forces the lazy `relativeFormatter` to materialize. The first
-    /// call to `localizedString(for:relativeTo:)` triggers ICU and Foundation
-    /// locale work that can take 30-100 ms on cold launch; calling this
-    /// from a background queue at app start keeps that cost off of the
-    /// first Activity-tab render.
+    /// Warms ICU and Foundation locale work with a temporary formatter so the
+    /// first Activity-tab render doesn't pay the cold-start cost.
     @discardableResult
     static func warmFormatter() -> Bool {
-        _ = relativeFormatter.localizedString(for: Date(), relativeTo: Date())
+        _ = makeRelativeFormatter().localizedString(for: Date(), relativeTo: Date())
         return true
     }
 

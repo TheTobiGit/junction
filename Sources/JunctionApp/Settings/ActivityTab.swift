@@ -71,6 +71,9 @@ struct ActivityTab: View {
     }
 
     var body: some View {
+        let rows = visibleRows
+        let lastRowID = rows.last?.id
+
         if history.entries.isEmpty {
             PrefsBlock {
                 PrefsEmptyState(
@@ -80,7 +83,7 @@ struct ActivityTab: View {
                     action: nil
                 )
             }
-        } else if visibleRows.isEmpty {
+        } else if rows.isEmpty {
             PrefsBlock {
                 PrefsEmptyState(
                     title: "No matches",
@@ -96,10 +99,10 @@ struct ActivityTab: View {
             VStack(spacing: 0) {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(visibleRows) { row in
+                        ForEach(rows) { row in
                             ActivityRow(row: row, colorScheme: colorScheme)
                                 .padding(.horizontal, 16)
-                            if row.id != visibleRows.last?.id {
+                            if row.id != lastRowID {
                                 PrefsHairline()
                             }
                         }
