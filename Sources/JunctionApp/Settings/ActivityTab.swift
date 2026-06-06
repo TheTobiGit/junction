@@ -146,6 +146,7 @@ private struct ActivityRow: View {
                 .fill(outcomeColor)
                 .frame(width: 7, height: 7)
                 .help(outcomeTooltip)
+                .accessibilityLabel(outcomeTooltip)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(entry.cleanedURL)
@@ -185,6 +186,7 @@ private struct ActivityRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .help(linkTooltip)
+            .accessibilityLabel(linkTooltip)
 
             HStack(spacing: 0) {
                 Button {
