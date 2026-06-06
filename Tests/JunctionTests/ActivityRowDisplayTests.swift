@@ -46,6 +46,31 @@ final class ActivityRowDisplayTests: XCTestCase {
         XCTAssertEqual(ActivityRowDisplayBuilder.filter(built, query: "absent").count, 0)
     }
 
+    func test_filterCanGroupDuplicatesWhenEnabled() {
+        let newest = entry(cleaned: "https://example.com/", original: "https://example.com/?utm=2", ts: 200)
+        let other = entry(cleaned: "https://other.com/", ts: 150)
+        let oldest = entry(cleaned: "https://example.com/", original: "https://example.com/?utm=1", ts: 100)
+        let built = ActivityRowDisplayBuilder.build(entries: [newest, other, oldest])
+
+        let grouped = ActivityRowDisplayBuilder.filter(built, query: "", groupDuplicates: true)
+
+        XCTAssertEqual(grouped.map(\.entry.cleanedURL), ["https://example.com/", "https://other.com/"])
+        XCTAssertEqual(grouped.first?.duplicateCount, 2)
+        XCTAssertEqual(grouped.first?.entry.originalURL, "https://example.com/?utm=2")
+    }
+
+    func test_groupedFilterMatchesAnyDuplicateMember() {
+        let newest = entry(cleaned: "https://example.com/", original: "https://example.com/new", ts: 200)
+        let oldest = entry(cleaned: "https://example.com/", original: "https://example.com/legacy", ts: 100)
+        let built = ActivityRowDisplayBuilder.build(entries: [newest, oldest])
+
+        let grouped = ActivityRowDisplayBuilder.filter(built, query: "legacy", groupDuplicates: true)
+
+        XCTAssertEqual(grouped.count, 1)
+        XCTAssertEqual(grouped.first?.duplicateCount, 2)
+        XCTAssertEqual(grouped.first?.entry.originalURL, "https://example.com/new")
+    }
+
     func test_haystackIncludesRuleLabelAndBundleID() {
         let row = entry(
             cleaned: "https://example.com/",

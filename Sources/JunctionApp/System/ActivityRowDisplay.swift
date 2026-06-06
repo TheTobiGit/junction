@@ -1,45 +1,60 @@
 import AppKit
 import Foundation
 
-/// Precomputed display-time strings for an Activity row. Building these once
-/// per filter pass keeps the SwiftUI body cheap when scrolling through a few
-/// hundred entries: no per-render `RelativeDateTimeFormatter` allocation, no
+/// Precomputed display data for an Activity row. Building these once keeps the
+/// SwiftUI body cheap when scrolling through a few hundred entries: no
 /// per-render `URL(string:)` parse, no per-render `NSWorkspace`/`Bundle`
-/// roundtrip for the target bundle's pretty name.
+/// roundtrip for the target bundle's pretty name, and duplicate grouping can
+/// reuse the cached haystacks instead of rebuilding them.
 struct ActivityRowDisplay: Identifiable, Hashable {
     let id: UUID
     let entry: RoutingHistory.Entry
-    let relativeTimeString: String
     let prettyTargetBundleName: String?
-    let lowercasedHaystack: String
+    var lowercasedHaystack: String
+    var representedEntries: [RoutingHistory.Entry]
+
+    var relativeTimeString: String {
+        ActivityRowDisplayBuilder.relativeTimeString(for: entry.timestamp)
+    }
+
+    var duplicateCount: Int {
+        representedEntries.count
+    }
 }
 
 enum ActivityRowDisplayBuilder {
     static func build(
-        entries: [RoutingHistory.Entry],
-        now: Date = Date()
+        entries: [RoutingHistory.Entry]
     ) -> [ActivityRowDisplay] {
         guard !entries.isEmpty else { return [] }
-        let formatter = relativeFormatter
         return entries.map { entry in
             let pretty = entry.targetBundleID.flatMap(BundleDisplayNameCache.shared.name(for:))
             return ActivityRowDisplay(
                 id: entry.id,
                 entry: entry,
-                relativeTimeString: formatter.localizedString(for: entry.timestamp, relativeTo: now),
                 prettyTargetBundleName: pretty,
-                lowercasedHaystack: makeHaystack(entry: entry, prettyTarget: pretty)
+                lowercasedHaystack: makeHaystack(entry: entry, prettyTarget: pretty),
+                representedEntries: [entry]
             )
         }
     }
 
     static func filter(
         _ rows: [ActivityRowDisplay],
-        query: String
+        query: String,
+        groupDuplicates: Bool = false
     ) -> [ActivityRowDisplay] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return rows }
-        return rows.filter { $0.lowercasedHaystack.contains(q) }
+        let filtered = q.isEmpty ? rows : rows.filter { $0.lowercasedHaystack.contains(q) }
+        guard groupDuplicates else { return filtered }
+        return group(filtered)
+    }
+
+    static func relativeTimeString(
+        for date: Date,
+        relativeTo now: Date = Date()
+    ) -> String {
+        relativeFormatter.localizedString(for: date, relativeTo: now)
     }
 
     private static let relativeFormatter: RelativeDateTimeFormatter = {
@@ -71,6 +86,25 @@ enum ActivityRowDisplayBuilder {
         if let pretty = prettyTarget { parts.append(pretty.lowercased()) }
         if let rule = entry.ruleLabel { parts.append(rule.lowercased()) }
         return parts.joined(separator: "\u{1F}")
+    }
+
+    private static func group(_ rows: [ActivityRowDisplay]) -> [ActivityRowDisplay] {
+        var grouped: [ActivityRowDisplay] = []
+        var indexByKey: [String: Int] = [:]
+        grouped.reserveCapacity(rows.count)
+
+        for row in rows {
+            let key = RoutingHistory.dedupeKey(for: row.entry)
+            if let existingIndex = indexByKey[key] {
+                grouped[existingIndex].representedEntries.append(row.entry)
+                grouped[existingIndex].lowercasedHaystack += "\u{1F}" + row.lowercasedHaystack
+            } else {
+                indexByKey[key] = grouped.count
+                grouped.append(row)
+            }
+        }
+
+        return grouped
     }
 }
 
