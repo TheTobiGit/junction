@@ -141,6 +141,8 @@ final class RoutingHistory: ObservableObject {
             guard isLatest else { return }
 
             let encoder = JSONEncoder()
+            // history.json is internal state, so prefer compact output to keep
+            // burst writes smaller and faster.
             encoder.dateEncodingStrategy = .iso8601
             guard let data = try? encoder.encode(entries) else { return }
 
@@ -166,6 +168,8 @@ final class RoutingHistory: ObservableObject {
     /// outcome can drift over time (rule edits, cleaning toggles) but
     /// shouldn't fragment the row.
     static func dedupeKey(for entry: Entry) -> String {
+        // Use Unit Separator as a delimiter because URLs and bundle IDs are
+        // printable strings, so this control character won't collide with data.
         entry.cleanedURL + "\u{1F}" + (entry.targetBundleID ?? "")
     }
 
