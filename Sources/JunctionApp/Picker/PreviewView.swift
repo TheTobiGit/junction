@@ -417,14 +417,21 @@ private struct WebContainer: NSViewRepresentable {
     private func load(_ url: URL, into webView: WKWebView) {
         if url.scheme?.lowercased() == "file" {
             let fileURL = URL(fileURLWithPath: url.path(percentEncoded: false)).standardizedFileURL
+            // Grant the containing folder so local HTML can load sibling assets.
             let readAccessURL = fileURL.deletingLastPathComponent()
             let loadURL: URL
             if var fileComponents = URLComponents(url: fileURL, resolvingAgainstBaseURL: false),
                let originalComponents = URLComponents(url: url, resolvingAgainstBaseURL: false) {
                 fileComponents.percentEncodedQuery = originalComponents.percentEncodedQuery
                 fileComponents.percentEncodedFragment = originalComponents.percentEncodedFragment
-                loadURL = fileComponents.url ?? fileURL
+                if let componentURL = fileComponents.url {
+                    loadURL = componentURL
+                } else {
+                    assertionFailure("Failed to preserve file URL query or fragment")
+                    loadURL = fileURL
+                }
             } else {
+                assertionFailure("Failed to read file URL components")
                 loadURL = fileURL
             }
             webView.loadFileURL(loadURL, allowingReadAccessTo: readAccessURL)
