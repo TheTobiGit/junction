@@ -409,14 +409,14 @@ private struct WebContainer: NSViewRepresentable {
 
     func updateNSView(_ nsView: WKWebView, context: Context) {
         guard !context.coordinator.didTearDown else { return }
-        if nsView.url != loadURL(for: url) {
+        if nsView.url != normalizedLoadURL(for: url) {
             load(url, into: nsView)
         }
     }
 
     private func load(_ url: URL, into webView: WKWebView) {
         if isFileURL(url) {
-            let fileURL = loadURL(for: url)
+            let fileURL = normalizedLoadURL(for: url)
             // Grant the containing folder so local HTML can load sibling assets.
             webView.loadFileURL(fileURL, allowingReadAccessTo: fileURL.deletingLastPathComponent())
         } else {
@@ -428,7 +428,7 @@ private struct WebContainer: NSViewRepresentable {
         url.scheme?.lowercased() == "file"
     }
 
-    private func loadURL(for url: URL) -> URL {
+    private func normalizedLoadURL(for url: URL) -> URL {
         guard isFileURL(url),
               var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
             return url
