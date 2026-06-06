@@ -127,6 +127,7 @@ struct PreferencesView: View {
 
     @State var activityQuery: String = ""
     @State var debouncedActivityQuery: String = ""
+    @State var groupDuplicateActivityRows: Bool = false
     @State var confirmingClearActivity: Bool = false
     @State private var activityDebounceWorkItem: DispatchWorkItem?
 
@@ -220,6 +221,7 @@ struct PreferencesView: View {
         case .activity:
             ActivityHeaderControls(
                 query: $activityQuery,
+                groupDuplicates: $groupDuplicateActivityRows,
                 confirmingClear: $confirmingClearActivity
             )
         default:
@@ -236,7 +238,10 @@ struct PreferencesView: View {
         case .rules: rulesPanel
         case .appSchemes: appSchemesPanel
         case .hotkeys: hotkeysPanel
-        case .activity: ActivityTab(debouncedQuery: debouncedActivityQuery)
+        case .activity: ActivityTab(
+            debouncedQuery: debouncedActivityQuery,
+            groupDuplicates: groupDuplicateActivityRows
+        )
         case .trackers: trackersPanel
         }
     }

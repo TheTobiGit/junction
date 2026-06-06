@@ -34,6 +34,9 @@ final class RoutingHistoryDedupeTests: XCTestCase {
     private func makeTempHistory(seed: [RoutingHistory.Entry] = []) throws -> (RoutingHistory, URL) {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("dedupe-history-\(UUID().uuidString).json")
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: url)
+        }
         if !seed.isEmpty {
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
@@ -80,12 +83,11 @@ final class RoutingHistoryDedupeTests: XCTestCase {
         XCTAssertEqual(result.first?.id, stableID)
     }
 
-    func test_recordPromotesExistingEntryToTopWithoutDuplicating() throws {
+    func test_recordKeepsDuplicateRowsWhenGroupingIsDisabled() throws {
         let (history, _) = try makeTempHistory()
         let trace = makeTrace("https://a.com/")
         history.record(originalURL: URL(string: "https://a.com/")!, result: trace, outcome: .opened, targetBundleID: "com.apple.Safari")
         drainMain()
-        let firstID = history.entries.first?.id
         XCTAssertEqual(history.entries.count, 1)
 
         let trace2 = makeTrace("https://b.com/")
@@ -94,13 +96,13 @@ final class RoutingHistoryDedupeTests: XCTestCase {
         XCTAssertEqual(history.entries.count, 2)
         XCTAssertEqual(history.entries.first?.cleanedURL, "https://b.com/")
 
-        // Re-open the first URL: row should jump to top, count stays at 2,
-        // and the original UUID should be preserved.
+        // Re-open the first URL: history should keep both opens because
+        // grouping is now opt-in at display time.
         history.record(originalURL: URL(string: "https://a.com/")!, result: trace, outcome: .opened, targetBundleID: "com.apple.Safari")
         drainMain()
-        XCTAssertEqual(history.entries.count, 2)
+        XCTAssertEqual(history.entries.count, 3)
         XCTAssertEqual(history.entries.first?.cleanedURL, "https://a.com/")
-        XCTAssertEqual(history.entries.first?.id, firstID)
+        XCTAssertEqual(history.entries.dropFirst().first?.cleanedURL, "https://b.com/")
     }
 
     func test_recordKeepsDistinctTargetsAsSeparateRows() throws {
@@ -112,19 +114,15 @@ final class RoutingHistoryDedupeTests: XCTestCase {
         XCTAssertEqual(history.entries.count, 2)
     }
 
-    func test_initCompactsLegacyDuplicateFile() throws {
+    func test_initPreservesLegacyDuplicateFileUntilGroupingEnabled() throws {
         let aOld = entry(cleaned: "https://a.com/", ts: 100)
         let b = entry(cleaned: "https://b.com/", ts: 150)
         let aNew = entry(cleaned: "https://a.com/", ts: 200)
         let (history, fileURL) = try makeTempHistory(seed: [aNew, b, aOld])
-        defer { try? FileManager.default.removeItem(at: fileURL) }
 
-        XCTAssertEqual(history.entries.count, 2)
-        let writeExp = expectation(description: "persist queue drain")
-        history.persistQueue.async { writeExp.fulfill() }
-        wait(for: [writeExp], timeout: 2)
+        XCTAssertEqual(history.entries.count, 3)
 
         let reloaded = RoutingHistory(fileURL: fileURL)
-        XCTAssertEqual(reloaded.entries.count, 2)
+        XCTAssertEqual(reloaded.entries.count, 3)
     }
 }

@@ -8,6 +8,7 @@ import AppKit
 /// independently.
 struct ActivityHeaderControls: View {
     @Binding var query: String
+    @Binding var groupDuplicates: Bool
     @Binding var confirmingClear: Bool
     @ObservedObject private var history = RoutingHistory.shared
     @Environment(\.colorScheme) private var colorScheme
@@ -30,6 +31,10 @@ struct ActivityHeaderControls: View {
                     .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05))
             )
 
+            Toggle("Group duplicates", isOn: $groupDuplicates)
+                .toggleStyle(.switch)
+                .font(.system(size: 12))
+
             PrefsButton(title: "Clear", symbol: "trash") {
                 confirmingClear = true
             }
@@ -50,12 +55,17 @@ struct ActivityHeaderControls: View {
 
 struct ActivityTab: View {
     let debouncedQuery: String
+    let groupDuplicates: Bool
 
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var history = RoutingHistory.shared
 
     private var visibleRows: [ActivityRowDisplay] {
-        ActivityRowDisplayBuilder.filter(history.displayRows, query: debouncedQuery)
+        ActivityRowDisplayBuilder.filter(
+            history.displayRows,
+            query: debouncedQuery,
+            groupDuplicates: groupDuplicates
+        )
     }
 
     var body: some View {
@@ -160,6 +170,16 @@ private struct ActivityRow: View {
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
                     }
+                    if row.duplicateCount > 1 {
+                        Text("·").foregroundStyle(.secondary.opacity(0.5))
+                        Text("\(row.duplicateCount)×")
+                            .font(.system(size: 10, weight: .semibold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Color.secondary.opacity(0.12)))
+                            .foregroundStyle(.secondary)
+                            .help("Grouped duplicates: \(row.duplicateCount) opens")
+                    }
                 }
                 .lineLimit(1)
             }
@@ -252,6 +272,9 @@ private struct ActivityRow: View {
             }
         } else {
             lines.append(entry.cleanedURL)
+        }
+        if row.duplicateCount > 1 {
+            lines.append("Grouped duplicates: \(row.duplicateCount) opens")
         }
         return lines.joined(separator: "\n")
     }
