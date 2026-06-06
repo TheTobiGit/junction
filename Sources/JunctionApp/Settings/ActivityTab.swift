@@ -7,6 +7,8 @@ import AppKit
 /// they never participate in the page's scroll view; the box below scrolls
 /// independently.
 struct ActivityHeaderControls: View {
+    private static let searchFieldWidth: CGFloat = 180
+
     @Binding var query: String
     @Binding var groupDuplicates: Bool
     @Binding var confirmingClear: Bool
@@ -22,7 +24,7 @@ struct ActivityHeaderControls: View {
                 TextField("Search links…", text: $query)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
-                    .frame(width: 180)
+                    .frame(width: Self.searchFieldWidth)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
