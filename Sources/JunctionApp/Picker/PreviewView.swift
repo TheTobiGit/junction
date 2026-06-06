@@ -418,7 +418,16 @@ private struct WebContainer: NSViewRepresentable {
         if url.scheme?.lowercased() == "file" {
             let fileURL = URL(fileURLWithPath: url.path).standardizedFileURL
             let readAccessURL = fileURL.deletingLastPathComponent()
-            webView.loadFileURL(fileURL, allowingReadAccessTo: readAccessURL)
+            let loadURL: URL
+            if var fileComponents = URLComponents(url: fileURL, resolvingAgainstBaseURL: false),
+               let originalComponents = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+                fileComponents.percentEncodedQuery = originalComponents.percentEncodedQuery
+                fileComponents.percentEncodedFragment = originalComponents.percentEncodedFragment
+                loadURL = fileComponents.url ?? fileURL
+            } else {
+                loadURL = fileURL
+            }
+            webView.loadFileURL(loadURL, allowingReadAccessTo: readAccessURL)
         } else {
             webView.load(URLRequest(url: url))
         }
