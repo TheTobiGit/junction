@@ -409,35 +409,30 @@ private struct WebContainer: NSViewRepresentable {
 
     func updateNSView(_ nsView: WKWebView, context: Context) {
         guard !context.coordinator.didTearDown else { return }
-        if nsView.url != url {
+        if nsView.url != loadURL(for: url) {
             load(url, into: nsView)
         }
     }
 
     private func load(_ url: URL, into webView: WKWebView) {
         if url.scheme?.lowercased() == "file" {
-            let fileURL = URL(fileURLWithPath: url.path(percentEncoded: false)).standardizedFileURL
+            let fileURL = loadURL(for: url)
             // Grant the containing folder so local HTML can load sibling assets.
-            let readAccessURL = fileURL.deletingLastPathComponent()
-            let loadURL: URL
-            if var fileComponents = URLComponents(url: fileURL, resolvingAgainstBaseURL: false),
-               let originalComponents = URLComponents(url: url, resolvingAgainstBaseURL: false) {
-                fileComponents.percentEncodedQuery = originalComponents.percentEncodedQuery
-                fileComponents.percentEncodedFragment = originalComponents.percentEncodedFragment
-                if let componentURL = fileComponents.url {
-                    loadURL = componentURL
-                } else {
-                    assertionFailure("Failed to preserve file URL query or fragment")
-                    loadURL = fileURL
-                }
-            } else {
-                assertionFailure("Failed to read file URL components")
-                loadURL = fileURL
-            }
-            webView.loadFileURL(loadURL, allowingReadAccessTo: readAccessURL)
+            webView.loadFileURL(fileURL, allowingReadAccessTo: fileURL.deletingLastPathComponent())
         } else {
             webView.load(URLRequest(url: url))
         }
+    }
+
+    private func loadURL(for url: URL) -> URL {
+        guard url.scheme?.lowercased() == "file",
+              var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url
+        }
+
+        comps.query = nil
+        comps.fragment = nil
+        return comps.url ?? url
     }
 
 
