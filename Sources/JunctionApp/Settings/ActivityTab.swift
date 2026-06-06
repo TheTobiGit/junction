@@ -62,16 +62,12 @@ struct ActivityTab: View {
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var history = RoutingHistory.shared
 
-    private var visibleRows: [ActivityRowDisplay] {
-        ActivityRowDisplayBuilder.filter(
+    var body: some View {
+        let rows = ActivityRowDisplayBuilder.filter(
             history.displayRows,
             query: debouncedQuery,
             groupDuplicates: groupDuplicates
         )
-    }
-
-    var body: some View {
-        let rows = visibleRows
         let lastRowID = rows.last?.id
 
         if history.entries.isEmpty {
