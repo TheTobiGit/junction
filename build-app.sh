@@ -114,7 +114,10 @@ if [[ "${PREVIEW_MODE}" == "true" ]]; then
     junction_url_type_index=""
     url_type_index=0
     while /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:${url_type_index}" "${APP_PLIST}" >/dev/null 2>&1; do
-        url_type_name="$(/usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:${url_type_index}:CFBundleURLName" "${APP_PLIST}" 2>/dev/null || true)"
+        if ! url_type_name="$(/usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:${url_type_index}:CFBundleURLName" "${APP_PLIST}" 2>/dev/null)"; then
+            echo "error: expected CFBundleURLTypes[${url_type_index}].CFBundleURLName while locating the Junction URL type." >&2
+            exit 1
+        fi
         if [[ "${url_type_name}" == "Junction" ]]; then
             junction_url_type_index="${url_type_index}"
             break
