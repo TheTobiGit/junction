@@ -434,7 +434,9 @@ private struct WebContainer: NSViewRepresentable {
             return url
         }
 
-        // WKWebView file loads expect a filesystem URL without query or fragment.
+        // Query and fragment are not part of the filesystem path; WKWebView may
+        // drop them when loading local files, so use the same normalized URL for
+        // loadFileURL and update comparisons.
         comps.query = nil
         comps.fragment = nil
         return comps.url ?? url
