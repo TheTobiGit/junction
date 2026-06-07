@@ -399,7 +399,7 @@ private struct WebContainer: NSViewRepresentable {
         let webView = PreviewWebViewFactory.makeWebView(readerEnabled: readerEnabled)
         webView.navigationDelegate = context.coordinator
         context.coordinator.observe(webView: webView)
-        webView.load(URLRequest(url: url))
+        load(url, into: webView)
         // Register a deterministic teardown so the controller can stop media
         // even when SwiftUI defers ``dismantleNSView`` (e.g. during the
         // panel-dismiss animation).
@@ -410,9 +410,36 @@ private struct WebContainer: NSViewRepresentable {
     func updateNSView(_ nsView: WKWebView, context: Context) {
         guard !context.coordinator.didTearDown else { return }
         if nsView.url != url {
-            nsView.load(URLRequest(url: url))
+            load(url, into: nsView)
         }
     }
+
+    private func load(_ url: URL, into webView: WKWebView) {
+        if url.scheme?.lowercased() == "file" {
+            let fileURL = URL(fileURLWithPath: url.path(percentEncoded: false)).standardizedFileURL
+            // Grant the containing folder so local HTML can load sibling assets.
+            let readAccessURL = fileURL.deletingLastPathComponent()
+            let loadURL: URL
+            if var fileComponents = URLComponents(url: fileURL, resolvingAgainstBaseURL: false),
+               let originalComponents = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+                fileComponents.percentEncodedQuery = originalComponents.percentEncodedQuery
+                fileComponents.percentEncodedFragment = originalComponents.percentEncodedFragment
+                if let componentURL = fileComponents.url {
+                    loadURL = componentURL
+                } else {
+                    assertionFailure("Failed to preserve file URL query or fragment")
+                    loadURL = fileURL
+                }
+            } else {
+                assertionFailure("Failed to read file URL components")
+                loadURL = fileURL
+            }
+            webView.loadFileURL(loadURL, allowingReadAccessTo: readAccessURL)
+        } else {
+            webView.load(URLRequest(url: url))
+        }
+    }
+
 
     static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
         coordinator.tearDown(webView: nsView)
