@@ -399,10 +399,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Scheme allow-list. http/https are routable by default; anything else
-        // must be opted in by an existing per-host rule (covered downstream),
-        // or it gets handed to the system as a last resort. javascript:/data:/
-        // file: are dropped outright.
+        // Scheme allow-list. We only route http, https, and file URLs.
+        // Unacceptable schemes (like javascript: or data:) are dropped outright.
         guard isAcceptableScheme(url) else {
             return
         }
@@ -447,9 +445,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         routeAfterExpansion(original: url, resolved: url, context: contextAtReceive)
     }
 
-    private func isAcceptableScheme(_ url: URL) -> Bool {
+    func isAcceptableScheme(_ url: URL) -> Bool {
         guard let scheme = url.scheme?.lowercased() else { return false }
-        return URLSafety.routableSchemes.contains(scheme)
+        return URLSafety.routableSchemes.contains(scheme) || scheme == "file"
     }
 
     private func routeAfterExpansion(original: URL, resolved: URL, context: RouteContext) {
