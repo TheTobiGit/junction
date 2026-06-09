@@ -61,7 +61,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleIncoming(_ url: URL) {
-        if url.scheme?.lowercased() == "junction" {
+        let scheme = url.scheme?.lowercased()
+        if scheme == "junction" || scheme == "junction-preview" {
             handleJunctionScheme(url)
             return
         }
