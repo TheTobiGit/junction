@@ -251,6 +251,23 @@ jobs:
             "build/appcast.xml" \
             --clobber
 
+      # If any step above failed, the release-please job has already
+      # created a public GitHub Release (and git tag) for this version,
+      # but its assets are missing or partial. Delete the release and
+      # its tag so a failed run never leaves a published-but-broken
+      # release; the next push to main (or a manual workflow_dispatch
+      # retry) recreates it cleanly. Guarded to the automatic path only:
+      # a manual retry (workflow_dispatch with release_tag) targets a
+      # release that already existed before this run, so it must NOT be
+      # torn down just because a rebuild failed.
+      - name: Roll back release on failure
+        if: failure() && inputs.release_tag == ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "::warning::Release build failed before assets were fully attached; rolling back release $TAG and its tag."
+          gh release delete "$TAG" --cleanup-tag --yes || true
+
       - name: Clean up keychain
         if: always()
         run: |
