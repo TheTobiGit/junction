@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.0](https://github.com/TheTobiGit/junction/compare/v0.11.0...v0.12.0) (2026-06-10)
+
+
+### Features
+
+* **settings:** auto-parse pasted URLs in Add Rule host field ([4d7ec6e](https://github.com/TheTobiGit/junction/commit/4d7ec6e652c203d4ff9e85d8a10f6fd1725451f2))
+
+
+### Bug Fixes
+
+* detect Dock/Spotlight-launched Zen instances via NSRunningApplication fallback ([a1b7387](https://github.com/TheTobiGit/junction/commit/a1b7387b6ca90c570b63aa5258caa8ecd7847a26))
+
 ## [0.11.0](https://github.com/TheTobiGit/junction/compare/v0.10.0...v0.11.0) (2026-06-09)
 
 
