@@ -14,6 +14,7 @@ struct AddRuleSheet: View {
     @State private var schemeValue: String = ""
     @State private var pathKind: PathKind = .prefix
     @State private var pathValue: String = ""
+    @State private var lastHostLength: Int = 0
 
     init(options: [LaunchOption], prefill: Prefill? = nil) {
         self.options = options
@@ -258,6 +259,7 @@ struct AddRuleSheet: View {
         .onAppear {
             if let p = prefill { applyPrefill(p) }
             seedDefaultTarget()
+            lastHostLength = hostValue.count
         }
         .onChange(of: actionKind) { _ in seedDefaultTarget() }
     }
@@ -309,6 +311,9 @@ struct AddRuleSheet: View {
                 .labelsHidden()
 
                 prefsTextField(hostKind.placeholder, text: $hostValue, monospaced: hostKind == .regex)
+                    .onChange(of: hostValue) { newValue in
+                        handleHostFieldChange(newValue)
+                    }
 
                 Text(hostKind.help)
                     .font(.system(size: 11))
@@ -381,6 +386,59 @@ struct AddRuleSheet: View {
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(validationError != nil)
+        }
+    }
+
+    // MARK: - Paste URL Parsing
+
+    struct ParsedPaste: Equatable {
+        var host: String
+        var path: String?
+    }
+
+    static func parsePastedURL(_ raw: String) -> ParsedPaste? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard trimmed.contains("://") || trimmed.contains("/") else { return nil }
+        let candidate = trimmed.contains("://") ? trimmed : "https://\(trimmed)"
+        guard let comps = URLComponents(string: candidate),
+              let host = comps.host, !host.isEmpty else { return nil }
+        let path = comps.path
+        let normalizedPath = (!path.isEmpty && path != "/") ? path : nil
+        return ParsedPaste(host: host, path: normalizedPath)
+    }
+
+    private func handleHostFieldChange(_ newValue: String) {
+        let delta = newValue.count - lastHostLength
+        lastHostLength = newValue.count
+        // Only react to paste-like bulk insertions, not individual keystrokes.
+        guard delta > 1 else { return }
+
+        let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        // Exact-link mode keeps the full URL; just strip surrounding whitespace.
+        if hostKind.isExactURL {
+            if trimmed != newValue {
+                hostValue = trimmed
+                lastHostLength = trimmed.count
+            }
+            return
+        }
+
+        // Only auto-split for Website / Subdomain, not Pattern (regex).
+        guard hostKind == .suffix || hostKind == .equals else { return }
+
+        guard let parsed = Self.parsePastedURL(trimmed) else { return }
+
+        if hostValue != parsed.host {
+            hostValue = parsed.host
+            lastHostLength = parsed.host.count
+        }
+
+        if let path = parsed.path, trimmedPath.isEmpty {
+            pathKind = .prefix
+            pathValue = path
         }
     }
 
