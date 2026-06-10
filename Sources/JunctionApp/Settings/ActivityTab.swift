@@ -1,32 +1,22 @@
 import SwiftUI
 import AppKit
 
-struct ActivityTab: View {
-    @Environment(\.colorScheme) private var colorScheme
-    @ObservedObject private var history = RoutingHistory.shared
-    @State private var query: String = ""
-    @State private var confirmingClear: Bool = false
+/// Search field + Clear button rendered in the page header (next to the
+/// "Activity" title), matching how the Redirects tab puts its "Add" button
+/// in the same slot. Hoisting these controls out of the rows panel means
+/// they never participate in the page's scroll view; the box below scrolls
+/// independently.
+struct ActivityHeaderControls: View {
+    private static let searchFieldWidth: CGFloat = 180
 
-    private var filteredEntries: [RoutingHistory.Entry] {
-        ActivityFilter.filter(history.entries, criteria: .init(query: query))
-    }
+    @Binding var query: String
+    @Binding var groupDuplicates: Bool
+    @Binding var confirmingClear: Bool
+    @ObservedObject private var history = RoutingHistory.shared
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            if !history.entries.isEmpty {
-                PrefsBlock {
-                    searchBar
-                }
-            }
-
-            PrefsBlock {
-                content
-            }
-        }
-    }
-
-    private var searchBar: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(spacing: 10) {
             HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 11, weight: .medium))
@@ -34,32 +24,23 @@ struct ActivityTab: View {
                 TextField("Search links…", text: $query)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
+                    .frame(width: Self.searchFieldWidth)
             }
-            .padding(.horizontal, 10).padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05))
             )
 
-            Spacer()
+            Toggle("Group duplicates", isOn: $groupDuplicates)
+                .toggleStyle(.switch)
+                .font(.system(size: 12))
 
-            Button(role: .destructive) {
+            PrefsButton(title: "Clear", symbol: "trash") {
                 confirmingClear = true
-            } label: {
-                Text("Clear")
-                    .font(.system(size: 11, weight: .semibold))
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .foregroundStyle(.primary)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-                    )
             }
-            .buttonStyle(.plain)
+            .disabled(history.entries.isEmpty)
             .confirmationDialog(
                 "Clear all \(history.entries.count) entries?",
                 isPresented: $confirmingClear,
@@ -72,39 +53,87 @@ struct ActivityTab: View {
             }
         }
     }
+}
 
-    @ViewBuilder
-    private var content: some View {
+struct ActivityTab: View {
+    let debouncedQuery: String
+    let groupDuplicates: Bool
+
+    @Environment(\.colorScheme) private var colorScheme
+    @ObservedObject private var history = RoutingHistory.shared
+
+    var body: some View {
+        let rows = ActivityRowDisplayBuilder.filter(
+            history.displayRows,
+            query: debouncedQuery,
+            groupDuplicates: groupDuplicates
+        )
+        let lastRowID = rows.last?.id
+
         if history.entries.isEmpty {
-            PrefsEmptyState(
-                title: "Nothing here yet",
-                message: "Links you open through Junction will appear in this list.",
-                actionTitle: nil,
-                action: nil
-            )
-        } else if filteredEntries.isEmpty {
-            PrefsEmptyState(
-                title: "No matches",
-                message: "Try a different search term.",
-                actionTitle: nil,
-                action: nil
-            )
-        } else {
-            VStack(spacing: 0) {
-                ForEach(Array(filteredEntries.enumerated()), id: \.element.id) { idx, entry in
-                    ActivityRow(entry: entry, colorScheme: colorScheme)
-                    if idx < filteredEntries.count - 1 { PrefsHairline() }
-                }
+            PrefsBlock {
+                PrefsEmptyState(
+                    title: "Nothing here yet",
+                    message: "Links you open through Junction will appear in this list.",
+                    actionTitle: nil,
+                    action: nil
+                )
             }
+        } else if rows.isEmpty {
+            PrefsBlock {
+                PrefsEmptyState(
+                    title: "No matches",
+                    message: "Try a different search term.",
+                    actionTitle: nil,
+                    action: nil
+                )
+            }
+        } else {
+            // Single fixed-height block whose interior is the scroll
+            // surface. The page itself doesn't scroll on this tab —
+            // only the rows do.
+            VStack(spacing: 0) {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(rows) { row in
+                            ActivityRow(row: row, colorScheme: colorScheme)
+                                .padding(.horizontal, 16)
+                            if row.id != lastRowID {
+                                PrefsHairline()
+                            }
+                        }
+                    }
+                    .padding(.vertical, 6)
+                }
+                .scrollIndicators(.automatic)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.14), Color.white.opacity(0.04)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.5
+                    )
+            )
         }
     }
 }
 
 private struct ActivityRow: View {
-    let entry: RoutingHistory.Entry
+    let row: ActivityRowDisplay
     var colorScheme: ColorScheme = .light
 
     @State private var showingPromoteSheet: Bool = false
+
+    private var entry: RoutingHistory.Entry { row.entry }
 
     private var linkColor: Color {
         colorScheme == .dark
@@ -117,6 +146,8 @@ private struct ActivityRow: View {
             Circle()
                 .fill(outcomeColor)
                 .frame(width: 7, height: 7)
+                .help(outcomeTooltip)
+                .accessibilityLabel(outcomeTooltip)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(entry.cleanedURL)
@@ -124,15 +155,14 @@ private struct ActivityRow: View {
                     .foregroundStyle(linkColor)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .textSelection(.enabled)
 
                 HStack(spacing: 8) {
-                    Text(relativeTime)
+                    Text(row.relativeTimeString)
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.secondary)
-                    if let target = entry.targetBundleID {
+                    if let prettyTarget = row.prettyTargetBundleName {
                         Text("·").foregroundStyle(.secondary.opacity(0.5))
-                        Text(prettyBundleID(target))
+                        Text(prettyTarget)
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
                     }
@@ -142,51 +172,66 @@ private struct ActivityRow: View {
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
                     }
+                    if row.duplicateCount > 1 {
+                        Text("·").foregroundStyle(.secondary.opacity(0.5))
+                        Text("\(row.duplicateCount)×")
+                            .font(.system(size: 10, weight: .semibold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Color.secondary.opacity(0.12)))
+                            .foregroundStyle(.secondary)
+                            .help("Grouped duplicates: \(row.duplicateCount) opens")
+                    }
                 }
+                .lineLimit(1)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .help(linkTooltip)
+            .accessibilityLabel(linkTooltip)
 
-            Spacer()
-
-            Button {
-                copy(entry.cleanedURL)
-            } label: {
-                Image(systemName: "doc.on.doc")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 22, height: 22)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Copy URL")
-
-            Button {
-                if let url = URL(string: entry.cleanedURL) {
-                    NSWorkspace.shared.open(url)
+            HStack(spacing: 0) {
+                Button {
+                    copy(entry.cleanedURL)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
                 }
-            } label: {
-                Image(systemName: "arrow.up.right.square")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 22, height: 22)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Open again")
+                .buttonStyle(.plain)
+                .help("Copy \(entry.cleanedURL)")
 
-            Button {
-                showingPromoteSheet = true
-            } label: {
-                Image(systemName: "plus.circle")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 22, height: 22)
-                    .contentShape(Rectangle())
+                Button {
+                    if let url = URL(string: entry.cleanedURL) {
+                        NSWorkspace.shared.open(url)
+                    }
+                } label: {
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(reopenTooltip)
+
+                Button {
+                    showingPromoteSheet = true
+                } label: {
+                    Image(systemName: "plus.circle")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Create a rule from this link")
             }
-            .buttonStyle(.plain)
-            .help("Promote to rule")
+            .layoutPriority(1)
+            .fixedSize()
         }
         .padding(.vertical, 12)
-        .help(toolTip)
         .sheet(isPresented: $showingPromoteSheet) {
             let opts = LaunchOptionDiscovery.options()
             AddRuleSheet(options: opts, prefill: AddRuleSheet.prefill(for: entry, options: opts))
@@ -203,13 +248,24 @@ private struct ActivityRow: View {
         }
     }
 
-    private var relativeTime: String {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .short
-        return f.localizedString(for: entry.timestamp, relativeTo: Date())
+    private var outcomeTooltip: String {
+        switch entry.outcome {
+        case .opened:           return "Opened"
+        case .openedIncognito:  return "Opened in private window"
+        case .opened_appScheme: return "Opened in app"
+        case .blocked:          return "Blocked"
+        case .picker:           return "Showed picker"
+        }
     }
 
-    private var toolTip: String {
+    private var reopenTooltip: String {
+        if let pretty = row.prettyTargetBundleName {
+            return "Reopen in \(pretty)"
+        }
+        return "Reopen link"
+    }
+
+    private var linkTooltip: String {
         var lines: [String] = []
         if entry.didClean {
             lines.append("Original: \(entry.originalURL)")
@@ -220,6 +276,9 @@ private struct ActivityRow: View {
         } else {
             lines.append(entry.cleanedURL)
         }
+        if row.duplicateCount > 1 {
+            lines.append("Grouped duplicates: \(row.duplicateCount) opens")
+        }
         return lines.joined(separator: "\n")
     }
 
@@ -227,14 +286,5 @@ private struct ActivityRow: View {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(s, forType: .string)
-    }
-
-    private func prettyBundleID(_ id: String) -> String {
-        if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id),
-           let bundle = Bundle(url: app),
-           let name = bundle.infoDictionary?["CFBundleName"] as? String {
-            return name
-        }
-        return id
     }
 }

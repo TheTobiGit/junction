@@ -409,35 +409,37 @@ private struct WebContainer: NSViewRepresentable {
 
     func updateNSView(_ nsView: WKWebView, context: Context) {
         guard !context.coordinator.didTearDown else { return }
-        if nsView.url != url {
+        if nsView.url != normalizedLoadURL(for: url) {
             load(url, into: nsView)
         }
     }
 
     private func load(_ url: URL, into webView: WKWebView) {
-        if url.scheme?.lowercased() == "file" {
-            let fileURL = URL(fileURLWithPath: url.path(percentEncoded: false)).standardizedFileURL
+        if isFileURL(url) {
+            let fileURL = normalizedLoadURL(for: url)
             // Grant the containing folder so local HTML can load sibling assets.
-            let readAccessURL = fileURL.deletingLastPathComponent()
-            let loadURL: URL
-            if var fileComponents = URLComponents(url: fileURL, resolvingAgainstBaseURL: false),
-               let originalComponents = URLComponents(url: url, resolvingAgainstBaseURL: false) {
-                fileComponents.percentEncodedQuery = originalComponents.percentEncodedQuery
-                fileComponents.percentEncodedFragment = originalComponents.percentEncodedFragment
-                if let componentURL = fileComponents.url {
-                    loadURL = componentURL
-                } else {
-                    assertionFailure("Failed to preserve file URL query or fragment")
-                    loadURL = fileURL
-                }
-            } else {
-                assertionFailure("Failed to read file URL components")
-                loadURL = fileURL
-            }
-            webView.loadFileURL(loadURL, allowingReadAccessTo: readAccessURL)
+            webView.loadFileURL(fileURL, allowingReadAccessTo: fileURL.deletingLastPathComponent())
         } else {
             webView.load(URLRequest(url: url))
         }
+    }
+
+    private func isFileURL(_ url: URL) -> Bool {
+        url.scheme?.lowercased() == "file"
+    }
+
+    private func normalizedLoadURL(for url: URL) -> URL {
+        guard isFileURL(url),
+              var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url
+        }
+
+        // Query and fragment are not part of the filesystem path; WKWebView may
+        // drop them when loading local files, so use the same normalized URL for
+        // loadFileURL and update comparisons.
+        comps.query = nil
+        comps.fragment = nil
+        return comps.url ?? url
     }
 
 
