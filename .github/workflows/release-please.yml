@@ -230,6 +230,12 @@ jobs:
           FEED_DIR="build/sparkle-feed"
           mkdir -p "${FEED_DIR}"
           cp "build/${APP_NAME}-${VERSION}-macos.zip" "${FEED_DIR}/"
+          # Embed this version's release notes. generate_appcast picks up an
+          # HTML file whose basename matches the archive and inlines it as the
+          # update <description>, so Sparkle's notes pane renders instantly from
+          # the appcast instead of spinning while it loads the GitHub release page.
+          ./scripts/changelog-to-html.sh "${VERSION}" \
+            > "${FEED_DIR}/${APP_NAME}-${VERSION}-macos.html"
           printf '%s' "${SPARKLE_PRIVATE_ED_KEY}" | \
             "${SPARKLE_TOOLS}/generate_appcast" \
               --ed-key-file - \
