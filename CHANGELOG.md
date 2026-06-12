@@ -1,5 +1,74 @@
 # Changelog
 
+## [0.12.0](https://github.com/TheTobiGit/junction/compare/v0.11.0...v0.12.0) (2026-06-10)
+
+
+### Features
+
+* **settings:** auto-parse pasted URLs in Add Rule host field ([4d7ec6e](https://github.com/TheTobiGit/junction/commit/4d7ec6e652c203d4ff9e85d8a10f6fd1725451f2))
+
+
+### Bug Fixes
+
+* detect Dock/Spotlight-launched Zen instances via NSRunningApplication fallback ([a1b7387](https://github.com/TheTobiGit/junction/commit/a1b7387b6ca90c570b63aa5258caa8ecd7847a26))
+
+## [0.11.0](https://github.com/TheTobiGit/junction/compare/v0.10.0...v0.11.0) (2026-06-09)
+
+
+### Features
+
+* **activity:** auto-dedupe history rows and pin search header ([6f13e01](https://github.com/TheTobiGit/junction/commit/6f13e0140095c4545339ec8187535cf105826389))
+* **activity:** hoist search and clear into page header, scroll inside box ([8539dc0](https://github.com/TheTobiGit/junction/commit/8539dc0bbf3f497afdd5a8995b7bf455df36d7ff))
+* add developer isolated preview mode ([0015542](https://github.com/TheTobiGit/junction/commit/0015542ad110205d27d3e9c5437598ff198b6efe))
+* support routing and previewing local HTML files ([b31f4cc](https://github.com/TheTobiGit/junction/commit/b31f4ccd6343fdc91c3bd1595ddad6eceab73993))
+
+
+### Bug Fixes
+
+* **activity:** clip link column so selected URL can't paint over icons ([57480f5](https://github.com/TheTobiGit/junction/commit/57480f5a65061e457e40d80dd4c4712280f045a8))
+* **activity:** drop inner ScrollView, let outer settings scroller handle the list ([87c0db6](https://github.com/TheTobiGit/junction/commit/87c0db63379d26d742ebfceb1ae5ec871dee4f68))
+* **activity:** drop URL text selection, kill the clip workaround it required ([0c87100](https://github.com/TheTobiGit/junction/commit/0c8710000cf39c949a7c2acae40e52288a58332d))
+* **activity:** pin trailing icons so the link column can't push under them ([87e9bac](https://github.com/TheTobiGit/junction/commit/87e9bacef981bbc0f137bf73003a6378475e89ef))
+* address local file URL review feedback ([3901dfe](https://github.com/TheTobiGit/junction/commit/3901dfe36846f0e45e5aa9d19927e2542c9c8153))
+* address preview review feedback ([58a5211](https://github.com/TheTobiGit/junction/commit/58a5211d96dec3273972cd5514cf414c426eb130))
+* avoid hard-coded preview URL type index ([367b4c2](https://github.com/TheTobiGit/junction/commit/367b4c216f18b3ca11733ca2d2929e7bb99c7dda))
+* bypass URL transformation for file scheme URLs ([ba40b53](https://github.com/TheTobiGit/junction/commit/ba40b5325009269707639cd2256b3f6cef1bb377))
+* clarify file preview read access ([d77267f](https://github.com/TheTobiGit/junction/commit/d77267f9cb2ad2f707984693ef7a8e8b03679288))
+* decode file URL path for preview ([4b96ed7](https://github.com/TheTobiGit/junction/commit/4b96ed718d9d8a8dff66aee300a1d9a76a8a2ffb))
+* make menu bar app name dynamic using bundle attributes for preview mode ([b45a74a](https://github.com/TheTobiGit/junction/commit/b45a74aa977fab1feec9b3fb84bacee85c327b8f))
+* preserve file URL query during preview ([42828af](https://github.com/TheTobiGit/junction/commit/42828af179e75a42f95b9dee7751f1de38bd5c44))
+* resolve CLI socket for preview and bypass URL transformation for file URLs ([c5a1946](https://github.com/TheTobiGit/junction/commit/c5a19467485658dca42d1cd3a3540192282ebe3d))
+
+
+### Performance Improvements
+
+* **activity:** cache display rows on RoutingHistory and pre-warm at launch ([8f9d0f8](https://github.com/TheTobiGit/junction/commit/8f9d0f81a7e3647ec2f278453b3cc11b5f793992))
+* **activity:** speed up settings history with lazy rows, caching, and dedupe ([c6a73ce](https://github.com/TheTobiGit/junction/commit/c6a73cebe2254b178a0507876d2cf74211a2a603))
+
+## [0.10.0](https://github.com/TheTobiGit/junction/compare/v0.9.0...v0.10.0) (2026-05-27)
+
+
+### Features
+
+* **browser:** add favorite browser/profile system with picker indicators ([ad8cc45](https://github.com/TheTobiGit/junction/commit/ad8cc45bba448332e900c7d1368f1f1b599f7c64))
+* **picker:** enlarge dial, center on open, arc-curve labels ([8b52447](https://github.com/TheTobiGit/junction/commit/8b52447158e30555a308e9bbc6c1bd3fcabe6ec5))
+
+
+### Bug Fixes
+
+* **browser:** address Copilot review on Zen/Firefox opener ([89853dd](https://github.com/TheTobiGit/junction/commit/89853dd0a5424287af247f74bcb60f494936bcdf))
+* **browser:** open Zen/Firefox URLs when profile is already running ([e6f5086](https://github.com/TheTobiGit/junction/commit/e6f5086a27be6ddbe3783d575b9fbf8c19004d41))
+* **browser:** synthesize bundle option for app-key favorite too ([e62d983](https://github.com/TheTobiGit/junction/commit/e62d9834e0202744f41bb11b516e18f2e58f8c76))
+* **browser:** synthesize bundle option for missing favorite profile ([3d0483b](https://github.com/TheTobiGit/junction/commit/3d0483bac515f3ceae1e10a68b4fee01f59bfbed))
+* **picker:** smooth dial hover without shifting sibling icons ([83fa4d3](https://github.com/TheTobiGit/junction/commit/83fa4d38e043572c70e3322ac982c2c823551b1c))
+* **refactor:** address Copilot review on resolver and preview fetcher ([248e772](https://github.com/TheTobiGit/junction/commit/248e772c3003fc79388a5444c0cb084ba49e7824))
+* **refactor:** address second Copilot review pass ([78c82b6](https://github.com/TheTobiGit/junction/commit/78c82b6cab5ff5a96dcaa7a7ca8cb774cfb02170))
+
+
+### Performance Improvements
+
+* **links:** cache regexes, share URLSession, bound shortener cache ([0f65465](https://github.com/TheTobiGit/junction/commit/0f65465694d36bb9c8f08a666abb3e1e41b6ac75))
+
 ## [0.9.0](https://github.com/TheTobiGit/junction/compare/v0.8.0...v0.9.0) (2026-05-25)
 
 

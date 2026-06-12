@@ -15,6 +15,12 @@ final class MenuBarController: NSObject {
     private let routeURL: (URL) -> Void
     private weak var dropOverlay: StatusItemDropOverlay?
 
+    private var appName: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+            ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
+            ?? "Junction"
+    }
+
     init(openPreferences: @escaping (PreferencesFocusTarget?) -> Void, routeURL: @escaping (URL) -> Void) {
         self.openPreferences = openPreferences
         self.routeURL = routeURL
@@ -24,7 +30,7 @@ final class MenuBarController: NSObject {
         if let button = statusItem.button {
             let image = Self.menuBarImage()
             button.image = image
-            button.toolTip = "Junction — drop a link to route it"
+            button.toolTip = "\(appName) — drop a link to route it"
 
             // Drag-and-drop overlay: a transparent NSView pinned over the
             // status button accepts URL drops and forwards them to our router,
@@ -49,7 +55,7 @@ final class MenuBarController: NSObject {
     private func rebuildMenu() {
         let menu = NSMenu()
 
-        let title = NSMenuItem(title: "Junction", action: nil, keyEquivalent: "")
+        let title = NSMenuItem(title: appName, action: nil, keyEquivalent: "")
         title.isEnabled = false
         menu.addItem(title)
         menu.addItem(.separator())
@@ -99,7 +105,7 @@ final class MenuBarController: NSObject {
         menu.addItem(.separator())
 
         let quit = NSMenuItem(
-            title: "Quit Junction",
+            title: "Quit \(appName)",
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
         )
@@ -157,8 +163,8 @@ final class MenuBarController: NSObject {
 
     @objc private func openURLPrompt() {
         let alert = NSAlert()
-        alert.messageText = "Open a URL through Junction"
-        alert.informativeText = "Paste any URL. Junction will clean and route it as if you'd clicked it."
+        alert.messageText = "Open a URL through \(appName)"
+        alert.informativeText = "Paste any URL. \(appName) will clean and route it as if you'd clicked it."
         alert.addButton(withTitle: "Open")
         alert.addButton(withTitle: "Cancel")
         alert.alertStyle = .informational
@@ -209,7 +215,7 @@ final class MenuBarController: NSObject {
 
         let alert = NSAlert()
         alert.messageText = "Default handler requested"
-        alert.informativeText = "macOS may show a confirmation dialog. If it does not appear, open System Settings > Desktop & Dock and set Junction as the default web browser."
+        alert.informativeText = "macOS may show a confirmation dialog. If it does not appear, open System Settings > Desktop & Dock and set \(appName) as the default web browser."
         alert.addButton(withTitle: "OK")
         alert.runModal()
         rebuildMenu()

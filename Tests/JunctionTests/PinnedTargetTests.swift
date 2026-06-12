@@ -23,8 +23,8 @@ final class PinnedTargetTests: XCTestCase {
         XCTAssertEqual(settings.targetOrder.count, 3)
     }
 
-    // VAL-M3-PIN-003: LaunchOptionDiscovery returns the favored target first.
-    func test_applyUserOrder_favoredKeyFirst_VAL_M3_PIN_003() {
+    // VAL-M3-PIN-003: Explicit target ordering places options in the order provided.
+    func test_applyUserOrder_respectsProvidedOrder_VAL_M3_PIN_003() {
         let safari = makeLaunchOption(bundleID: "com.apple.Safari", name: "Safari")
         let brave = makeLaunchOption(bundleID: "com.brave.Browser", name: "Brave")
         let chrome = makeLaunchOption(bundleID: "com.google.Chrome", name: "Chrome")

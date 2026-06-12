@@ -369,6 +369,62 @@ final class URLOpenerRoutingTests: XCTestCase {
         )
     }
 
+    // MARK: - Dock/Spotlight-launched instance detection (NSRunningApplication fallback)
+    //
+    // When Zen is launched from the Dock or Spotlight (not by Junction),
+    // there are no lock files yet visible to the lock probe AND no
+    // `--profile <path>` in the process's argv. The NSRunningApplication
+    // fallback must still detect the running instance and suppress
+    // `--new-instance` to avoid the "already running" error dialog.
+
+    func test_zenProfile_unlocked_butAppRunning_omitsNewInstance() throws {
+        let mock = MockBrowserLauncher()
+        let profileDir = try makeTempProfileDir()
+        defer { try? FileManager.default.removeItem(at: profileDir) }
+
+        let saved = URLOpener.isAppRunning
+        URLOpener.isAppRunning = { _ in true }
+        defer { URLOpener.isAppRunning = saved }
+
+        let profile = ChromiumProfile(directoryName: profileDir.path, displayName: "Test", colorHex: nil)
+        let option = makeZen(profile: profile)
+
+        let exp = expectation(description: "completion fires")
+        URLOpener.open(targetURL, with: option, incognito: false, launcher: mock) { _ in exp.fulfill() }
+        waitForExpectations(timeout: 1.0)
+
+        XCTAssertEqual(mock.runCalls.count, 1)
+        XCTAssertEqual(
+            mock.runCalls[0].arguments,
+            ["--profile", profileDir.path, "--new-tab", targetURL.absoluteString],
+            "--new-instance must be omitted when the browser is already running (Dock/Spotlight launch)"
+        )
+    }
+
+    func test_zenProfile_unlocked_appNotRunning_includesNewInstance() throws {
+        let mock = MockBrowserLauncher()
+        let profileDir = try makeTempProfileDir()
+        defer { try? FileManager.default.removeItem(at: profileDir) }
+
+        let saved = URLOpener.isAppRunning
+        URLOpener.isAppRunning = { _ in false }
+        defer { URLOpener.isAppRunning = saved }
+
+        let profile = ChromiumProfile(directoryName: profileDir.path, displayName: "Test", colorHex: nil)
+        let option = makeZen(profile: profile)
+
+        let exp = expectation(description: "completion fires")
+        URLOpener.open(targetURL, with: option, incognito: false, launcher: mock) { _ in exp.fulfill() }
+        waitForExpectations(timeout: 1.0)
+
+        XCTAssertEqual(mock.runCalls.count, 1)
+        XCTAssertEqual(
+            mock.runCalls[0].arguments,
+            ["--new-instance", "--profile", profileDir.path, "--new-tab", targetURL.absoluteString],
+            "--new-instance must be included when no instance is running"
+        )
+    }
+
     func test_firefoxNoProfileIncognito_usesLauncherRun() {
         let mock = MockBrowserLauncher()
         let option = makeFirefox()

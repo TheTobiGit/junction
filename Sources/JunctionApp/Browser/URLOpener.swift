@@ -4,6 +4,16 @@ import Darwin
 import UserNotifications
 
 enum URLOpener {
+    /// Injectable query: "is any instance of `bundleID` currently running?"
+    /// Defaults to the real `NSRunningApplication` check. Tests swap this
+    /// to control the fallback path in `isFirefoxFamilyProfileRunning`
+    /// without requiring an actual running browser process.
+    static var isAppRunning: (String) -> Bool = { bundleID in
+        !NSRunningApplication
+            .runningApplications(withBundleIdentifier: bundleID)
+            .isEmpty
+    }
+
     /// Opens `url` in the browser described by `option`.
     ///
     /// - Parameters:
@@ -494,47 +504,30 @@ enum URLOpener {
     ///
     /// Primary signal: probe Firefox's profile lock files inside the
     /// profile directory itself. This works regardless of how the browser
-    /// was launched (Dock click, Spotlight, Junction CLI, etc.), which the
-    /// previous argv-only check did not.
+    /// was launched (Dock click, Spotlight, Junction CLI, etc.).
     ///
-    /// Fallback: keep the `ps -o command=` argv check for the rare case
-    /// where lock probing is inconclusive (e.g. sandboxed FS access denies
-    /// reading the profile dir) but Junction itself spawned the running
-    /// instance with `--profile <absPath>`.
+    /// Fallback: check `NSRunningApplication` for any running instance
+    /// of the same bundle ID. When the lock probe is inconclusive
+    /// (e.g. sandbox or timing prevents reading the profile dir) but
+    /// the browser IS running, we conservatively report "running" to
+    /// prevent `--new-instance` from being added. Adding it to an
+    /// already-running browser causes the "already running but not
+    /// responding" error dialog and the URL is never delivered — which
+    /// is the user-visible "Zen duplicate window" bug.
+    ///
+    /// Trade-off: in multi-profile setups where the requested profile
+    /// is genuinely idle but another profile IS running, this fallback
+    /// causes the URL to be routed into the active profile's window
+    /// instead of spawning a fresh instance for the idle profile. That
+    /// is a profile mismatch, not a data-loss or error-dialog scenario,
+    /// and is the safer failure mode.
     private static func isFirefoxFamilyProfileRunning(
         bundleID: String,
         absProfilePath: String
     ) -> Bool {
         if isFirefoxProfileActivelyLocked(absProfilePath) { return true }
 
-        let pids = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-            .map { Int($0.processIdentifier) }
-            .filter { $0 > 0 }
-        guard !pids.isEmpty else { return false }
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/ps")
-        process.arguments = ["-p", pids.map(String.init).joined(separator: ","), "-o", "command="]
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
-        do {
-            try process.run()
-        } catch {
-            return false
-        }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0,
-              let text = String(data: data, encoding: .utf8)
-        else { return false }
-
-        let needle = "--profile \(absProfilePath)"
-        return text.split(separator: "\n").contains { line in
-            String(line).contains(needle)
-        }
+        return isAppRunning(bundleID)
     }
 
     /// Returns true when a Firefox-family profile directory holds an active

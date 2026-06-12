@@ -40,13 +40,27 @@ jobs:
       tag: ${{ steps.rp.outputs.tag_name }}
       version: ${{ steps.rp.outputs.version }}
     steps:
+      # GitHub deliberately does not trigger workflow runs for pushes made
+      # with GITHUB_TOKEN (anti-recursion rule). release-please force-pushes
+      # the release branch using GITHUB_TOKEN by default, so the required
+      # "Build & Test" status check never runs and the release PR is
+      # permanently blocked from merging. Using a GitHub App token instead
+      # causes GitHub to treat the push as coming from a real actor, which
+      # fires the workflow normally and lets the required check pass.
+      - name: Mint GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Run release-please
         id: rp
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
   build-publish:
     name: Build & Attach Release Assets
@@ -70,7 +84,7 @@ jobs:
           fi
 
       - name: Checkout release tag
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ needs.release-please.outputs.tag || inputs.release_tag }}
           fetch-depth: 0
@@ -216,6 +230,12 @@ jobs:
           FEED_DIR="build/sparkle-feed"
           mkdir -p "${FEED_DIR}"
           cp "build/${APP_NAME}-${VERSION}-macos.zip" "${FEED_DIR}/"
+          # Embed this version's release notes. generate_appcast picks up an
+          # HTML file whose basename matches the archive and inlines it as the
+          # update <description>, so Sparkle's notes pane renders instantly from
+          # the appcast instead of spinning while it loads the GitHub release page.
+          ./scripts/changelog-to-html.sh "${VERSION}" \
+            > "${FEED_DIR}/${APP_NAME}-${VERSION}-macos.html"
           printf '%s' "${SPARKLE_PRIVATE_ED_KEY}" | \
             "${SPARKLE_TOOLS}/generate_appcast" \
               --ed-key-file - \

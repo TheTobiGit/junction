@@ -37,6 +37,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         flushPendingURLs()
         maybeShowOnboarding()
         UpdateChecker.shared.start()
+        // Pre-warm the Activity tab's display caches off the main thread
+        // so the first time the user opens Settings → Activity is paying
+        // near-zero startup cost (no cold ICU/locale spin, no NSWorkspace
+        // bundle lookups during the SwiftUI render pass).
+        RoutingHistory.shared.warmDisplayCaches()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -56,7 +61,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleIncoming(_ url: URL) {
-        if url.scheme?.lowercased() == "junction" {
+        let scheme = url.scheme?.lowercased()
+        if scheme == "junction" || scheme == "junction-preview" {
             handleJunctionScheme(url)
             return
         }
@@ -394,10 +400,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Scheme allow-list. http/https are routable by default; anything else
-        // must be opted in by an existing per-host rule (covered downstream),
-        // or it gets handed to the system as a last resort. javascript:/data:/
-        // file: are dropped outright.
+        // Scheme allow-list. We only route http, https, and file URLs.
+        // Unacceptable schemes (like javascript: or data:) are dropped outright.
         guard isAcceptableScheme(url) else {
             return
         }
@@ -442,9 +446,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         routeAfterExpansion(original: url, resolved: url, context: contextAtReceive)
     }
 
-    private func isAcceptableScheme(_ url: URL) -> Bool {
+    func isAcceptableScheme(_ url: URL) -> Bool {
         guard let scheme = url.scheme?.lowercased() else { return false }
-        return URLSafety.routableSchemes.contains(scheme)
+        return URLSafety.routableSchemes.contains(scheme) || scheme == "file"
     }
 
     private func routeAfterExpansion(original: URL, resolved: URL, context: RouteContext) {
