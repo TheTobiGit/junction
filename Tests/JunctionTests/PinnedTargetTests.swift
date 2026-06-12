@@ -3,28 +3,28 @@ import XCTest
 
 final class PinnedTargetTests: XCTestCase {
 
-    // VAL-M3-PIN-001: Pinning rewrites targetOrder so the pinned key is at index 0;
-    // non-pinned keys preserve their relative order.
-    func test_pinExistingKey_movesToIndexZero_VAL_M3_PIN_001() {
+    // VAL-M3-PIN-001: Setting favorite rewrites targetOrder so the favored key is at index 0;
+    // non-favored keys preserve their relative order.
+    func test_favoriteExistingKey_movesToIndexZero_VAL_M3_PIN_001() {
         var settings = JunctionSettings()
         settings.targetOrder = ["app:com.apple.Safari", "app:com.brave.Browser", "app:com.google.Chrome"]
-        settings.setPinnedTargetKey("app:com.brave.Browser")
-        XCTAssertEqual(settings.pinnedTargetKey, "app:com.brave.Browser")
+        settings.setFavoriteTargetKey("app:com.brave.Browser")
+        XCTAssertEqual(settings.favoriteTargetKey, "app:com.brave.Browser")
         XCTAssertEqual(settings.targetOrder.first, "app:com.brave.Browser")
         XCTAssertEqual(settings.targetOrder, ["app:com.brave.Browser", "app:com.apple.Safari", "app:com.google.Chrome"])
     }
 
-    // VAL-M3-PIN-002: Pinning a key not present in targetOrder inserts it at index 0.
-    func test_pinNewKey_insertsAtIndexZero_VAL_M3_PIN_002() {
+    // VAL-M3-PIN-002: Favoriting a key not present in targetOrder inserts it at index 0.
+    func test_favoriteNewKey_insertsAtIndexZero_VAL_M3_PIN_002() {
         var settings = JunctionSettings()
         settings.targetOrder = ["app:com.apple.Safari", "app:com.google.Chrome"]
-        settings.setPinnedTargetKey("app:com.brave.Browser")
+        settings.setFavoriteTargetKey("app:com.brave.Browser")
         XCTAssertEqual(settings.targetOrder.first, "app:com.brave.Browser")
         XCTAssertEqual(settings.targetOrder.count, 3)
     }
 
-    // VAL-M3-PIN-003: LaunchOptionDiscovery returns the pinned target first.
-    func test_applyUserOrder_pinnedKeyFirst_VAL_M3_PIN_003() {
+    // VAL-M3-PIN-003: Explicit target ordering places options in the order provided.
+    func test_applyUserOrder_respectsProvidedOrder_VAL_M3_PIN_003() {
         let safari = makeLaunchOption(bundleID: "com.apple.Safari", name: "Safari")
         let brave = makeLaunchOption(bundleID: "com.brave.Browser", name: "Brave")
         let chrome = makeLaunchOption(bundleID: "com.google.Chrome", name: "Chrome")
@@ -35,45 +35,47 @@ final class PinnedTargetTests: XCTestCase {
         XCTAssertEqual(result.map { $0.target.storageKey }, order)
     }
 
-    // VAL-M3-PIN-004: Pinning is idempotent; no duplicate entries.
-    func test_pinSameKeyTwice_idempotent_VAL_M3_PIN_004() {
+    // VAL-M3-PIN-004: Favoriting is idempotent; no duplicate entries.
+    func test_favoriteSameKeyTwice_idempotent_VAL_M3_PIN_004() {
         var settings = JunctionSettings()
         settings.targetOrder = ["app:com.apple.Safari", "app:com.brave.Browser", "app:com.google.Chrome"]
-        settings.setPinnedTargetKey("app:com.brave.Browser")
+        settings.setFavoriteTargetKey("app:com.brave.Browser")
         let afterFirst = settings.targetOrder
-        settings.setPinnedTargetKey("app:com.brave.Browser")
+        settings.setFavoriteTargetKey("app:com.brave.Browser")
         XCTAssertEqual(settings.targetOrder, afterFirst)
         XCTAssertEqual(Set(settings.targetOrder).count, settings.targetOrder.count)
     }
 
-    // VAL-M3-PIN-005: Unpinning preserves user-arranged order; previously-pinned key remains.
-    func test_unpin_preservesTargetOrder_VAL_M3_PIN_005() {
+    // VAL-M3-PIN-005: Clearing the favorite preserves user-arranged order; previously-favored key remains.
+    func test_clearFavorite_preservesTargetOrder_VAL_M3_PIN_005() {
         var settings = JunctionSettings()
         settings.targetOrder = ["app:com.apple.Safari", "app:com.brave.Browser", "app:com.google.Chrome"]
-        settings.setPinnedTargetKey("app:com.brave.Browser")
-        let orderAfterPin = settings.targetOrder
-        settings.setPinnedTargetKey(nil)
-        XCTAssertNil(settings.pinnedTargetKey)
-        XCTAssertEqual(settings.targetOrder, orderAfterPin)
+        settings.setFavoriteTargetKey("app:com.brave.Browser")
+        let orderAfterFavorite = settings.targetOrder
+        settings.setFavoriteTargetKey(nil)
+        XCTAssertNil(settings.favoriteTargetKey)
+        XCTAssertEqual(settings.targetOrder, orderAfterFavorite)
         XCTAssertTrue(settings.targetOrder.contains("app:com.brave.Browser"))
     }
 
-    // VAL-M3-PIN-006: Legacy settings.json without pinnedTargetKey decodes as nil.
-    func test_legacySettingsJSON_missingPinnedTargetKey_decodesAsNil_VAL_M3_PIN_006() throws {
+    // VAL-M3-PIN-006: Legacy settings.json with pinnedTargetKey migrates into favoriteTargetKey.
+    func test_legacySettingsJSON_pinnedTargetKey_migratesToFavorite_VAL_M3_PIN_006() throws {
         let json = """
         {
             "cleanURLsBeforeOpening": true,
             "expandShortenedURLs": true,
             "clipboardWatcherEnabled": false,
             "hiddenTargetKeys": [],
-            "targetOrder": ["app:com.apple.Safari"],
+            "targetOrder": ["app:com.brave.Browser", "app:com.apple.Safari"],
             "hasCompletedOnboarding": false,
-            "historyEnabled": true
+            "historyEnabled": true,
+            "pinnedTargetKey": "app:com.brave.Browser"
         }
         """.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(JunctionSettings.self, from: json)
-        XCTAssertNil(decoded.pinnedTargetKey)
-        XCTAssertEqual(decoded.targetOrder, ["app:com.apple.Safari"])
+        XCTAssertEqual(decoded.favoriteTargetKey, "app:com.brave.Browser",
+                       "legacy pinnedTargetKey must migrate into favoriteTargetKey")
+        XCTAssertEqual(decoded.targetOrder, ["app:com.brave.Browser", "app:com.apple.Safari"])
     }
 
     // MARK: - Helpers

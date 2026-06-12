@@ -2,7 +2,7 @@
 import XCTest
 
 // VAL-CROSS-009: Settings forward-compat across all milestones.
-// Legacy settings.json lacking pinnedTargetKey, pickerFrame, trackerOverrides, toursCompleted
+// Legacy settings.json lacking favoriteTargetKey, pickerFrame, trackerOverrides, toursCompleted
 // decodes successfully; all four default to nil/empty; re-encoding then decoding preserves defaults.
 final class SettingsForwardCompatTests: XCTestCase {
 
@@ -21,7 +21,7 @@ final class SettingsForwardCompatTests: XCTestCase {
     func test_legacyJSON_missingAllFourNewFields_decodesSuccessfully_VAL_CROSS_009() throws {
         let decoded = try JSONDecoder().decode(JunctionSettings.self, from: legacyJSON)
 
-        XCTAssertNil(decoded.pinnedTargetKey, "pinnedTargetKey must default to nil")
+        XCTAssertNil(decoded.favoriteTargetKey, "favoriteTargetKey must default to nil")
         XCTAssertNil(decoded.pickerFrame, "pickerFrame must default to nil")
         XCTAssertTrue(decoded.trackerOverrides.additions.isEmpty,
                       "trackerOverrides.additions must default to empty")
@@ -37,7 +37,7 @@ final class SettingsForwardCompatTests: XCTestCase {
         let reencoded = try JSONEncoder().encode(first)
         let second = try JSONDecoder().decode(JunctionSettings.self, from: reencoded)
 
-        XCTAssertNil(second.pinnedTargetKey)
+        XCTAssertNil(second.favoriteTargetKey)
         XCTAssertNil(second.pickerFrame)
         XCTAssertTrue(second.trackerOverrides.additions.isEmpty)
         XCTAssertTrue(second.trackerOverrides.disabled.isEmpty)
