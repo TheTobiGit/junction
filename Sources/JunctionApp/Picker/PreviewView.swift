@@ -54,6 +54,7 @@ struct PreviewView: View {
                     backButton
                     Spacer(minLength: 0)
                     readerToggleButton
+                    pinButton
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
@@ -100,6 +101,15 @@ struct PreviewView: View {
             help: readerEnabled ? "Exit reader mode" : "Enter reader mode"
         ) {
             readerEnabled.toggle()
+        }
+    }
+
+    private var pinButton: some View {
+        FloatingIconButton(
+            systemName: model.pinnedPreview ? "pin.fill" : "pin",
+            help: model.pinnedPreview ? "Unpin (clicking outside will dismiss)" : "Pin to top (stay open when clicking outside)"
+        ) {
+            model.pinnedPreview.toggle()
         }
     }
 

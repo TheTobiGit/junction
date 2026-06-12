@@ -99,7 +99,7 @@ struct PickerView: View {
         ZStack {
             if model.previewMode {
                 PreviewView(model: model)
-                    .frame(width: Self.previewSize().width, height: Self.previewSize().height)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
             } else if appSettings.settings.pickerStyle == .list {
                 listLayout

@@ -174,6 +174,15 @@ final class PickerPanelController {
 
     private func resize(forPreview inPreview: Bool) {
         guard let panel else { return }
+        if inPreview {
+            panel.styleMask.insert(.resizable)
+            panel.minSize = CGSize(width: PickerView.minWidth, height: 360)
+            panel.maxSize = CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        } else {
+            panel.styleMask.remove(.resizable)
+            panel.minSize = .zero
+            panel.maxSize = CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        }
         let target: CGSize = inPreview ? PickerView.previewSize() : pickerSize
         let current = panel.frame
         let newOrigin = NSPoint(
@@ -226,6 +235,10 @@ final class PickerPanelController {
             DispatchQueue.main.async { [weak self] in
                 self?.dismiss(reason: reason)
             }
+            return
+        }
+
+        if let model, model.pinnedPreview, reason == .clickedOutside || reason == .resignedKey {
             return
         }
 
