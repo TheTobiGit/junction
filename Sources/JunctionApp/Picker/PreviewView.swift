@@ -54,6 +54,7 @@ struct PreviewView: View {
                     backButton
                     Spacer(minLength: 0)
                     readerToggleButton
+                    pinButton
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
@@ -100,6 +101,15 @@ struct PreviewView: View {
             help: readerEnabled ? "Exit reader mode" : "Enter reader mode"
         ) {
             readerEnabled.toggle()
+        }
+    }
+
+    private var pinButton: some View {
+        FloatingIconButton(
+            systemName: model.pinnedPreview ? "pin.fill" : "pin",
+            help: model.pinnedPreview ? "Unpin (clicking outside will dismiss)" : "Pin to top (stay open when clicking outside)"
+        ) {
+            model.pinnedPreview.toggle()
         }
     }
 
@@ -399,7 +409,7 @@ private struct WebContainer: NSViewRepresentable {
         let webView = PreviewWebViewFactory.makeWebView(readerEnabled: readerEnabled)
         webView.navigationDelegate = context.coordinator
         context.coordinator.observe(webView: webView)
-        webView.load(URLRequest(url: url))
+        load(url, into: webView)
         // Register a deterministic teardown so the controller can stop media
         // even when SwiftUI defers ``dismantleNSView`` (e.g. during the
         // panel-dismiss animation).
@@ -409,10 +419,39 @@ private struct WebContainer: NSViewRepresentable {
 
     func updateNSView(_ nsView: WKWebView, context: Context) {
         guard !context.coordinator.didTearDown else { return }
-        if nsView.url != url {
-            nsView.load(URLRequest(url: url))
+        if nsView.url != normalizedLoadURL(for: url) {
+            load(url, into: nsView)
         }
     }
+
+    private func load(_ url: URL, into webView: WKWebView) {
+        if isFileURL(url) {
+            let fileURL = normalizedLoadURL(for: url)
+            // Grant the containing folder so local HTML can load sibling assets.
+            webView.loadFileURL(fileURL, allowingReadAccessTo: fileURL.deletingLastPathComponent())
+        } else {
+            webView.load(URLRequest(url: url))
+        }
+    }
+
+    private func isFileURL(_ url: URL) -> Bool {
+        url.scheme?.lowercased() == "file"
+    }
+
+    private func normalizedLoadURL(for url: URL) -> URL {
+        guard isFileURL(url),
+              var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url
+        }
+
+        // Query and fragment are not part of the filesystem path; WKWebView may
+        // drop them when loading local files, so use the same normalized URL for
+        // loadFileURL and update comparisons.
+        comps.query = nil
+        comps.fragment = nil
+        return comps.url ?? url
+    }
+
 
     static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
         coordinator.tearDown(webView: nsView)

@@ -86,4 +86,19 @@ final class URLTransformPipelineTests: XCTestCase {
             )
         }
     }
+
+    func test_fileURLsBypassTransformPipeline() {
+        let pipeline = URLTransformers.pipeline(
+            globalOverrides: TrackerOverrides(),
+            ruleOverrides: nil
+        )
+        let url = URL(string: "file:///tmp/project/index.amp?utm_source=newsletter&fbclid=abc123")!
+        let result = pipeline.run(url)
+        XCTAssertEqual(result, url)
+
+        let trace = pipeline.runTraced(url)
+        XCTAssertEqual(trace.final, url)
+        XCTAssertTrue(trace.steps.isEmpty)
+    }
 }
+

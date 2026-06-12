@@ -31,6 +31,7 @@ final class PickerViewModel: ObservableObject {
     @Published private(set) var qrImage: CGImage? = nil
     var qrImageProvider: (String) -> CGImage? = QRCodeGenerator.generate(from:)
     @Published var cheatSheetVisible: Bool = false
+    @Published var pinnedPreview: Bool = false
 
     /// Closure registered by the active preview ``WebContainer`` so the
     /// controller can stop media playback synchronously on dismiss instead

@@ -115,6 +115,8 @@ enum PrefsSection: String, CaseIterable, Identifiable {
 // MARK: - Root view
 
 struct PreferencesView: View {
+    private static let activitySearchDebounceDelay: TimeInterval = 0.12
+
     @ObservedObject var settings = SettingsStore.shared
 
     @State var options: [LaunchOption] = []
@@ -124,6 +126,12 @@ struct PreferencesView: View {
     @State var showingAddRuleSheet = false
     @State var newTrackerEntry = ""
     @State var expandedTargetGroupIDs: Set<String> = []
+
+    @State var activityQuery: String = ""
+    @State var debouncedActivityQuery: String = ""
+    @State var groupDuplicateActivityRows: Bool = false
+    @State var confirmingClearActivity: Bool = false
+    @State private var activityDebounceWorkItem: DispatchWorkItem?
 
     private var accent: Color { settings.settings.accentPreset.swiftUIColor }
     private var theme: ChromeTheme { settings.settings.chromeTheme }
@@ -143,17 +151,30 @@ struct PreferencesView: View {
 
                 PrefsHairline()
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
+                if selection == .activity {
+                    // Activity owns its own height: the rows box scrolls
+                    // internally, the page itself stays put. Bypass the
+                    // outer ScrollView used by the other panels.
+                    VStack(alignment: .leading, spacing: 0) {
                         sectionContent
-                        Spacer(minLength: 24)
                     }
                     .padding(.horizontal, 28)
                     .padding(.top, 20)
                     .padding(.bottom, 28)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 20) {
+                            sectionContent
+                            Spacer(minLength: 24)
+                        }
+                        .padding(.horizontal, 28)
+                        .padding(.top, 20)
+                        .padding(.bottom, 28)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                    .scrollIndicators(.hidden)
                 }
-                .scrollIndicators(.hidden)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
@@ -170,6 +191,17 @@ struct PreferencesView: View {
             guard let raw = note.userInfo?["section"] as? String,
                   let target = PrefsSection(rawValue: raw) else { return }
             selection = target
+        }
+        .onChange(of: activityQuery) { newValue in
+            activityDebounceWorkItem?.cancel()
+            let work = DispatchWorkItem { [newValue] in
+                debouncedActivityQuery = newValue
+            }
+            activityDebounceWorkItem = work
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + Self.activitySearchDebounceDelay,
+                execute: work
+            )
         }
         .sheet(isPresented: $showingAddRuleSheet) {
             AddRuleSheet(options: options)
@@ -191,6 +223,12 @@ struct PreferencesView: View {
             Text("\(visibleCount) shown")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
+        case .activity:
+            ActivityHeaderControls(
+                query: $activityQuery,
+                groupDuplicates: $groupDuplicateActivityRows,
+                confirmingClear: $confirmingClearActivity
+            )
         default:
             EmptyView()
         }
@@ -205,7 +243,10 @@ struct PreferencesView: View {
         case .rules: rulesPanel
         case .appSchemes: appSchemesPanel
         case .hotkeys: hotkeysPanel
-        case .activity: ActivityTab()
+        case .activity: ActivityTab(
+            debouncedQuery: debouncedActivityQuery,
+            groupDuplicates: groupDuplicateActivityRows
+        )
         case .trackers: trackersPanel
         }
     }
@@ -593,7 +634,6 @@ struct PreferencesView: View {
     private func targetRow(_ option: LaunchOption) -> some View {
         let key = option.target.storageKey
         let hidden = settings.settings.hiddenTargetKeys.contains(key)
-        let pinned = settings.settings.pinnedTargetKey == key
         let favorite = settings.settings.favoriteTargetKey == key
         return HStack(spacing: 12) {
             grip
@@ -602,20 +642,21 @@ struct PreferencesView: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(hidden ? .secondary : .primary)
             Spacer()
-            Button { settings.setFavoriteTargetKey(favorite ? nil : key) } label: {
+            Button {
+                let favoriteKey = favorite ? nil : key
+                settings.setFavoriteTargetKey(favoriteKey)
+                options = LaunchOptionDiscovery.options()
+                expandedTargetGroupIDs.formUnion(LaunchOptionGrouping.defaultExpandedGroupIDs(
+                    grouped: LaunchOptionGrouping.group(options: options),
+                    favoriteTargetKey: favoriteKey
+                ))
+            } label: {
                 Image(systemName: favorite ? "star.fill" : "star")
                     .font(.system(size: 12))
                     .foregroundStyle(favorite ? Color.yellow : .secondary)
             }
             .buttonStyle(.plain)
             .help(favorite ? "Remove favorite" : "Set as favorite")
-            Button { settings.setPinnedTargetKey(pinned ? nil : key) } label: {
-                Image(systemName: pinned ? "pin.fill" : "pin")
-                    .font(.system(size: 12))
-                    .foregroundStyle(pinned ? Color.accentColor : .secondary)
-            }
-            .buttonStyle(.plain)
-            .help(pinned ? "Unpin" : "Pin to top")
             Toggle("", isOn: Binding(
                 get: { !hidden },
                 set: { settings.setHidden(!$0, for: key) }
@@ -696,7 +737,7 @@ struct PreferencesView: View {
         shadowedRuleIDs = RuleConflictDetector.shadowed(rules: rulesFile.rules)
         expandedTargetGroupIDs = LaunchOptionGrouping.defaultExpandedGroupIDs(
             grouped: LaunchOptionGrouping.group(options: options),
-            pinnedTargetKey: settings.settings.pinnedTargetKey
+            favoriteTargetKey: settings.settings.favoriteTargetKey
         )
     }
 }

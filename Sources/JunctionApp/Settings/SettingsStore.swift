@@ -51,16 +51,15 @@ struct JunctionSettings: Codable {
     var chromeTheme: ChromeTheme = .glass
     var accentPreset: AccentPreset = .system
     var pickerStyle: PickerStyle = .tiles
-    var pinnedTargetKey: String? = nil
     var pickerFrame: CGRect? = nil
     var trackerOverrides: TrackerOverrides = TrackerOverrides()
     var toursCompleted: [String: Bool] = [:]
     /// Storage key (`LaunchTarget.storageKey`) of the user's favorite
-    /// browser or browser profile. Distinct from `pinnedTargetKey`, which
-    /// only controls picker order; the favorite is the named default that
+    /// browser or browser profile. The favorite is the named default that
     /// rules and shortcuts can reference symbolically (e.g. "open in
-    /// favorite browser") so the user can swap the underlying target
-    /// without rewriting every rule.
+    /// favorite browser"), and it is also rendered at slot 1 of the
+    /// picker — setting a favorite reorders `targetOrder` so the favored
+    /// key sits at index 0.
     var favoriteTargetKey: String? = nil
 
     enum CodingKeys: String, CodingKey {
@@ -76,7 +75,7 @@ struct JunctionSettings: Codable {
         case chromeTheme
         case accentPreset
         case pickerStyle
-        case pinnedTargetKey
+        case pinnedTargetKey // legacy; migrated into favoriteTargetKey on read, not written
         case historyEnabled // legacy; ignored on read, not written
         case pickerFrame
         case trackerOverrides
@@ -104,11 +103,12 @@ struct JunctionSettings: Codable {
         self.accentPreset = (try? c.decode(AccentPreset.self, forKey: .accentPreset)) ?? .system
         self.pickerStyle = (try? c.decode(PickerStyle.self, forKey: .pickerStyle)) ?? .tiles
         _ = try? c.decode(Bool.self, forKey: .historyEnabled)
-        self.pinnedTargetKey = try? c.decodeIfPresent(String.self, forKey: .pinnedTargetKey)
         self.pickerFrame = (try? c.decodeIfPresent(PickerFrameCodable.self, forKey: .pickerFrame))?.rect
         self.trackerOverrides = (try? c.decodeIfPresent(TrackerOverrides.self, forKey: .trackerOverrides)) ?? TrackerOverrides()
         self.toursCompleted = (try? c.decodeIfPresent([String: Bool].self, forKey: .toursCompleted)) ?? [:]
-        self.favoriteTargetKey = try? c.decodeIfPresent(String.self, forKey: .favoriteTargetKey)
+        let storedFavorite = try? c.decodeIfPresent(String.self, forKey: .favoriteTargetKey)
+        let legacyPinned = try? c.decodeIfPresent(String.self, forKey: .pinnedTargetKey)
+        self.favoriteTargetKey = storedFavorite ?? legacyPinned
     }
 
     func encode(to encoder: Encoder) throws {
@@ -125,7 +125,6 @@ struct JunctionSettings: Codable {
         try c.encode(chromeTheme, forKey: .chromeTheme)
         try c.encode(accentPreset, forKey: .accentPreset)
         try c.encode(pickerStyle, forKey: .pickerStyle)
-        try c.encodeIfPresent(pinnedTargetKey, forKey: .pinnedTargetKey)
         if let frame = pickerFrame {
             try c.encode(PickerFrameCodable(frame), forKey: .pickerFrame)
         }
@@ -134,10 +133,11 @@ struct JunctionSettings: Codable {
         try c.encodeIfPresent(favoriteTargetKey, forKey: .favoriteTargetKey)
     }
 
-    /// Sets `pinnedTargetKey` and rewrites `targetOrder` so the pinned key is at index 0.
-    /// When `key` is nil, clears the pin without altering `targetOrder`.
-    mutating func setPinnedTargetKey(_ key: String?) {
-        pinnedTargetKey = key
+    /// Sets `favoriteTargetKey` and rewrites `targetOrder` so the favored key is
+    /// at index 0. When `key` is nil, clears the favorite without altering
+    /// `targetOrder`.
+    mutating func setFavoriteTargetKey(_ key: String?) {
+        favoriteTargetKey = key
         guard let key else { return }
         var order = targetOrder
         order.removeAll { $0 == key }
@@ -188,7 +188,9 @@ final class SettingsStore: ObservableObject {
     init(fileURL: URL? = nil) {
         let fm = FileManager.default
         let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = base.appendingPathComponent("Junction", isDirectory: true)
+        let bundleID = Bundle.main.bundleIdentifier ?? "dev.gideonsarfo.Junction"
+        let appSupportFolder = bundleID.contains("Preview") ? "JunctionPreview" : "Junction"
+        let dir = base.appendingPathComponent(appSupportFolder, isDirectory: true)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         self.fileURL = fileURL ?? dir.appendingPathComponent("settings.json")
 
@@ -229,12 +231,8 @@ final class SettingsStore: ObservableObject {
         settings.hotkeys[keyPath: keyPath] = binding
     }
 
-    func setPinnedTargetKey(_ key: String?) {
-        settings.setPinnedTargetKey(key)
-    }
-
     func setFavoriteTargetKey(_ key: String?) {
-        settings.favoriteTargetKey = key
+        settings.setFavoriteTargetKey(key)
     }
 
     func markOnboardingComplete() {
