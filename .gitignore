@@ -9,3 +9,4 @@ build-artifacts/
 *.dia
 *.swiftdeps
 .claude/settings.local.json
+.opencode/plugins/emdash-notifications.js
