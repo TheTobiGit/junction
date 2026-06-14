@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.13.0](https://github.com/TheTobiGit/junction/compare/v0.12.0...v0.13.0) (2026-06-12)
+
+
+### Features
+
+* **browser:** fold pin into favorite and redesign onboarding ([073a5d2](https://github.com/TheTobiGit/junction/commit/073a5d2e225418ea577ef1291cc03aa88aeff810))
+* **picker:** add pin button to keep preview open on click-outside ([2a61fb9](https://github.com/TheTobiGit/junction/commit/2a61fb94228f73f49985fdf685b8fe148418dec0))
+
+
+### Bug Fixes
+
+* **settings:** expand favorite target group ([9d0a67a](https://github.com/TheTobiGit/junction/commit/9d0a67ade7bbd480ce833bd62887e1de96329938))
+
 ## [0.12.0](https://github.com/TheTobiGit/junction/compare/v0.11.0...v0.12.0) (2026-06-10)
 
 
