@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Dialog } from '@base-ui/react/dialog'
 import { motion, useScroll, useTransform, useReducedMotion } from 'motion/react'
 import { keymap } from './data'
@@ -330,6 +330,25 @@ function ShowcaseAct() {
   const titleY = useTransform(scrollYProgress, [0, 0.3], [40, 0])
   const titleOpacity = useTransform(scrollYProgress, [0, 0.22], [0, 1])
 
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const startTimer = useCallback(() => {
+    if (timer.current) clearInterval(timer.current)
+    timer.current = setInterval(() => {
+      setActive((a) => (a + 1) % shots.length)
+    }, 4000)
+  }, [])
+
+  useEffect(() => {
+    startTimer()
+    return () => { if (timer.current) clearInterval(timer.current) }
+  }, [startTimer])
+
+  const handleSelect = useCallback((i: number) => {
+    setActive(i)
+    startTimer()
+  }, [startTimer])
+
   return (
     <section ref={ref} id="showcase" className="px-8 py-40 max-w-[1280px] mx-auto">
       <motion.div
@@ -351,7 +370,7 @@ function ShowcaseAct() {
             {shots.map((s, i) => (
               <button
                 key={s.id}
-                onClick={() => setActive(i)}
+                onClick={() => handleSelect(i)}
                 className={
                   'px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] border transition-colors duration-200 ' +
                   (i === active
