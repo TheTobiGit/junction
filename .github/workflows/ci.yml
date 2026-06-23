@@ -24,7 +24,7 @@ jobs:
       - name: Checkout
         # SHA-pinned per CVE-2025-30066 / CVE-2025-30154 mitigation.
         # Dependabot will rewrite the SHA and update the comment.
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           # No git credentials kept on disk — defeats credential theft via
           # later-step command injection (Nx s1ngularity pattern).
