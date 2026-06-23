@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.14.0](https://github.com/TheTobiGit/junction/compare/v0.13.0...v0.14.0) (2026-06-23)
+
+
+### Features
+
+* **landing:** add marketing landing page (Vite + React) ([09e638d](https://github.com/TheTobiGit/junction/commit/09e638dc02f23159858b273c39644967675c2e80))
+* **landing:** auto-cycle picker showcase views every 4s ([da64e15](https://github.com/TheTobiGit/junction/commit/da64e15179078339b6395d9d5c8ef884ad0cbe39))
+
+
+### Bug Fixes
+
+* **release:** annotate Info.plist so release-please bumps the bundle version ([d0fcda2](https://github.com/TheTobiGit/junction/commit/d0fcda21b8a105db209ff790dcdfe20929d1fb5d))
+* **release:** annotate Info.plist so release-please bumps the bundle version ([ddc31d6](https://github.com/TheTobiGit/junction/commit/ddc31d6684b62e80f7ecfe15a2a9e94ac29652d7))
+
 ## [0.13.0](https://github.com/TheTobiGit/junction/compare/v0.12.0...v0.13.0) (2026-06-12)
 
 
