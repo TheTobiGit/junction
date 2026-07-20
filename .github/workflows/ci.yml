@@ -24,7 +24,7 @@ jobs:
       - name: Checkout
         # SHA-pinned per CVE-2025-30066 / CVE-2025-30154 mitigation.
         # Dependabot will rewrite the SHA and update the comment.
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # No git credentials kept on disk — defeats credential theft via
           # later-step command injection (Nx s1ngularity pattern).
@@ -42,7 +42,7 @@ jobs:
         # Cache key namespaced by event_name so PR caches cannot
         # be restored on push-to-main runs (cache-poisoning defense
         # against the TanStack May 2026 attack pattern).
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             .build
