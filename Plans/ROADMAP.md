@@ -13,7 +13,7 @@ flowchart LR
 
 ## 0.14.1: fixes and speed
 
-Status: done on branch `fix/preview-loop-safelinks`. All 539 tests pass. A second agent reviewed the branch and closed all findings.
+Status: merged in [#73](https://github.com/TheTobiGit/junction/pull/73). All 539 tests pass. A second agent reviewed the changes and closed three findings. The Focus badge finding stays open on purpose (see Known issues).
 
 | Area | Problem | Fix |
 |---|---|---|
@@ -68,7 +68,7 @@ Each provider is off by default. The user gives an own API key. Junction shows w
 |---|---|
 | The picker closes when another window takes focus, for example a firewall alert | This is by design. In preview, the pin button keeps the picker open. Think about a short grace period |
 | Apps that are not browsers show as targets (ChatGPT, cmux, Parallels Desktop) | They register for web links. The user can hide them. Think about hiding apps that are not browsers by default |
-| The first picker after launch takes about 1.5 seconds | Cause: the first SwiftUI render. Think about a hidden render at launch |
-| The Focus badge shows only when a rule uses Focus | macOS blocks the Focus file without Full Disk Access |
+| The first picker after launch takes about 1.5 seconds | Cause not confirmed. It can be the first SwiftUI render or a browser scan that has not finished. Profile it before a fix |
+| The Focus badge shows only when a rule uses Focus | Junction reads the Focus file only when a rule uses Focus (`Sources/JunctionApp/System/FocusTracker.swift`). Without Full Disk Access, macOS also blocks that read |
 | A "Data Access Blocked" banner shows for local preview builds | Cause not confirmed. Check again after the Focus change |
 | Local ad-hoc builds show "Unable to Check For Updates" | The build has no Sparkle key. This affects development builds only |
