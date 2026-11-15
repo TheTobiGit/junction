@@ -1,17 +1,17 @@
 # Junction roadmap
 
-Updated: 15 November 2026. The current release is 0.14.0.
+Updated: 15 November 2026. The last published release is 0.13.0. Version 0.14.0 has a tag but was never published, so 0.15.0 also ships the 0.14.0 features.
 
 This file lists the next work for each version. Research for the link-safety work is in [url-reputation.md](url-reputation.md).
 
 ```mermaid
 flowchart LR
-  A["0.14.1<br/>Fixes and speed"] --> B["0.15.0<br/>Link safety, first steps"]
-  B --> C["0.16.0<br/>One open policy and offline mode"]
+  A["0.15.0<br/>Fixes and speed"] --> B["0.16.0<br/>Link safety, first steps"]
+  B --> C["0.17.0<br/>One open policy and offline mode"]
   C --> D["Later<br/>Optional online providers"]
 ```
 
-## 0.14.1: fixes and speed
+## 0.15.0: fixes and speed
 
 Status: merged in [#73](https://github.com/TheTobiGit/junction/pull/73). All 539 tests pass. A second agent reviewed the changes and closed three findings. The Focus badge finding stays open on purpose (see Known issues).
 
@@ -26,7 +26,7 @@ Status: merged in [#73](https://github.com/TheTobiGit/junction/pull/73). All 539
 | Focus | Each link read the macOS Focus file, which macOS can block | Junction reads the file only when a rule uses Focus |
 | Cleaning | Encoded tracker names such as `%75tm_source` stayed in the link | Junction decodes names before it compares them |
 
-## 0.15.0: link safety, first steps
+## 0.16.0: link safety, first steps
 
 Goal: give a warning for known bad links. Junction must not send a link to a service unless the user clicks.
 
@@ -40,7 +40,7 @@ Goal: give a warning for known bad links. Junction must not send a link to a ser
 
 Check before release: the URLhaus terms permit non-commercial use. Confirm the terms for a free desktop app.
 
-## 0.16.0: one open policy and offline mode
+## 0.17.0: one open policy and offline mode
 
 | Item | What to build |
 |---|---|
