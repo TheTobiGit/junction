@@ -112,10 +112,11 @@ struct TrackerStripper: URLTransformer {
         let extraStrip = Self.extraStripFor(host: bare)
 
         let cleaned = items.filter { item in
-            let lower = item.name.lowercased()
+            let name = item.name.removingPercentEncoding ?? item.name
+            let lower = name.lowercased()
             if preserved.contains(lower) { return true }
             if extraStrip.contains(lower) { return false }
-            return !shouldStrip(name: item.name)
+            return !shouldStrip(name: name)
         }
 
         if cleaned.count == items.count { return url }

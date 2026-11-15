@@ -131,3 +131,37 @@ final class FocusTrackerReadTests: XCTestCase {
         XCTAssertEqual(reads, 1)
     }
 }
+
+final class LaunchOptionCacheOrderingTests: XCTestCase {
+    private func options(_ n: Int) -> [LaunchOption] {
+        (0..<n).map { LaunchOption(browser: Browser(bundleID: "b\($0)", name: "B\($0)", url: URL(fileURLWithPath: "/Applications/B\($0).app")), profile: nil) }
+    }
+
+    func test_older_background_scan_does_not_overwrite_a_newer_fresh_scan() {
+        var size = 1
+        var now = Date(timeIntervalSince1970: 0)
+        var queued: [() -> Void] = []
+        let cache = LaunchOptionCache(maxAge: 5, now: { now }, scan: { [unowned self] in options(size) }, runInBackground: { queued.append($0) })
+        XCTAssertEqual(cache.current().count, 1)
+
+        now += 10
+        _ = cache.current()
+        size = 3
+        XCTAssertEqual(cache.fresh().count, 3)
+        size = 2
+        queued.removeFirst()()
+        XCTAssertEqual(cache.current().count, 3)
+    }
+}
+
+final class EncodedTrackerNameTests: XCTestCase {
+    func test_percent_encoded_tracker_names_are_still_stripped() {
+        let out = TrackerStripper().transform(URL(string: "https://example.com/p?%75tm_source=x&a=1")!)
+        XCTAssertEqual(out.absoluteString, "https://example.com/p?a=1")
+    }
+
+    func test_percent_encoded_amp_output_type_is_dropped() {
+        let out = AMPCollapser().transform(URL(string: "https://example.com/p?outputType=%61mp&a=1")!)
+        XCTAssertEqual(out.absoluteString, "https://example.com/p?a=1")
+    }
+}

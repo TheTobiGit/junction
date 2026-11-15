@@ -732,7 +732,7 @@ struct PreferencesView: View {
     }
 
     private func reload() {
-        options = LaunchOptionDiscovery.options()
+        options = LaunchOptionDiscovery.options(fresh: true)
         rulesFile = RulesStore.shared.rules
         shadowedRuleIDs = RuleConflictDetector.shadowed(rules: rulesFile.rules)
         expandedTargetGroupIDs = LaunchOptionGrouping.defaultExpandedGroupIDs(

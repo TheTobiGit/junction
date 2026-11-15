@@ -37,6 +37,8 @@ final class LaunchOptionCache {
     private var cached: [LaunchOption]?
     private var scannedAt = Date.distantPast
     private var refreshing = false
+    private var issued = 0
+    private var storedTicket = 0
 
     init(
         maxAge: TimeInterval = 5,
@@ -52,24 +54,40 @@ final class LaunchOptionCache {
 
     func current() -> [LaunchOption] {
         lock.lock()
-        if let cached {
-            let stale = now().timeIntervalSince(scannedAt) > maxAge && !refreshing
-            if stale { refreshing = true }
+        guard let cached else {
             lock.unlock()
-            if stale { runInBackground { [self] in store(scan(), refreshDone: true) } }
-            return cached
+            return fresh()
+        }
+        let stale = now().timeIntervalSince(scannedAt) > maxAge && !refreshing
+        var ticket = 0
+        if stale {
+            refreshing = true
+            issued += 1
+            ticket = issued
         }
         lock.unlock()
-        let fresh = scan()
-        store(fresh, refreshDone: false)
-        return fresh
+        if stale { runInBackground { [self] in store(scan(), ticket: ticket, refreshDone: true) } }
+        return cached
     }
 
-    private func store(_ options: [LaunchOption], refreshDone: Bool) {
+    func fresh() -> [LaunchOption] {
         lock.lock()
-        cached = options
-        scannedAt = now()
+        issued += 1
+        let ticket = issued
+        lock.unlock()
+        let options = scan()
+        store(options, ticket: ticket, refreshDone: false)
+        return options
+    }
+
+    private func store(_ options: [LaunchOption], ticket: Int, refreshDone: Bool) {
+        lock.lock()
         if refreshDone { refreshing = false }
+        if ticket > storedTicket {
+            storedTicket = ticket
+            cached = options
+            scannedAt = now()
+        }
         lock.unlock()
     }
 }
@@ -77,8 +95,8 @@ final class LaunchOptionCache {
 enum LaunchOptionDiscovery {
     private static let cache = LaunchOptionCache(scan: scanInstalled)
 
-    static func options() -> [LaunchOption] {
-        applyUserOrder(cache.current())
+    static func options(fresh: Bool = false) -> [LaunchOption] {
+        applyUserOrder(fresh ? cache.fresh() : cache.current())
     }
 
     static func warmUp() {
