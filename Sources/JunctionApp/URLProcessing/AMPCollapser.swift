@@ -41,14 +41,17 @@ struct AMPCollapser: URLTransformer {
             comps.path = String(comps.path.dropLast(4))
         }
 
-        if var items = comps.queryItems {
-            items.removeAll { item in
-                let lower = item.name.lowercased()
-                if lower == "amp" { return true }
-                if lower == "outputtype" && item.value == "amp" { return true }
-                return false
+        if let items = comps.percentEncodedQueryItems {
+            let kept = items.filter { item in
+                let lower = (item.name.removingPercentEncoding ?? item.name).lowercased()
+                let value = item.value.map { ($0.removingPercentEncoding ?? $0).lowercased() }
+                if lower == "amp" { return false }
+                if lower == "outputtype" && value == "amp" { return false }
+                return true
             }
-            comps.queryItems = items.isEmpty ? nil : items
+            if kept.count != items.count {
+                comps.percentEncodedQueryItems = kept.isEmpty ? nil : kept
+            }
         }
 
         return comps.url ?? url

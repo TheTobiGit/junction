@@ -72,7 +72,7 @@ final class PickerPanelController {
             options: options,
             context: context,
             onPick: { [weak self] option, remember, incognito in
-                if remember, let host = RulesStore.normalizedHost(for: url) {
+                if remember, let host = RulesStore.normalizedHost(for: URLTransformers.urlForRuleMatching(url)) {
                     let action: RuleAction = incognito ? .openIncognito(option.target) : .open(option.target)
                     RulesStore.shared.addRule(host: .equals(host), action: action)
                 }

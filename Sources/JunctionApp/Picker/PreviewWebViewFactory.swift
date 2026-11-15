@@ -76,6 +76,7 @@ enum PreviewWebViewFactory {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = dataStore
         config.defaultWebpagePreferences.allowsContentJavaScript = true
+        config.mediaTypesRequiringUserActionForPlayback = .all
 
         for script in userScripts(readerEnabled: readerEnabled) {
             config.userContentController.addUserScript(script)
@@ -92,5 +93,15 @@ enum PreviewWebViewFactory {
         webView.stopLoading()
         webView.navigationDelegate = nil
         webView.load(URLRequest(url: blankURL))
+    }
+}
+
+struct PreviewLoadTracker {
+    private(set) var requested: URL?
+
+    mutating func needsLoad(_ url: URL) -> Bool {
+        guard url != requested else { return false }
+        requested = url
+        return true
     }
 }

@@ -36,6 +36,9 @@ struct OutgoingRedirectUnwrapper: URLTransformer {
         ("disq.us",               ["url"],                "/url"),
         ("steamcommunity.com",    ["url"],                "/linkfilter/"),
 
+        ("safelinks.protection.outlook.com",  ["url"],     nil),
+        ("safelinks.protection.office365.us", ["url"],     nil),
+
         ("href.li",               ["u"],                  nil),
         ("anonym.to",             [],                     nil),
     ]

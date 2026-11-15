@@ -818,7 +818,7 @@ private struct OnboardingBrowsersConfigurator: View {
     }
 
     private func reloadOptions() {
-        options = LaunchOptionDiscovery.options()
+        options = LaunchOptionDiscovery.options(fresh: true)
     }
 
     private func moveOption(at index: Int?, by delta: Int) {

@@ -28,8 +28,82 @@ struct LaunchOption: Identifiable, Hashable {
     var icon: NSImage { browser.icon }
 }
 
+final class LaunchOptionCache {
+    private let maxAge: TimeInterval
+    private let now: () -> Date
+    private let scan: () -> [LaunchOption]
+    private let runInBackground: (@escaping () -> Void) -> Void
+    private let lock = NSLock()
+    private var cached: [LaunchOption]?
+    private var scannedAt = Date.distantPast
+    private var refreshing = false
+    private var issued = 0
+    private var storedTicket = 0
+
+    init(
+        maxAge: TimeInterval = 5,
+        now: @escaping () -> Date = Date.init,
+        scan: @escaping () -> [LaunchOption],
+        runInBackground: @escaping (@escaping () -> Void) -> Void = { DispatchQueue.global(qos: .utility).async(execute: $0) }
+    ) {
+        self.maxAge = maxAge
+        self.now = now
+        self.scan = scan
+        self.runInBackground = runInBackground
+    }
+
+    func current() -> [LaunchOption] {
+        lock.lock()
+        guard let cached else {
+            lock.unlock()
+            return fresh()
+        }
+        let stale = now().timeIntervalSince(scannedAt) > maxAge && !refreshing
+        var ticket = 0
+        if stale {
+            refreshing = true
+            issued += 1
+            ticket = issued
+        }
+        lock.unlock()
+        if stale { runInBackground { [self] in store(scan(), ticket: ticket, refreshDone: true) } }
+        return cached
+    }
+
+    func fresh() -> [LaunchOption] {
+        lock.lock()
+        issued += 1
+        let ticket = issued
+        lock.unlock()
+        let options = scan()
+        store(options, ticket: ticket, refreshDone: false)
+        return options
+    }
+
+    private func store(_ options: [LaunchOption], ticket: Int, refreshDone: Bool) {
+        lock.lock()
+        if refreshDone { refreshing = false }
+        if ticket > storedTicket {
+            storedTicket = ticket
+            cached = options
+            scannedAt = now()
+        }
+        lock.unlock()
+    }
+}
+
 enum LaunchOptionDiscovery {
-    static func options() -> [LaunchOption] {
+    private static let cache = LaunchOptionCache(scan: scanInstalled)
+
+    static func options(fresh: Bool = false) -> [LaunchOption] {
+        applyUserOrder(fresh ? cache.fresh() : cache.current())
+    }
+
+    static func warmUp() {
+        DispatchQueue.global(qos: .utility).async { _ = cache.current() }
+    }
+
+    private static func scanInstalled() -> [LaunchOption] {
         let browsers = BrowserDiscovery.installedBrowsers()
         var result: [LaunchOption] = []
 
@@ -67,7 +141,7 @@ enum LaunchOptionDiscovery {
                 result.append(LaunchOption(browser: browser, profile: nil))
             }
         }
-        return applyUserOrder(result)
+        return result
     }
 
     static func visibleOptions() -> [LaunchOption] {

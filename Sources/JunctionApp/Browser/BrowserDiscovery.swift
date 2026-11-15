@@ -21,7 +21,7 @@ enum BrowserDiscovery {
 
         for url in urls {
             guard let bundle = Bundle(url: url), let bid = bundle.bundleIdentifier else { continue }
-            if bid == ownBundleID { continue }
+            if bid == ownBundleID || isJunction(bundleID: bid) { continue }
             if isNestedHelperApp(url: url) { continue }
             if !seen.insert(bid).inserted { continue }
 
@@ -33,6 +33,10 @@ enum BrowserDiscovery {
 
         browsers.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         return browsers
+    }
+
+    static func isJunction(bundleID: String) -> Bool {
+        bundleID.hasPrefix("dev.gideonsarfo.Junction")
     }
 
     private static func isNestedHelperApp(url: URL) -> Bool {

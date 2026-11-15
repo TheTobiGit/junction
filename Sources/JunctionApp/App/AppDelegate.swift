@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             routeURL: { [weak self] url in self?.route(url) }
         )
         _ = FrontmostTracker.shared
+        LaunchOptionDiscovery.warmUp()
         ClipboardWatcher.shared.configure(handlers: ClipboardHUDHandlers(
             onRoute: { [weak self] url in self?.route(url) }
         ))

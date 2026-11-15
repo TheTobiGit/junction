@@ -189,7 +189,7 @@ final class PickerViewModel: ObservableObject {
     }
 
     var rememberHost: String? {
-        RulesStore.normalizedHost(for: url)
+        RulesStore.normalizedHost(for: URLTransformers.urlForRuleMatching(url))
     }
 
     func toggleRemember() {
