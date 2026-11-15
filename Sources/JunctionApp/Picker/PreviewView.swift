@@ -409,7 +409,7 @@ private struct WebContainer: NSViewRepresentable {
         let webView = PreviewWebViewFactory.makeWebView(readerEnabled: readerEnabled)
         webView.navigationDelegate = context.coordinator
         context.coordinator.observe(webView: webView)
-        load(url, into: webView)
+        if context.coordinator.loads.needsLoad(url) { load(url, into: webView) }
         // Register a deterministic teardown so the controller can stop media
         // even when SwiftUI defers ``dismantleNSView`` (e.g. during the
         // panel-dismiss animation).
@@ -419,7 +419,7 @@ private struct WebContainer: NSViewRepresentable {
 
     func updateNSView(_ nsView: WKWebView, context: Context) {
         guard !context.coordinator.didTearDown else { return }
-        if nsView.url != normalizedLoadURL(for: url) {
+        if context.coordinator.loads.needsLoad(url) {
             load(url, into: nsView)
         }
     }
@@ -470,6 +470,7 @@ private struct WebContainer: NSViewRepresentable {
         private var loadingObservation: NSKeyValueObservation?
         private weak var registeredModel: PickerViewModel?
         private(set) var didTearDown: Bool = false
+        var loads = PreviewLoadTracker()
 
         init(title: Binding<String?>, isLoading: Binding<Bool>, progress: Binding<Double>) {
             _title = title

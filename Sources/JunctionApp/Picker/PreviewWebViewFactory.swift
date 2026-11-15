@@ -94,3 +94,13 @@ enum PreviewWebViewFactory {
         webView.load(URLRequest(url: blankURL))
     }
 }
+
+struct PreviewLoadTracker {
+    private(set) var requested: URL?
+
+    mutating func needsLoad(_ url: URL) -> Bool {
+        guard url != requested else { return false }
+        requested = url
+        return true
+    }
+}

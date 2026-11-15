@@ -104,7 +104,7 @@ struct TrackerStripper: URLTransformer {
 
     func transform(_ url: URL) -> URL {
         guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
-        guard let items = components.queryItems, !items.isEmpty else { return url }
+        guard let items = components.percentEncodedQueryItems, !items.isEmpty else { return url }
 
         let host = url.host?.lowercased() ?? ""
         let bare = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
@@ -120,7 +120,7 @@ struct TrackerStripper: URLTransformer {
 
         if cleaned.count == items.count { return url }
 
-        components.queryItems = cleaned.isEmpty ? nil : cleaned
+        components.percentEncodedQueryItems = cleaned.isEmpty ? nil : cleaned
 
         return components.url ?? url
     }
