@@ -59,3 +59,26 @@ final class PreviewLoadTrackerTests: XCTestCase {
         XCTAssertTrue(tracker.needsLoad(URL(string: "https://b.example")!))
     }
 }
+
+final class PickerRememberHostTests: XCTestCase {
+    func test_remember_host_is_the_unwrapped_target() {
+        let url = URL(string: "https://eur06.safelinks.protection.outlook.com/?url=https%3A%2F%2Fwww.github.com%2Fa&data=x&reserved=0")!
+        let model = PickerViewModel(
+            url: url,
+            options: [],
+            context: RouteContext(source: nil, focus: FocusInfo(modeIdentifier: nil, modeName: nil)),
+            onPick: { _, _, _ in },
+            onPickMulti: { _, _ in },
+            onCancel: {}
+        )
+        XCTAssertEqual(model.rememberHost, "github.com")
+    }
+}
+
+final class BrowserDiscoveryExclusionTests: XCTestCase {
+    func test_every_junction_variant_is_excluded() {
+        XCTAssertTrue(BrowserDiscovery.isJunction(bundleID: "dev.gideonsarfo.Junction"))
+        XCTAssertTrue(BrowserDiscovery.isJunction(bundleID: "dev.gideonsarfo.JunctionPreview"))
+        XCTAssertFalse(BrowserDiscovery.isJunction(bundleID: "com.apple.Safari"))
+    }
+}
