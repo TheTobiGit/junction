@@ -82,3 +82,30 @@ final class BrowserDiscoveryExclusionTests: XCTestCase {
         XCTAssertFalse(BrowserDiscovery.isJunction(bundleID: "com.apple.Safari"))
     }
 }
+
+final class LaunchOptionCacheTests: XCTestCase {
+    func test_serves_cached_list_and_refreshes_in_background_when_stale() {
+        var scans = 0
+        var now = Date(timeIntervalSince1970: 0)
+        var queued: [() -> Void] = []
+        let cache = LaunchOptionCache(
+            maxAge: 5,
+            now: { now },
+            scan: { scans += 1; return [] },
+            runInBackground: { queued.append($0) }
+        )
+        _ = cache.current()
+        _ = cache.current()
+        XCTAssertEqual(scans, 1)
+        XCTAssertTrue(queued.isEmpty)
+
+        now += 10
+        _ = cache.current()
+        XCTAssertEqual(scans, 1, "stale read must not block on a scan")
+        XCTAssertEqual(queued.count, 1)
+        _ = cache.current()
+        XCTAssertEqual(queued.count, 1, "one refresh at a time")
+        queued.removeFirst()()
+        XCTAssertEqual(scans, 2)
+    }
+}

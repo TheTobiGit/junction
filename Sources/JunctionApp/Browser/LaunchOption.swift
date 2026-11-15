@@ -28,8 +28,64 @@ struct LaunchOption: Identifiable, Hashable {
     var icon: NSImage { browser.icon }
 }
 
+final class LaunchOptionCache {
+    private let maxAge: TimeInterval
+    private let now: () -> Date
+    private let scan: () -> [LaunchOption]
+    private let runInBackground: (@escaping () -> Void) -> Void
+    private let lock = NSLock()
+    private var cached: [LaunchOption]?
+    private var scannedAt = Date.distantPast
+    private var refreshing = false
+
+    init(
+        maxAge: TimeInterval = 5,
+        now: @escaping () -> Date = Date.init,
+        scan: @escaping () -> [LaunchOption],
+        runInBackground: @escaping (@escaping () -> Void) -> Void = { DispatchQueue.global(qos: .utility).async(execute: $0) }
+    ) {
+        self.maxAge = maxAge
+        self.now = now
+        self.scan = scan
+        self.runInBackground = runInBackground
+    }
+
+    func current() -> [LaunchOption] {
+        lock.lock()
+        if let cached {
+            let stale = now().timeIntervalSince(scannedAt) > maxAge && !refreshing
+            if stale { refreshing = true }
+            lock.unlock()
+            if stale { runInBackground { [self] in store(scan(), refreshDone: true) } }
+            return cached
+        }
+        lock.unlock()
+        let fresh = scan()
+        store(fresh, refreshDone: false)
+        return fresh
+    }
+
+    private func store(_ options: [LaunchOption], refreshDone: Bool) {
+        lock.lock()
+        cached = options
+        scannedAt = now()
+        if refreshDone { refreshing = false }
+        lock.unlock()
+    }
+}
+
 enum LaunchOptionDiscovery {
+    private static let cache = LaunchOptionCache(scan: scanInstalled)
+
     static func options() -> [LaunchOption] {
+        applyUserOrder(cache.current())
+    }
+
+    static func warmUp() {
+        DispatchQueue.global(qos: .utility).async { _ = cache.current() }
+    }
+
+    private static func scanInstalled() -> [LaunchOption] {
         let browsers = BrowserDiscovery.installedBrowsers()
         var result: [LaunchOption] = []
 
@@ -67,7 +123,7 @@ enum LaunchOptionDiscovery {
                 result.append(LaunchOption(browser: browser, profile: nil))
             }
         }
-        return applyUserOrder(result)
+        return result
     }
 
     static func visibleOptions() -> [LaunchOption] {
