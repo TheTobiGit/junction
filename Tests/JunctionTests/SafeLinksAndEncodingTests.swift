@@ -117,3 +117,17 @@ final class PreviewMediaTests: XCTestCase {
         XCTAssertEqual(webView.configuration.mediaTypesRequiringUserActionForPlayback, .all)
     }
 }
+
+final class FocusTrackerReadTests: XCTestCase {
+    func test_focus_file_is_read_only_when_a_rule_needs_it() {
+        var reads = 0
+        let read: (URL) -> Data? = { _ in reads += 1; return nil }
+        _ = FocusTracker.current(rules: [DomainRule(host: .equals("a.com"), action: .ask)], read: read)
+        XCTAssertEqual(reads, 0)
+
+        var focused = DomainRule(host: .equals("a.com"), action: .ask)
+        focused.when = RuleCondition(focus: ["work"])
+        _ = FocusTracker.current(rules: [focused], read: read)
+        XCTAssertEqual(reads, 1)
+    }
+}

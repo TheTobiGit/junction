@@ -8,12 +8,17 @@ struct FocusInfo: Equatable {
 }
 
 enum FocusTracker {
-    static func current() -> FocusInfo {
-        let fm = FileManager.default
-        let home = fm.homeDirectoryForCurrentUser
-        let assertionsURL = home.appendingPathComponent("Library/DoNotDisturb/DB/Assertions.json")
+    static func current(
+        rules: [DomainRule] = RulesStore.shared.rules.rules,
+        read: (URL) -> Data? = { try? Data(contentsOf: $0) }
+    ) -> FocusInfo {
+        guard rules.contains(where: { $0.when?.focus?.isEmpty == false }) else {
+            return FocusInfo(modeIdentifier: nil, modeName: nil)
+        }
+        let assertionsURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/DoNotDisturb/DB/Assertions.json")
 
-        guard let data = try? Data(contentsOf: assertionsURL),
+        guard let data = read(assertionsURL),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let records = obj["data"] as? [[String: Any]]
         else {
