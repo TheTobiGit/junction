@@ -1,4 +1,5 @@
 import XCTest
+import WebKit
 @testable import JunctionApp
 
 final class SafeLinksAndEncodingTests: XCTestCase {
@@ -107,5 +108,12 @@ final class LaunchOptionCacheTests: XCTestCase {
         XCTAssertEqual(queued.count, 1, "one refresh at a time")
         queued.removeFirst()()
         XCTAssertEqual(scans, 2)
+    }
+}
+
+final class PreviewMediaTests: XCTestCase {
+    func test_preview_does_not_autoplay_media() {
+        let webView = PreviewWebViewFactory.makeWebView()
+        XCTAssertEqual(webView.configuration.mediaTypesRequiringUserActionForPlayback, .all)
     }
 }

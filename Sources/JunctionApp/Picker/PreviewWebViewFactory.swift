@@ -76,6 +76,7 @@ enum PreviewWebViewFactory {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = dataStore
         config.defaultWebpagePreferences.allowsContentJavaScript = true
+        config.mediaTypesRequiringUserActionForPlayback = .all
 
         for script in userScripts(readerEnabled: readerEnabled) {
             config.userContentController.addUserScript(script)
